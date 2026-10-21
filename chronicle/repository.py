@@ -385,12 +385,27 @@ def get_evidence_content(conn: sqlite3.Connection, evidence_id: int) -> dict | N
     return dict(row) if row else None
 
 
+EVIDENCE_CHUNK = 500  # SQLite limits how many values one statement can bind
+
+
 def _with_evidence(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[dict]:
+    """Events with their evidence. The evidence of many events comes in one query per chunk, not one per event."""
+    pks = [row["pk"] for row in rows]
+    evidence_of: dict[int, list[dict]] = {pk: [] for pk in pks}
+    for start in range(0, len(pks), EVIDENCE_CHUNK):
+        chunk = pks[start : start + EVIDENCE_CHUNK]
+        placeholders = ", ".join("?" * len(chunk))
+        found = conn.execute(
+            f"SELECT event_pk, pk AS id, file, type, description, mime, size, sha256 FROM evidence "
+            f"WHERE event_pk IN ({placeholders}) ORDER BY pk",
+            chunk,
+        ).fetchall()
+        for item in found:
+            evidence_of[item["event_pk"]].append({key: item[key] for key in item.keys() if key != "event_pk"})
     events = []
     for row in rows:
         event = {key: row[key] for key in row.keys() if key != "pk"}
-        evidence = conn.execute(f"{EVIDENCE_META} WHERE event_pk = ? ORDER BY pk", (row["pk"],)).fetchall()
-        event["evidence"] = [dict(item) for item in evidence]
+        event["evidence"] = evidence_of[row["pk"]]
         events.append(event)
     return events
 
