@@ -98,6 +98,50 @@
     .ch-lane { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; }
     .ch-lane .ch-count { margin-left: 6px; font-size: 10px; font-weight: 400; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
 
+    /* Hover tooltip on graph nodes (vis-network's default is a light box with black text) */
+    #graph .vis-tooltip {
+      background: rgba(15, 23, 42, .96);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: 0 10px 28px -14px rgba(0, 0, 0, .8);
+      color: var(--text);
+      font-family: Inter, system-ui, sans-serif;
+      font-size: 12px;
+      max-width: 280px;
+      padding: 8px 10px;
+      white-space: normal;
+    }
+
+    /* Timeline and graph are separate views. Each collapses to its header bar, the other one takes the space. */
+    .view { display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--line); }
+    .view-body { position: relative; min-height: 0; }
+    .view.is-collapsed .view-body { display: none; }
+    @media (min-width: 1024px) {
+      .view { flex: 1 1 0; }
+      .view-timeline { flex-grow: 2; }
+      .view-graph { flex-grow: 3; }
+      .view.is-collapsed { flex: 0 0 auto; }
+      .view-body { flex: 1 1 auto; }
+    }
+    .view-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 8px 16px;
+      background: rgba(15, 23, 42, .5);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .18em;
+      text-align: left;
+      text-transform: uppercase;
+    }
+    .view-toggle:hover { color: #fff; }
+    .view-hint { font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); }
+    .view-toggle .chevron { margin-left: auto; transition: transform .2s ease; }
+    .view.is-collapsed .chevron { transform: rotate(-90deg); }
+
     /* Markdown in details */
     .prose-invert code { background: rgba(15, 23, 42, .9); padding: 1px 5px; border-radius: 5px; }
     .prose-invert code::before, .prose-invert code::after { content: none; }
@@ -129,30 +173,44 @@
     {% endfor %}
   </div>
 
-  <section class="relative h-[40vh] min-h-[280px] px-2 py-2" style="border-bottom: 1px solid var(--line)">
-    <div id="timeline" class="h-full"></div>
-  </section>
-
   <main class="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-5">
     <article id="details" class="glass p-5 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto" style="border-width: 0 1px 0 0"></article>
 
-    <section class="dot-grid relative h-[60vh] lg:col-span-3 lg:h-auto">
-      <div id="graph" class="absolute inset-0"></div>
+    <div class="flex min-w-0 flex-col lg:col-span-3 lg:min-h-0">
+      <section class="view view-timeline" id="timeline-view">
+        <button type="button" class="view-toggle" aria-expanded="true" aria-controls="timeline-body">
+          <span>Timeline</span><span class="view-hint">Zeitlicher Ablauf</span>
+          <span class="chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="timeline-body" class="view-body h-[40vh] min-h-[280px] px-2 py-2 lg:h-auto">
+          <div id="timeline" class="h-full"></div>
+        </div>
+      </section>
 
-      <div class="absolute right-4 top-4 z-10 flex gap-2">
-        <button id="btn-fit" class="btn">Zentrieren</button>
-        <button id="btn-physics" class="btn">Physik an/aus</button>
-        <button id="btn-reset" class="btn">Auswahl lösen</button>
-      </div>
+      <section class="view view-graph" id="graph-view">
+        <button type="button" class="view-toggle" aria-expanded="true" aria-controls="graph-body">
+          <span>Graph</span><span class="view-hint">Beziehungen</span>
+          <span class="chevron" aria-hidden="true">▾</span>
+        </button>
+        <div id="graph-body" class="view-body dot-grid h-[60vh] lg:h-auto">
+          <div id="graph" class="absolute inset-0"></div>
 
-      <div class="glass absolute bottom-4 left-4 z-10 flex flex-wrap gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-slate-300">
-        <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-sky-400"></span>Akteur</span>
-        <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-violet-400"></span>System</span>
-        <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-rose-400"></span>Event (Phase-Farbe)</span>
-        <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-slate-400"></span>Evidence</span>
-        <span class="inline-flex items-center gap-1.5"><span class="h-px w-4 bg-orange-400"></span>löst aus</span>
-      </div>
-    </section>
+          <div class="absolute right-4 top-4 z-10 flex gap-2">
+            <button id="btn-fit" class="btn">Zentrieren</button>
+            <button id="btn-physics" class="btn">Physik an/aus</button>
+            <button id="btn-reset" class="btn">Auswahl lösen</button>
+          </div>
+
+          <div class="glass absolute bottom-4 left-4 z-10 flex flex-wrap gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-slate-300">
+            <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-sky-400"></span>Akteur</span>
+            <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-violet-400"></span>System</span>
+            <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-rose-400"></span>Event (Phase-Farbe)</span>
+            <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-slate-400"></span>Evidence</span>
+            <span class="inline-flex items-center gap-1.5"><span class="h-px w-4 bg-orange-400"></span>löst aus</span>
+          </div>
+        </div>
+      </section>
+    </div>
   </main>
 
   <script id="payload" type="application/json">{{ payload | tojson }}</script>
@@ -327,7 +385,7 @@
       timeline.setSelection(id);
       network.selectNodes([`event:${id}`]);
       highlightNeighborhood(`event:${id}`);
-      if (focusGraph) network.focus(`event:${id}`, { scale: 1.1, animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+      if (focusGraph && graphEl.clientWidth) network.focus(`event:${id}`, { scale: 1.1, animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
       history.replaceState(null, '', `#${encodeURIComponent(id)}`);
     }
 
@@ -392,6 +450,36 @@
       else clearSelection();
     });
 
+    // Hover tooltip: type, name and key figures of a node, computed from the same payload.
+    const NODE_KIND_NAME = { actor: 'Akteur', system: 'System', event: 'Event', evidence: 'Evidence' };
+
+    function nodeTooltip(node) {
+      const kind = node.id.split(':')[0];
+      const ev = eventsById.get(node.event_id);
+      let title = node.label;
+      let figures = [];
+      if (kind === 'event') {
+        title = ev.action;
+        figures = [
+          `${ev.phase} · ${ev.status.replace('_', ' ')}`,
+          `Belege: ${ev.evidence.length}`,
+          `löst aus: ${DATA.events.filter(other => other.triggered_by === ev.id).length}`,
+        ];
+      } else if (kind === 'evidence') {
+        const item = ev.evidence.find(entry => node.id === `evidence:${ev.id}:${entry.file}`);
+        title = item.file;
+        figures = [item.type, item.description].filter(Boolean);
+      } else {
+        const linked = DATA.events.filter(other => other[kind] === node.label);
+        figures = [`Events: ${linked.length}`, `nicht abgeschlossen: ${linked.filter(other => other.status !== 'resolved').length}`];
+      }
+      return el('div', 'space-y-1', [
+        el('div', 'text-[10px] font-semibold uppercase tracking-[.18em] text-sky-300/80', NODE_KIND_NAME[kind]),
+        el('div', 'font-semibold text-slate-100', title),
+        ...figures.map(text => el('div', 'font-mono text-[11px] text-slate-400', text)),
+      ]);
+    }
+
     // Graph: icon nodes, curved edges, neighborhood highlight on selection.
     const graphNodes = new vis.DataSet(DATA.nodes.map(node => {
       const kind = node.id.split(':')[0];
@@ -400,6 +488,7 @@
         id: node.id,
         label: node.label,
         event_id: node.event_id,
+        title: nodeTooltip(node),
         shape: 'image',
         image: iconUri(color, KIND[kind].glyph),
         size: kind === 'event' ? 30 : 24,
@@ -425,7 +514,7 @@
     const network = new vis.Network(graphEl, { nodes: graphNodes, edges: graphEdges }, {
       physics: {
         solver: 'barnesHut',
-        barnesHut: { gravitationalConstant: -5200, springLength: 170, springConstant: 0.035, damping: 0.3, avoidOverlap: 0.6 },
+        barnesHut: { gravitationalConstant: -5200, springLength: 120, springConstant: 0.035, damping: 0.3, avoidOverlap: 0.6 },
         stabilization: { iterations: 200, fit: true },
       },
       interaction: { hover: true, tooltipDelay: 150, keyboard: false },
@@ -442,6 +531,13 @@
     });
 
     network.once('stabilized', () => network.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } }));
+    // vis-network resizes its canvas with the container but keeps the old view, so the graph can end up outside it.
+    let refitTimer = null;
+    new ResizeObserver(() => {
+      if (!graphEl.clientWidth) return; // collapsed
+      clearTimeout(refitTimer);
+      refitTimer = setTimeout(() => network.fit({ animation: false }), 150);
+    }).observe(graphEl);
     network.on('click', params => {
       if (!params.nodes.length) return clearSelection();
       const node = graphNodes.get(params.nodes[0]);
@@ -449,6 +545,18 @@
     });
     network.on('hoverNode', () => { graphEl.style.cursor = 'pointer'; });
     network.on('blurNode', () => { graphEl.style.cursor = 'default'; });
+
+    // Views: collapse to the header bar. Timeline re-lays out when it is shown again or its size changes.
+    document.querySelectorAll('.view-toggle').forEach(button => {
+      button.addEventListener('click', () => {
+        const collapsed = button.closest('.view').classList.toggle('is-collapsed');
+        button.setAttribute('aria-expanded', String(!collapsed));
+      });
+    });
+    const timelineEl = document.getElementById('timeline');
+    new ResizeObserver(() => {
+      if (timelineEl.clientWidth) timeline.redraw();
+    }).observe(timelineEl);
 
     // Toolbar
     document.getElementById('btn-fit').addEventListener('click', () => network.fit({ animation: { duration: 500 } }));
