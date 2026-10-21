@@ -19,6 +19,7 @@ from . import accounts, security
 
 SESSION_COOKIE = "chronicle_session"
 LOGIN_CSRF_COOKIE = "chronicle_login_csrf"
+SETUP_CSRF_COOKIE = "chronicle_setup_csrf"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 # While a password must be changed, only these paths are open to the user.
 PASSWORD_CHANGE_PATHS = {"/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/auth/password", "/logout", "/account/password"}
@@ -39,6 +40,13 @@ class PasswordChange(BaseModel):
 
     current_password: str
     new_password: str
+
+
+@dataclass
+class SetupState:
+    """The one-time code for the first-start page. Set while no account exists, None afterwards."""
+
+    token: str | None = None
 
 
 class PasswordChangeRequired(Exception):
@@ -90,8 +98,9 @@ def _is_trusted(address: str, networks: tuple) -> bool:
     return any(parsed in network for network in networks)
 
 
-def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secure: bool) -> Auth:
+def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secure: bool, setup: SetupState | None = None) -> Auth:
     router = APIRouter()
+    setup = setup or SetupState()
 
     def session_user(request: Request, conn: sqlite3.Connection) -> dict | None:
         token = request.cookies.get(SESSION_COOKIE)
@@ -193,8 +202,71 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
 
     # HTML pages
 
+    # First start: while no account exists, /setup creates the first admin. It needs the one-time code that the
+    # server printed at startup, so whoever reaches the page first cannot take over the system.
+
+    def render_setup(request: Request, error: str | None, status_code: int) -> HTMLResponse:
+        setup_csrf = secrets.token_urlsafe(32)
+        response = TEMPLATES.TemplateResponse(
+            request,
+            "setup.html",
+            {"csrf_token": setup_csrf, "error": error, "min_length": security.MIN_PASSWORD_LENGTH},
+            status_code=status_code,
+        )
+        response.set_cookie(
+            SETUP_CSRF_COOKIE,
+            setup_csrf,
+            max_age=LOGIN_CSRF_TTL_SECONDS,
+            httponly=True,
+            secure=cookie_secure,
+            samesite="strict",
+            path="/setup",
+        )
+        return response
+
+    @router.get("/setup", response_class=HTMLResponse)
+    def setup_page(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        if accounts.count_users(conn) > 0 or setup.token is None:
+            return RedirectResponse("/login", status_code=303)
+        return render_setup(request, error=None, status_code=200)
+
+    @router.post("/setup", response_class=HTMLResponse)
+    def setup_form(
+        request: Request,
+        username: str = Form(...),
+        password: str = Form(...),
+        setup_code: str = Form(...),
+        csrf_token: str = Form(...),
+        conn: sqlite3.Connection = Depends(get_conn),
+    ) -> Response:
+        if accounts.count_users(conn) > 0 or setup.token is None:
+            return RedirectResponse("/login", status_code=303)
+        expected = request.cookies.get(SETUP_CSRF_COOKIE, "")
+        if not expected or not secrets.compare_digest(csrf_token, expected):
+            raise HTTPException(status_code=403, detail="Ungültiges Formular. Bitte Seite neu laden.")
+        if not secrets.compare_digest(setup_code.strip().encode(), setup.token.encode()):
+            return render_setup(request, error="Der Einmal-Code stimmt nicht. Er steht im Log des Servers.", status_code=403)
+
+        try:
+            password_hash = security.hash_password(password)
+            user_id = accounts.create_first_admin(conn, username.strip(), password_hash)
+        except ValueError as exc:  # includes the password policy
+            return render_setup(request, error=str(exc), status_code=422)
+        if user_id is None:  # someone else was faster
+            return RedirectResponse("/login", status_code=303)
+
+        setup.token = None
+        accounts.audit(conn, "setup_completed", user_id=user_id, target=username.strip(), ip=client_ip(request))
+        token, _ = accounts.create_session(conn, user_id)
+        response = RedirectResponse("/", status_code=303)
+        set_session_cookie(response, token)
+        response.delete_cookie(SETUP_CSRF_COOKIE, path="/setup")
+        return response
+
     @router.get("/login", response_class=HTMLResponse)
-    def login_page(request: Request) -> HTMLResponse:
+    def login_page(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        if accounts.count_users(conn) == 0:
+            return RedirectResponse("/setup", status_code=303)
         return render_login(request, error=None, status_code=200)
 
     @router.post("/login", response_class=HTMLResponse)

@@ -81,6 +81,25 @@ def count_users(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
 
 
+def create_first_admin(conn: sqlite3.Connection, username: str, password_hash: str) -> int | None:
+    """Create the first account, as admin. Returns None if an account exists; the check and the insert share one transaction."""
+    validate_username(username)
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if count_users(conn) > 0:
+            conn.execute("ROLLBACK")
+            return None
+        cursor = conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
+            (username, password_hash),
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return cursor.lastrowid
+
+
 def count_active_admins(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) FROM users WHERE role = 'admin' AND active = 1").fetchone()[0]
 
