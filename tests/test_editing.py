@@ -102,6 +102,14 @@ def test_update_with_stale_version_is_conflict(db_path):
     assert anna.get("/api/v1/events/analysis").json()["version"] == current["version"] + 1
 
 
+def test_save_without_changes_creates_no_revision(db_path):
+    anna = api_login(db_path, "anna")
+    current = anna.get("/api/v1/events/analysis").json()
+    saved = anna.put("/api/v1/events/analysis", json=writable(current))
+    assert saved.status_code == 200
+    assert saved.json()["version"] == current["version"]
+
+
 def test_update_can_add_and_remove_topics_but_keeps_home(db_path):
     anna = api_login(db_path, "anna")
     current = anna.get("/api/v1/events/exploit").json()
@@ -179,14 +187,15 @@ def form_csrf(client):
     return client.get("/api/v1/auth/me").json()["csrf_token"]
 
 
-def test_html_create_edit_delete_flow(db_path):
+def test_html_create_edit_delete_flow(db_path, monkeypatch):
+    monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "form-1")
     client = TestClient(create_app(db_path))
     login_html(client, "anna")
     assert client.get("/events").status_code == 200
     assert "Neues Event" in client.get("/events").text
 
     form = {
-        "csrf_token": form_csrf(client), "key": "form-1", "t0_date": "2026-10-15", "t0_hour": "09", "t0_minute": "00", "t0_zone": "Europe/Berlin",
+        "csrf_token": form_csrf(client), "t0_date": "2026-10-15", "t0_hour": "09", "t0_minute": "00", "t0_zone": "Europe/Berlin",
         "phase": "Analysis", "actor": "Analyst", "system": "", "action": "Über Formular",
         "status": "open", "triggered_by": "", "details": "**fett**",
         "topic": "inc-2026-042", "topics": ["inc-2026-042"],
@@ -208,7 +217,6 @@ def test_html_create_edit_delete_flow(db_path):
 
     version = client.get("/api/v1/events/form-1").json()["version"]
     edit = {**form, "action": "Geändert im Formular", "version": str(version)}
-    edit.pop("key")
     edit.pop("topic")
     edit["csrf_token"] = form_csrf(client)
     edited = client.post("/events/form-1/edit", data=edit, follow_redirects=False)
@@ -234,6 +242,24 @@ def test_html_rejects_missing_csrf_and_shows_validation_errors(db_path):
     assert client.get("/api/v1/events/x-1").status_code == 404
 
 
+def test_html_new_event_gets_generated_key(db_path):
+    client = TestClient(create_app(db_path))
+    login_html(client, "anna")
+    assert 'name="key"' not in client.get("/events/new").text
+
+    form = {
+        "csrf_token": form_csrf(client), "t0_date": "2026-10-15", "t0_hour": "09", "t0_minute": "00", "t0_zone": "Europe/Berlin",
+        "phase": "Analysis", "actor": "Analyst", "system": "", "action": "Ohne Key",
+        "status": "open", "triggered_by": "", "details": "",
+        "topic": "inc-2026-042", "topics": ["inc-2026-042"],
+    }
+    created = client.post("/events/new", data=form, follow_redirects=False)
+    assert created.status_code == 303
+    key = created.headers["location"].removeprefix("/events/")
+    assert re.fullmatch(r"ev-\d{8}-[0-9a-f]{8}", key)
+    assert client.get(f"/api/v1/events/{key}").json()["action"] == "Ohne Key"
+
+
 def test_html_viewer_sees_list_but_no_write_pages(db_path):
     client = TestClient(create_app(db_path))
     login_html(client, "viewer")
@@ -250,7 +276,8 @@ def test_html_pages_redirect_to_login_without_session(db_path):
     assert response.headers["location"] == "/login"
 
 
-def test_html_new_event_is_stored_in_utc_with_attachments(db_path):
+def test_html_new_event_is_stored_in_utc_with_attachments(db_path, monkeypatch):
+    monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "files-1")
     client = TestClient(create_app(db_path))
     login_html(client, "anna")
     page = client.get("/events/new").text
@@ -261,7 +288,7 @@ def test_html_new_event_is_stored_in_utc_with_attachments(db_path):
     created = client.post(
         "/events/new",
         data={
-            "csrf_token": form_csrf(client), "key": "files-1", "t0_date": "2026-10-15", "t0_hour": "09",
+            "csrf_token": form_csrf(client), "t0_date": "2026-10-15", "t0_hour": "09",
             "t0_minute": "30", "t0_zone": "Europe/Berlin", "phase": "Activity", "actor": "Anna", "system": "",
             "action": "Mit Anhängen", "status": "open", "triggered_by": "siem-alert", "details": "",
             "topic": "inc-2026-042", "topics": [], "evidence_type": "screenshot",
@@ -278,13 +305,14 @@ def test_html_new_event_is_stored_in_utc_with_attachments(db_path):
     assert [item["file"] for item in stored["evidence"]] == ["one.png", "two.png"]
 
 
-def test_html_bad_attachment_writes_no_event(db_path):
+def test_html_bad_attachment_writes_no_event(db_path, monkeypatch):
+    monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "files-2")
     client = TestClient(create_app(db_path))
     login_html(client, "anna")
     rejected = client.post(
         "/events/new",
         data={
-            "csrf_token": form_csrf(client), "key": "files-2", "t0_date": "2026-10-15", "t0_hour": "09",
+            "csrf_token": form_csrf(client), "t0_date": "2026-10-15", "t0_hour": "09",
             "t0_minute": "30", "t0_zone": "Europe/Berlin", "phase": "Activity", "actor": "Anna", "system": "",
             "action": "Falsche Datei", "status": "open", "triggered_by": "", "details": "",
             "topic": "inc-2026-042", "topics": [], "evidence_type": "screenshot",
@@ -297,11 +325,12 @@ def test_html_bad_attachment_writes_no_event(db_path):
     assert client.get("/api/v1/events/files-2").status_code == 404
 
 
-def test_html_edit_form_shows_stored_time_in_berlin(db_path):
+def test_html_edit_form_shows_stored_time_in_berlin(db_path, monkeypatch):
+    monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "zeit-1")
     client = TestClient(create_app(db_path))
     login_html(client, "anna")
     created = client.post("/events/new", data={
-        "csrf_token": form_csrf(client), "key": "zeit-1", "t0_date": "2026-01-15", "t0_hour": "09",
+        "csrf_token": form_csrf(client), "t0_date": "2026-01-15", "t0_hour": "09",
         "t0_minute": "05", "t0_zone": "UTC", "phase": "Analysis", "actor": "A", "action": "Winterzeit",
         "status": "open", "triggered_by": "", "details": "", "topic": "inc-2026-042", "topics": [],
     }, follow_redirects=False)

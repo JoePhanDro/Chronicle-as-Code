@@ -280,6 +280,8 @@ def update_event(
     changed = [name for name in EDITABLE_FIELDS if str(old[name]) != str(new_values[name])]
     if sorted(old_topics) != sorted(topic_keys):
         changed.append("topics")
+    if not changed:
+        return old  # saving without changes creates no new revision
 
     with conn:
         for topic_key in topic_keys:

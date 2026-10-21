@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import secrets
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, field_validator
@@ -31,6 +32,11 @@ class EventWrite(Event):
 
 class EventUpdate(EventWrite):
     version: int = Field(ge=1, description="Version the change is based on")
+
+
+def new_event_key() -> str:
+    """Key for an event created in the UI: UTC date and a random part, e.g. ev-20261021-3fa9c2e1."""
+    return f"ev-{datetime.now(UTC):%Y%m%d}-{secrets.token_hex(4)}"
 
 
 def event_of(body: EventWrite) -> Event:
