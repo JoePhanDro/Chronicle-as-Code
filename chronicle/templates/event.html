@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Neues Event' if mode == 'new' else event.action }}{% endblock %}
+{% block content %}
+{% set editing = can_write and mode == 'view' %}
+
+{% if errors %}
+<p role="alert" class="mb-6 rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{{ errors }}</p>
+{% endif %}
+
+{% if mode == 'new' %}
+  <h1 class="mb-6 text-xl font-semibold text-slate-100">Neues Event</h1>
+  {% set f = form or {} %}
+  <form method="post" action="/events/new" class="space-y-6">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    {% include "_event_fields.html" %}
+    <div class="flex gap-3">
+      <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Anlegen</button>
+      <a href="/events" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-300 hover:text-white">Abbrechen</a>
+    </div>
+  </form>
+
+{% else %}
+  <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <div class="font-mono text-xs text-slate-500">{{ event.key }} · Version {{ event.version }} · {{ 'manuell bearbeitet' if event.source == 'manual' else 'aus Import' }}</div>
+      <h1 class="mt-1 text-xl font-semibold text-slate-100">{{ event.action }}</h1>
+      <p class="mt-1 text-sm text-slate-400">{{ event.t0[:16].replace('T', ' ') }} UTC · {{ event.phase }} · {{ event.actor }}{% if event.system %} · {{ event.system }}{% endif %}</p>
+    </div>
+    {% if can_write %}
+    <form method="post" action="/events/{{ event.key }}/delete" onsubmit="return confirm('Event wirklich löschen?');">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <button type="submit" class="rounded-lg border border-rose-400/30 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-500/10">Löschen</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if event.details %}
+  <section class="mb-8 rounded-xl border border-white/10 bg-white/[.02] p-5">
+    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Details</h2>
+    <pre class="whitespace-pre-wrap font-sans text-sm text-slate-300">{{ event.details }}</pre>
+  </section>
+  {% endif %}
+
+  {% if event.evidence %}
+  <section class="mb-8">
+    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence</h2>
+    <ul class="space-y-1 text-sm text-slate-300">
+      {% for item in event.evidence %}
+      <li><span class="font-mono text-xs text-slate-500">{{ item.type }}</span> {{ item.file }}{% if item.description %} – {{ item.description }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="mb-8 text-sm text-slate-400">
+    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Topics</h2>
+    {% for topic in event.topics %}<span class="mr-2 rounded-md bg-white/5 px-2 py-0.5 font-mono text-xs text-slate-300">{{ topic }}</span>{% endfor %}
+  </section>
+
+  {% if editing %}
+  <section>
+    <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Bearbeiten</h2>
+    {% set ns = namespace(text='') %}
+    {% for item in event.evidence %}{% set ns.text = ns.text ~ item.file ~ ' | ' ~ item.type ~ ' | ' ~ item.description ~ '\n' %}{% endfor %}
+    {% set f = {
+      'key': event.key, 't0': event.t0, 'phase': event.phase, 'actor': event.actor, 'system': event.system or '',
+      'action': event.action, 'status': event.status, 'triggered_by': event.triggered_by or '', 'details': event.details,
+      'evidence': ns.text, 'topics': event.topics, 'topic': event.home_topic, 'version': event.version
+    } %}
+    <form method="post" action="/events/{{ event.key }}/edit" class="space-y-6">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <input type="hidden" name="version" value="{{ event.version }}">
+      {% include "_event_fields.html" %}
+      <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Speichern</button>
+    </form>
+  </section>
+  {% endif %}
+{% endif %}
+{% endblock %}

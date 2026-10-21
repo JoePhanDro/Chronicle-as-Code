@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Chronicle{% endblock %} · Chronicle</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="min-h-screen bg-slate-950 font-sans text-slate-200 antialiased">
+  <header class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-6 py-3">
+    <nav class="flex items-center gap-5 text-sm">
+      <a href="/" class="font-semibold text-slate-100">Chronicle</a>
+      <a href="/events" class="text-slate-400 hover:text-white">Ereignisse</a>
+    </nav>
+    <div class="flex items-center gap-4 text-sm">
+      <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+        <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-slate-300 hover:border-sky-400/50 hover:text-white">Abmelden</button>
+      </form>
+    </div>
+  </header>
+  <main class="mx-auto max-w-5xl px-6 py-8">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

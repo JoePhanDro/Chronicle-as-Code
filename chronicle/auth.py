@@ -36,6 +36,7 @@ class Auth:
     router: APIRouter
     current_user: Callable[..., dict]
     require_role: Callable[..., Callable[..., dict]]
+    session_user: Callable[[Request, sqlite3.Connection], dict | None]
 
 
 def client_ip(request: Request) -> str:
@@ -193,4 +194,4 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
     def me(user: dict = Depends(current_user)) -> dict:
         return {"id": user["id"], "username": user["username"], "role": user["role"], "csrf_token": user["csrf_token"]}
 
-    return Auth(router=router, current_user=current_user, require_role=require_role)
+    return Auth(router=router, current_user=current_user, require_role=require_role, session_user=session_user)
