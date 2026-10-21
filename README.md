@@ -175,6 +175,8 @@ Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ers
 | `/events/new` | analyst, admin | Event anlegen |
 | `/events/{key}` | angemeldet | Details, Evidence mit Vorschau, Topics; bearbeiten, Evidence hochladen und löschen für analyst und admin |
 | `/reports` | admin | Topics mit Download des HTML-Berichts |
+| `/admin/users` | admin | Konten anlegen, Rolle und Status ändern, Passwort setzen, Sperre aufheben |
+| `/admin/audit` | admin | Audit-Log, filterbar nach Aktion, Benutzer und Datum |
 
 Die Oberfläche ist serverseitig gerendert. Formulare sind mit einem CSRF-Token der Sitzung geschützt.
 
@@ -209,7 +211,8 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | GET | `/users` | admin | Konten |
 | POST | `/users` | admin | Konto anlegen |
 | PATCH | `/users/{id}` | admin | Rolle, Aktivierung oder Passwort ändern. Ein neues Passwort muss der Nutzer beim nächsten Login ändern |
-| GET | `/audit` | admin | Protokoll von Anmeldungen und Änderungen |
+| POST | `/users/{id}/unlock` | admin | Login-Sperre eines Kontos für alle Adressen aufheben |
+| GET | `/audit` | admin | Protokoll, optional `?action=`, `?actor=`, `?since=` (Unix-Sekunden) |
 
 Die Antworten sind JSON. Eine interaktive Beschreibung der API gibt es noch nicht.
 

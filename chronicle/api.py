@@ -14,7 +14,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import __version__, accounts, repository, security
+from . import __version__, accounts, administration, repository, security
+from .admin_pages import make_admin_pages
 from .auth import PasswordChangeRequired, client_ip, make_auth, parse_trusted_proxies
 from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
@@ -73,6 +74,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
     # Pages of a user who must change the password go to the change form instead.
     app.add_exception_handler(PasswordChangeRequired, lambda request, exc: RedirectResponse("/account/password", status_code=303))
     app.include_router(make_pages(get_conn, auth))
+    app.include_router(make_admin_pages(get_conn, auth))
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     _bootstrap_admin(path)
@@ -221,7 +223,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         _write(lambda: repository.delete_event(conn, key, user["id"], client_ip(request)))
         return Response(status_code=204)
 
-    # Users and audit log: admins only.
+    # Users and audit log: admins only. The rules live in chronicle.administration.
 
     @app.get("/api/v1/users")
     def list_users(conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(admin_only)) -> list[dict]:
@@ -234,21 +236,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         conn: sqlite3.Connection = Depends(get_conn),
         admin: dict = Depends(admin_only),
     ) -> dict:
-        try:
-            accounts.validate_username(body.username)
-            password_hash = security.hash_password(body.password)
-            user_id = accounts.create_user(conn, body.username, password_hash, body.role, must_change=True)
-        except security.PasswordPolicyError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except sqlite3.IntegrityError as exc:
-            raise HTTPException(status_code=409, detail="Benutzername ist bereits vergeben") from exc
-
-        accounts.audit(
-            conn, "user_created", user_id=admin["id"], target=body.username, detail=f"role={body.role}", ip=client_ip(request)
-        )
-        return accounts.get_user(conn, user_id)
+        return _write(lambda: administration.create_account(conn, admin["id"], body.username, body.password, body.role, client_ip(request)))
 
     @app.patch("/api/v1/users/{user_id}")
     def update_user(
@@ -258,46 +246,20 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         conn: sqlite3.Connection = Depends(get_conn),
         admin: dict = Depends(admin_only),
     ) -> dict:
-        target = accounts.get_user(conn, user_id)
-        if target is None:
-            raise HTTPException(status_code=404, detail="Benutzer nicht gefunden")
+        return _write(lambda: administration.update_account(
+            conn, admin["id"], user_id, client_ip(request),
+            role=body.role, active=body.active, password=body.password,
+        ))
 
-        changes: dict = {}
-        if body.role is not None:
-            changes["role"] = body.role
-        if body.active is not None:
-            changes["active"] = int(body.active)
-        if body.password is not None:
-            try:
-                changes["password_hash"] = security.hash_password(body.password)
-                changes["must_change_password"] = 1  # the user chooses their own password at the next login
-            except security.PasswordPolicyError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-        # Never leave the system without an active admin.
-        was_active_admin = target["role"] == "admin" and target["active"]
-        loses_admin = (body.role is not None and body.role != "admin") or body.active is False
-        if was_active_admin and loses_admin and accounts.count_active_admins(conn) <= 1:
-            raise HTTPException(status_code=409, detail="Der letzte aktive Admin kann nicht herabgestuft oder deaktiviert werden")
-
-        accounts.update_user(conn, user_id, **changes)
-
-        # Changing role, deactivating or resetting the password ends the user's sessions.
-        if changes:
-            accounts.delete_sessions_of_user(conn, user_id)
-        if "password_hash" in changes:
-            accounts.audit(conn, "password_reset", user_id=admin["id"], target=target["username"], ip=client_ip(request))
-        other_changes = sorted(name for name in changes if name not in ("password_hash", "must_change_password"))
-        if other_changes:
-            accounts.audit(
-                conn,
-                "user_updated",
-                user_id=admin["id"],
-                target=target["username"],
-                detail=",".join(other_changes),
-                ip=client_ip(request),
-            )
-        return accounts.get_user(conn, user_id)
+    @app.post("/api/v1/users/{user_id}/unlock", status_code=204, response_class=Response)
+    def unlock_user(
+        user_id: int,
+        request: Request,
+        conn: sqlite3.Connection = Depends(get_conn),
+        admin: dict = Depends(admin_only),
+    ) -> Response:
+        _write(lambda: administration.unlock_account(conn, admin["id"], user_id, client_ip(request)))
+        return Response(status_code=204)
 
     @app.get("/api/v1/topics/{key}/report")
     def topic_report(
@@ -312,10 +274,13 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
     @app.get("/api/v1/audit")
     def audit_log(
         limit: int = 200,
+        action: str | None = None,
+        actor: str | None = None,
+        since: int | None = None,
         conn: sqlite3.Connection = Depends(get_conn),
         _: dict = Depends(admin_only),
     ) -> list[dict]:
-        return accounts.list_audit(conn, limit=min(max(limit, 1), 1000))
+        return accounts.list_audit(conn, limit=min(max(limit, 1), 1000), action=action, actor=actor, since=since)
 
     return app
 
