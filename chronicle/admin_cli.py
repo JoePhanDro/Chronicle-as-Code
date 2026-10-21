@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
         row = accounts.get_user_by_name(conn, args.username)
         if args.command == "create":
             password = read_password(args.password_stdin)
-            user_id = accounts.create_user(conn, args.username, security.hash_password(password), args.role)
+            user_id = accounts.create_user(conn, args.username, security.hash_password(password), args.role, must_change=True)
             accounts.audit(conn, "user_created", target=args.username, detail=f"role={args.role}", ip="cli")
             print(f"Benutzer angelegt: id={user_id}, rolle={args.role}")
             return 0
@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
                 print("Fehler: Benutzer nicht gefunden", file=sys.stderr)
                 return 1
             password = read_password(args.password_stdin)
-            accounts.update_user(conn, row["id"], password_hash=security.hash_password(password))
+            accounts.update_user(conn, row["id"], password_hash=security.hash_password(password), must_change_password=1)
             accounts.delete_sessions_of_user(conn, row["id"])
             accounts.audit(conn, "password_reset", target=args.username, ip="cli")
             print("Passwort gesetzt, bestehende Sitzungen beendet")

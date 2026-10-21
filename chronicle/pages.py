@@ -60,7 +60,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
     router = APIRouter()
 
     def page_user(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> dict | None:
-        return auth.session_user(request, conn)
+        return auth.page_session(request, conn)
 
     def ok_csrf(user: dict, token: str | None) -> bool:
         return bool(token) and secrets.compare_digest(token, user["csrf_token"])

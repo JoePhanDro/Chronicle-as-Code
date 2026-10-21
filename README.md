@@ -78,7 +78,7 @@ Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie 
 |---|---|---|
 | `CHRONICLE_DB` | Pfad zur SQLite-Datenbank für die API | `/data/chronicle.db` |
 | `CHRONICLE_ADMIN_USER` | Erster Admin, nur wenn noch kein Konto existiert | leer (kein Bootstrap) |
-| `CHRONICLE_ADMIN_PASSWORD` | Passwort zu `CHRONICLE_ADMIN_USER` | leer |
+| `CHRONICLE_ADMIN_PASSWORD` | Passwort zu `CHRONICLE_ADMIN_USER`. Der Admin muss es beim ersten Login ändern | leer |
 | `CHRONICLE_COOKIE_SECURE` | `0` schaltet das `Secure`-Flag am Sitzungscookie ab (nur lokal über HTTP) | `1` |
 | `CHRONICLE_TRUSTED_PROXIES` | Adressen oder Netze von Reverse Proxies, z. B. `172.18.0.2, 10.0.0.0/8`. Nur von dort wird `X-Forwarded-For` gelesen | leer |
 
@@ -166,6 +166,7 @@ Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ers
 | Pfad | Wer | Inhalt |
 |---|---|---|
 | `/login` | alle | Anmeldung mit Benutzername und Passwort |
+| `/account/password` | angemeldet | eigenes Passwort ändern. Wer ein Passwort ändern muss, landet hier |
 | `/` | angemeldet | Startseite |
 | `/events` | angemeldet | alle Events, zeitlich sortiert |
 | `/events/new` | analyst, admin | Event anlegen |
@@ -183,6 +184,7 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | GET | `/health` | öffentlich | Status und Version |
 | POST | `/auth/login` | öffentlich | JSON `{username, password}`, setzt Sitzungscookie |
 | POST | `/auth/logout` | angemeldet | beendet die Sitzung |
+| POST | `/auth/password` | angemeldet | eigenes Passwort ändern, JSON `{current_password, new_password}`, beendet andere Sitzungen |
 | GET | `/auth/me` | angemeldet | eigenes Konto und CSRF-Token |
 | GET | `/topics` | angemeldet | alle Topics mit Anzahl der Events |
 | GET | `/topics/{key}` | angemeldet | ein Topic |
@@ -198,7 +200,7 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | DELETE | `/evidence/{id}` | analyst, admin | Evidence entfernen |
 | GET | `/users` | admin | Konten |
 | POST | `/users` | admin | Konto anlegen |
-| PATCH | `/users/{id}` | admin | Rolle, Aktivierung oder Passwort ändern |
+| PATCH | `/users/{id}` | admin | Rolle, Aktivierung oder Passwort ändern. Ein neues Passwort muss der Nutzer beim nächsten Login ändern |
 | GET | `/audit` | admin | Protokoll von Anmeldungen und Änderungen |
 
 Die Antworten sind JSON. Eine interaktive Beschreibung der API gibt es noch nicht.
@@ -215,6 +217,8 @@ Die Antworten sind JSON. Eine interaktive Beschreibung der API gibt es noch nich
 - Sitzung über ein zufälliges Cookie (`HttpOnly`, `SameSite=Strict`, `Secure`). In der Datenbank liegt nur der SHA-256-Hash. Laufzeit 8 Stunden.
 - Nach 5 Fehlversuchen innerhalb von 15 Minuten sperrt die Anmeldung Konto und IP-Adresse gemeinsam. Nach 20 Fehlversuchen sperrt sie die IP-Adresse für alle Konten. Ein Konto allein wird nie gesperrt. Hinter einem Reverse Proxy setzt man `CHRONICLE_TRUSTED_PROXIES`, damit die echte Adresse zählt ([Issue #27](https://github.com/JoePhanDro/Chronicle-as-Code/issues/27)).
 - Ändern von Rolle oder Passwort und Deaktivieren beenden die Sitzungen des Kontos.
+- Ein vergebenes Passwort (Bootstrap-Admin, durch einen Admin angelegt oder zurückgesetzt) muss der Nutzer beim nächsten Login ändern. Bis dahin sind nur der Passwortwechsel, `me` und Logout erlaubt.
+- Beim Wechsel bleibt die aktuelle Sitzung bestehen, alle anderen Sitzungen des Kontos enden.
 - Der letzte aktive Admin lässt sich nicht herabstufen oder deaktivieren.
 - Jeder Login, jeder Fehlversuch und jede Änderung an Konten oder Events landet im Audit-Log, ohne Inhalte.
 

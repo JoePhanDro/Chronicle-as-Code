@@ -10,11 +10,12 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 from . import __version__, accounts, repository, security
-from .auth import client_ip, make_auth, parse_trusted_proxies
+from .auth import PasswordChangeRequired, client_ip, make_auth, parse_trusted_proxies
 from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
 from .pages import make_pages
@@ -62,6 +63,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
     admin_only = auth.require_role("admin")
 
     app.include_router(auth.router)
+    # Pages of a user who must change the password go to the change form instead.
+    app.add_exception_handler(PasswordChangeRequired, lambda request, exc: RedirectResponse("/account/password", status_code=303))
     app.include_router(make_pages(get_conn, auth))
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -200,7 +203,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         try:
             accounts.validate_username(body.username)
             password_hash = security.hash_password(body.password)
-            user_id = accounts.create_user(conn, body.username, password_hash, body.role)
+            user_id = accounts.create_user(conn, body.username, password_hash, body.role, must_change=True)
         except security.PasswordPolicyError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except ValueError as exc:
@@ -233,6 +236,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         if body.password is not None:
             try:
                 changes["password_hash"] = security.hash_password(body.password)
+                changes["must_change_password"] = 1  # the user chooses their own password at the next login
             except security.PasswordPolicyError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -249,7 +253,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
             accounts.delete_sessions_of_user(conn, user_id)
         if "password_hash" in changes:
             accounts.audit(conn, "password_reset", user_id=admin["id"], target=target["username"], ip=client_ip(request))
-        other_changes = sorted(name for name in changes if name != "password_hash")
+        other_changes = sorted(name for name in changes if name not in ("password_hash", "must_change_password"))
         if other_changes:
             accounts.audit(
                 conn,
@@ -301,7 +305,7 @@ def _bootstrap_admin(path: Path) -> None:
         return
     with closing(connect(path)) as conn:
         if accounts.count_users(conn) == 0:
-            accounts.create_user(conn, username, security.hash_password(password), "admin")
+            accounts.create_user(conn, username, security.hash_password(password), "admin", must_change=True)
             accounts.audit(conn, "bootstrap_admin", target=username)
 
 
