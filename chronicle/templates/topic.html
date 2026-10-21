@@ -31,6 +31,7 @@
     <div class="font-mono text-xs text-slate-500">{{ topic.key }} · {{ topic.kind }}</div>
     <h1 class="mt-1 text-xl font-semibold text-slate-100">{{ topic.title }}</h1>
     {% if topic.summary %}<p class="mt-2 max-w-2xl text-sm text-slate-400">{{ topic.summary }}</p>{% endif %}
+    <a href="/events?topic={{ topic.key }}" class="mt-2 inline-block text-xs text-sky-300 hover:underline">Im Ereignisprotokoll anzeigen</a>
   </div>
   {% if can_write %}
   <form method="post" action="/topics/{{ topic.key }}/delete" onsubmit="return confirm('Topic wirklich löschen?');">

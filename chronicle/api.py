@@ -101,8 +101,10 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         return repository.list_topic_events(conn, key)
 
     @app.get("/api/v1/events")
-    def events(conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
-        return repository.list_events(conn)
+    def events(topic: str | None = None, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
+        if topic is not None and repository.get_topic(conn, topic) is None:
+            raise HTTPException(status_code=404, detail="Topic nicht gefunden")
+        return repository.list_events(conn, topic)
 
     @app.get("/api/v1/events/{key}")
     def event(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> dict:

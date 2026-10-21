@@ -425,7 +425,10 @@ def list_topic_events(conn: sqlite3.Connection, key: str) -> list[dict]:
     return _with_evidence(conn, rows)
 
 
-def list_events(conn: sqlite3.Connection) -> list[dict]:
+def list_events(conn: sqlite3.Connection, topic: str | None = None) -> list[dict]:
+    """All events, or only those linked to `topic` (home and referenced events alike)."""
+    if topic is not None:
+        return list_topic_events(conn, topic)
     rows = conn.execute(EVENT_SELECT + " ORDER BY events.t0, events.pk").fetchall()
     return _with_evidence(conn, rows)
 
