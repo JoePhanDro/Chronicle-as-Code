@@ -76,6 +76,6 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:8000/api/v1/health
-          curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/api/v1/incidents | grep -qx 401
+          curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/api/v1/topics | grep -qx 401
           docker logs api-smoke | tail -5
           docker rm -f api-smoke

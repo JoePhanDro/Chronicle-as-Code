@@ -1,10 +1,13 @@
 # Beispiel-Timeline. Zeitstempel brauchen eine Zeitzonen-Angabe (z.B. +02:00 oder Z).
 # Evidence-Pfade sind relativ zu dieser Datei.
-title: "INC-2026-042: Ausnutzung von CVE-2026-XXXX"
-summary: "Demo-Vorfall zur Vorschau des Dashboards. Alle Namen und Daten sind fiktiv."
+topic:
+  key: inc-2026-042
+  title: "INC-2026-042: Ausnutzung von CVE-2026-XXXX"
+  kind: incident
+  summary: "Demo-Vorfall zur Vorschau des Dashboards. Alle Namen und Daten sind fiktiv."
 
 events:
-  - id: feed-cve
+  - key: feed-cve
     t0: 2026-10-14T06:00:00Z
     phase: Identification
     actor: Threat Intel Feed
@@ -15,7 +18,7 @@ events:
       Herstellerhinweis zu einer **Remote Code Execution** im Upload-Modul.
       Patch ist verfügbar, aber noch nicht eingespielt.
 
-  - id: siem-alert
+  - key: siem-alert
     t0: 2026-10-14T08:12:00+02:00
     phase: Identification
     actor: SIEM
@@ -30,7 +33,7 @@ events:
         type: screenshot
         description: "SIEM-Korrelationsregel hat ausgelöst"
 
-  - id: exploit
+  - key: exploit
     t0: 2026-10-14T08:40:00+02:00
     phase: Exploit
     actor: Angreifer (extern)
@@ -41,7 +44,7 @@ events:
     details: |
       Angreifer hat Code als Webserver-User ausgeführt.
 
-  - id: analysis
+  - key: analysis
     t0: 2026-10-14T09:30:00+02:00
     phase: Analysis
     actor: CSIRT Analyst A
@@ -61,7 +64,7 @@ events:
         type: screenshot
         description: "WAF blockiert nachträglichen Zugriff auf die Webshell"
 
-  - id: containment
+  - key: containment
     t0: 2026-10-14T09:55:00+02:00
     phase: Containment
     actor: CSIRT Analyst A
@@ -70,7 +73,7 @@ events:
     status: resolved
     triggered_by: analysis
 
-  - id: mitigation
+  - key: mitigation
     t0: 2026-10-14T11:20:00+02:00
     phase: Mitigation
     actor: Patch-Team
@@ -79,7 +82,7 @@ events:
     status: resolved
     triggered_by: containment
 
-  - id: lessons
+  - key: lessons
     t0: 2026-10-16T10:00:00+02:00
     phase: Lessons Learned
     actor: CSIRT Lead

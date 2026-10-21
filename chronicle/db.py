@@ -1,4 +1,4 @@
-"""SQLite storage for incidents, events and evidence metadata."""
+"""SQLite storage: topics, events (many-to-many), evidence metadata, accounts, sessions and audit log."""
 
 from __future__ import annotations
 
@@ -6,17 +6,18 @@ import sqlite3
 from pathlib import Path
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS incidents (
-    id          INTEGER PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS topics (
+    pk          INTEGER PRIMARY KEY,
+    key         TEXT NOT NULL UNIQUE,
     title       TEXT NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('incident', 'vulnerability', 'project', 'special', 'other')),
     summary     TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS events (
     pk            INTEGER PRIMARY KEY,
-    incident_id   INTEGER NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
-    event_id      TEXT NOT NULL,
+    key           TEXT NOT NULL UNIQUE,
     t0            TEXT NOT NULL,
     phase         TEXT NOT NULL,
     actor         TEXT NOT NULL,
@@ -25,7 +26,14 @@ CREATE TABLE IF NOT EXISTS events (
     status        TEXT NOT NULL,
     triggered_by  TEXT,
     details       TEXT NOT NULL DEFAULT '',
-    UNIQUE (incident_id, event_id)
+    home_topic    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS topic_events (
+    topic_pk  INTEGER NOT NULL REFERENCES topics(pk) ON DELETE CASCADE,
+    event_pk  INTEGER NOT NULL REFERENCES events(pk) ON DELETE CASCADE,
+    PRIMARY KEY (topic_pk, event_pk)
 );
 
 CREATE TABLE IF NOT EXISTS evidence (
@@ -35,6 +43,10 @@ CREATE TABLE IF NOT EXISTS evidence (
     type         TEXT NOT NULL,
     description  TEXT NOT NULL DEFAULT ''
 );
+
+CREATE INDEX IF NOT EXISTS idx_events_t0 ON events (t0);
+CREATE INDEX IF NOT EXISTS idx_topic_events_event ON topic_events (event_pk);
+CREATE INDEX IF NOT EXISTS idx_evidence_event ON evidence (event_pk);
 
 CREATE TABLE IF NOT EXISTS users (
     id             INTEGER PRIMARY KEY,
@@ -68,16 +80,104 @@ CREATE TABLE IF NOT EXISTS audit_log (
     detail  TEXT,
     ip      TEXT
 );
-
-CREATE INDEX IF NOT EXISTS idx_events_incident ON events (incident_id, t0);
-CREATE INDEX IF NOT EXISTS idx_evidence_event ON evidence (event_pk);
 """
 
 
+def _has_table(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone() is not None
+
+
+def _create_schema(conn: sqlite3.Connection) -> None:
+    # Statement by statement, so the surrounding transaction is not committed early.
+    for statement in SCHEMA.split(";"):
+        if statement.strip():
+            conn.execute(statement)
+
+
+def migrate_incident_schema(conn: sqlite3.Connection) -> bool:
+    """Convert the schema from ADR 0001 (incidents) to topics and events (ADR 0002).
+
+    Each old incident becomes a topic with kind 'incident' and key 'legacy-<id>'.
+    Its events get keys 'legacy-<id>-<old event id>'. Runs once; returns True if it migrated.
+    """
+    if not _has_table(conn, "incidents") or _has_table(conn, "topics"):
+        return False
+
+    conn.execute("BEGIN")
+    try:
+        _migrate(conn)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    return True
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    conn.execute("ALTER TABLE incidents RENAME TO legacy_incidents")
+    conn.execute("ALTER TABLE events RENAME TO legacy_events")
+    conn.execute("ALTER TABLE evidence RENAME TO legacy_evidence")
+    _create_schema(conn)
+
+    incidents = conn.execute("SELECT id, title, summary FROM legacy_incidents").fetchall()
+    for incident in incidents:
+        conn.execute(
+            "INSERT INTO topics (key, title, kind, summary) VALUES (?, ?, 'incident', ?)",
+            (f"legacy-{incident['id']}", incident["title"], incident["summary"]),
+        )
+
+    event_pk_map: dict[int, int] = {}
+    old_events = conn.execute(
+        """
+        SELECT legacy_events.pk, legacy_events.incident_id, legacy_events.event_id, legacy_events.t0,
+               legacy_events.phase, legacy_events.actor, legacy_events.system, legacy_events.action,
+               legacy_events.status, legacy_events.triggered_by, legacy_events.details
+        FROM legacy_events
+        """
+    ).fetchall()
+    for old in old_events:
+        prefix = f"legacy-{old['incident_id']}"
+        cursor = conn.execute(
+            """
+            INSERT INTO events (key, t0, phase, actor, system, action, status, triggered_by, details, home_topic)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"{prefix}-{old['event_id']}",
+                old["t0"],
+                old["phase"],
+                old["actor"],
+                old["system"],
+                old["action"],
+                old["status"],
+                f"{prefix}-{old['triggered_by']}" if old["triggered_by"] else None,
+                old["details"],
+                prefix,
+            ),
+        )
+        event_pk_map[old["pk"]] = cursor.lastrowid
+        conn.execute(
+            "INSERT INTO topic_events (topic_pk, event_pk) "
+            "SELECT pk, ? FROM topics WHERE key = ?",
+            (cursor.lastrowid, prefix),
+        )
+
+    for old in conn.execute("SELECT event_pk, file, type, description FROM legacy_evidence").fetchall():
+        conn.execute(
+            "INSERT INTO evidence (event_pk, file, type, description) VALUES (?, ?, ?, ?)",
+            (event_pk_map[old["event_pk"]], old["file"], old["type"], old["description"]),
+        )
+
+    conn.execute("DROP TABLE legacy_evidence")
+    conn.execute("DROP TABLE legacy_events")
+    conn.execute("DROP TABLE legacy_incidents")
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
-    """Open the database, enable foreign keys and make sure the schema exists."""
+    """Open the database, enable foreign keys, migrate old data and make sure the schema exists."""
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.executescript(SCHEMA)
+    migrate_incident_schema(conn)
+    _create_schema(conn)
     return conn

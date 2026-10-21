@@ -1,4 +1,4 @@
-"""HTTP app: pages, login, read API for incidents and admin API for users and audit log."""
+"""HTTP app: pages, login, read API for topics and events, admin API for users and audit log."""
 
 from __future__ import annotations
 
@@ -62,32 +62,35 @@ def create_app(db_path: str | Path) -> FastAPI:
     def health() -> dict:
         return {"status": "ok", "version": __version__}
 
-    # Incidents: any logged-in user may read.
+    # Topics and events: any logged-in user may read.
 
-    @app.get("/api/v1/incidents")
-    def incidents(conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
-        return repository.list_incidents(conn)
+    @app.get("/api/v1/topics")
+    def topics(conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
+        return repository.list_topics(conn)
 
-    @app.get("/api/v1/incidents/{incident_id}")
-    def incident(
-        incident_id: int,
-        conn: sqlite3.Connection = Depends(get_conn),
-        _: dict = Depends(current_user),
-    ) -> dict:
-        found = repository.get_incident(conn, incident_id)
+    @app.get("/api/v1/topics/{key}")
+    def topic(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> dict:
+        found = repository.get_topic(conn, key)
         if found is None:
-            raise HTTPException(status_code=404, detail="Incident nicht gefunden")
+            raise HTTPException(status_code=404, detail="Topic nicht gefunden")
         return found
 
-    @app.get("/api/v1/incidents/{incident_id}/events")
-    def events(
-        incident_id: int,
-        conn: sqlite3.Connection = Depends(get_conn),
-        _: dict = Depends(current_user),
-    ) -> list[dict]:
-        if repository.get_incident(conn, incident_id) is None:
-            raise HTTPException(status_code=404, detail="Incident nicht gefunden")
-        return repository.list_events(conn, incident_id)
+    @app.get("/api/v1/topics/{key}/events")
+    def topic_events(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
+        if repository.get_topic(conn, key) is None:
+            raise HTTPException(status_code=404, detail="Topic nicht gefunden")
+        return repository.list_topic_events(conn, key)
+
+    @app.get("/api/v1/events")
+    def events(conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
+        return repository.list_events(conn)
+
+    @app.get("/api/v1/events/{key}")
+    def event(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> dict:
+        found = repository.get_event(conn, key)
+        if found is None:
+            raise HTTPException(status_code=404, detail="Event nicht gefunden")
+        return found
 
     # Users and audit log: admins only.
 

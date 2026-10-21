@@ -47,8 +47,8 @@ def login_as(client, username):
     return response.json()["csrf_token"]
 
 
-def test_incidents_require_login(client):
-    assert client.get("/api/v1/incidents").status_code == 401
+def test_topics_require_login(client):
+    assert client.get("/api/v1/topics").status_code == 401
 
 
 def test_health_stays_public(client):
@@ -87,7 +87,7 @@ def test_logout_ends_the_session(client):
     csrf = login_as(client, "anna")
     response = client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": csrf})
     assert response.status_code == 204
-    assert client.get("/api/v1/incidents").status_code == 401
+    assert client.get("/api/v1/topics").status_code == 401
 
 
 def test_viewer_cannot_manage_users(client):
@@ -125,7 +125,7 @@ def test_weak_password_is_rejected(client):
 def test_password_reset_ends_the_users_sessions(client):
     anna_client = TestClient(client.app)
     login_as(anna_client, "anna")
-    assert anna_client.get("/api/v1/incidents").status_code == 200
+    assert anna_client.get("/api/v1/topics").status_code == 200
 
     admin_csrf = login_as(client, "admin")
     response = client.patch(
@@ -134,7 +134,7 @@ def test_password_reset_ends_the_users_sessions(client):
         headers={"X-CSRF-Token": admin_csrf},
     )
     assert response.status_code == 200
-    assert anna_client.get("/api/v1/incidents").status_code == 401
+    assert anna_client.get("/api/v1/topics").status_code == 401
 
 
 def test_deactivated_user_cannot_log_in(client):
@@ -155,7 +155,7 @@ def test_expired_session_is_rejected(client, db_path):
     conn.execute("UPDATE sessions SET expires_at = 0")
     conn.commit()
     conn.close()
-    assert client.get("/api/v1/incidents").status_code == 401
+    assert client.get("/api/v1/topics").status_code == 401
 
 
 def test_passwords_and_tokens_are_not_stored_in_clear(client, db_path):
@@ -206,7 +206,7 @@ def test_import_still_works_and_is_visible_after_login(db_path):
     import_folder(db_path, DATA_DIR)
     client = TestClient(create_app(db_path))
     login_as(client, "viewer")
-    assert len(client.get("/api/v1/incidents").json()) == 1
+    assert len(client.get("/api/v1/topics").json()) == 1
 
 
 def test_bootstrap_admin_from_environment(tmp_path, monkeypatch):

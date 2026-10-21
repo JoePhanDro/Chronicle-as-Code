@@ -43,37 +43,43 @@ def test_health(client):
     assert response.json()["status"] == "ok"
 
 
-def test_empty_database_has_no_incidents(client):
-    assert client.get("/api/v1/incidents").json() == []
+def test_empty_database_has_no_topics(client):
+    assert client.get("/api/v1/topics").json() == []
+    assert client.get("/api/v1/events").json() == []
 
 
-def test_unknown_incident_returns_404(client):
-    assert client.get("/api/v1/incidents/999").status_code == 404
-    assert client.get("/api/v1/incidents/999/events").status_code == 404
+def test_unknown_topic_and_event_return_404(client):
+    assert client.get("/api/v1/topics/nope").status_code == 404
+    assert client.get("/api/v1/topics/nope/events").status_code == 404
+    assert client.get("/api/v1/events/nope").status_code == 404
 
 
 def test_import_sample_timeline_is_readable_via_api(db_path, client):
-    incident_id = import_folder(db_path, DATA_DIR)
+    key = import_folder(db_path, DATA_DIR)
+    assert key == "inc-2026-042"
 
-    incidents = client.get("/api/v1/incidents").json()
-    assert [item["id"] for item in incidents] == [incident_id]
-    assert incidents[0]["title"].startswith("INC-2026-042")
+    topics = client.get("/api/v1/topics").json()
+    assert [item["key"] for item in topics] == ["inc-2026-042"]
+    assert topics[0]["kind"] == "incident"
+    assert topics[0]["event_count"] == 7
 
-    events = client.get(f"/api/v1/incidents/{incident_id}/events").json()
+    events = client.get("/api/v1/topics/inc-2026-042/events").json()
     assert len(events) == 7
-    assert [event["event_id"] for event in events][0] == "feed-cve"  # earliest first
+    assert events[0]["key"] == "feed-cve"  # earliest first
 
-    analysis = next(event for event in events if event["event_id"] == "analysis")
+    analysis = client.get("/api/v1/events/analysis").json()
     assert analysis["triggered_by"] == "exploit"
+    assert analysis["topics"] == ["inc-2026-042"]
     assert analysis["evidence"] == [
         {"file": "evidence/waf-block.svg", "type": "screenshot", "description": "WAF blockiert nachträglichen Zugriff auf die Webshell"}
     ]
 
 
-def test_import_is_stored_per_incident(db_path):
-    first = import_folder(db_path, DATA_DIR)
-    second = import_folder(db_path, DATA_DIR)
-    assert first != second
+def test_reimport_of_the_same_file_does_not_duplicate(db_path, client):
+    import_folder(db_path, DATA_DIR)
+    import_folder(db_path, DATA_DIR)
+    assert len(client.get("/api/v1/topics").json()) == 1
+    assert len(client.get("/api/v1/events").json()) == 7
 
 
 def test_import_fails_on_missing_evidence_without_writing(tmp_path, db_path):
@@ -84,9 +90,10 @@ def test_import_fails_on_missing_evidence_without_writing(tmp_path, db_path):
     (data / "timeline.yaml").write_text(
         yaml.safe_dump(
             {
-                "title": "T",
+                "topic": {"key": "t-1", "title": "T"},
                 "events": [
                     {
+                        "key": "ev-1",
                         "t0": "2026-10-14T08:00:00+02:00",
                         "phase": "Analysis",
                         "actor": "A",
@@ -104,4 +111,4 @@ def test_import_fails_on_missing_evidence_without_writing(tmp_path, db_path):
         import_folder(db_path, data)
 
     client = logged_in_client(db_path)
-    assert client.get("/api/v1/incidents").json() == []
+    assert client.get("/api/v1/topics").json() == []

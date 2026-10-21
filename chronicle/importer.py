@@ -11,7 +11,7 @@ from .loader import TimelineError, collect_evidence, find_timeline, load_timelin
 from .repository import import_timeline
 
 
-def import_folder(db_path: str | Path, data_dir: str | Path) -> int:
+def import_folder(db_path: str | Path, data_dir: str | Path) -> str:
     timeline_path = find_timeline(Path(data_dir))
     timeline = load_timeline(timeline_path)
     collect_evidence(timeline, timeline_path.parent)  # fails early if evidence files are missing
@@ -29,12 +29,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        incident_id = import_folder(args.db, args.data)
+        topic_key = import_folder(args.db, args.data)
     except TimelineError as exc:
         print(f"Fehler: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Incident importiert: id={incident_id}")
+    print(f"Topic importiert: {topic_key}")
     return 0
 
 
