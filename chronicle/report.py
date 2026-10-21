@@ -43,6 +43,21 @@ def make_report(conn: sqlite3.Connection, topic_key: str, actor_id: int, ip: str
     return f"bericht-{topic_key}.html", html.encode("utf-8")
 
 
+def make_dashboard(conn: sqlite3.Connection, topic_key: str) -> str:
+    """The dashboard for the app. Evidence is loaded from the login-protected API, not embedded."""
+    evidence_ids: dict[str, int] = {}
+    found = topic_document(conn, topic_key, expand_refs=True, evidence_ids=evidence_ids)
+    if found is None:
+        raise repository.NotFound(f"Topic {topic_key!r} nicht gefunden")
+    document, _ = found
+    return render_dashboard(
+        Timeline.model_validate(document),
+        inline_css=STYLESHEET.read_text(encoding="utf-8"),
+        src_for=lambda item: f"/api/v1/evidence/{evidence_ids[item.file]}",
+        snapshot=False,
+    )
+
+
 def report_headers(filename: str) -> dict[str, str]:
     return {
         "Content-Disposition": f'attachment; filename="{filename}"',
