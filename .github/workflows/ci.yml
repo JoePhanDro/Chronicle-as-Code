@@ -23,6 +23,14 @@ jobs:
             requirements.txt
             requirements-dev.txt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Build stylesheet
+        run: npm ci --no-audit --no-fund && npm run build:css
+
       - name: Install dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
 
@@ -31,10 +39,6 @@ jobs:
 
       - name: Generate dashboard from sample data
         run: python -m chronicle --data data --out "$RUNNER_TEMP/site"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
 
       - name: Syntax-check dashboard JavaScript
         run: |

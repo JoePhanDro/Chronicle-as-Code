@@ -6,8 +6,10 @@ import os
 import shutil
 from pathlib import Path
 
-from .loader import collect_evidence, find_timeline, load_timeline
+from .loader import TimelineError, collect_evidence, find_timeline, load_timeline
 from .renderer import render_dashboard
+
+STYLESHEET = Path(__file__).parent / "static" / "app.css"
 
 
 def build_site(data_dir: Path, out_dir: Path) -> Path:
@@ -15,7 +17,11 @@ def build_site(data_dir: Path, out_dir: Path) -> Path:
     timeline = load_timeline(timeline_path)
     evidence = collect_evidence(timeline, timeline_path.parent)
 
+    if not STYLESHEET.is_file():
+        raise TimelineError("app.css fehlt. Bitte vorher `npm ci && npm run build:css` ausführen.")
+
     out_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(STYLESHEET, out_dir / "app.css")
 
     # Evidence keeps its relative layout, so the browser can use the same path as in the YAML.
     for relative, source in evidence.items():
