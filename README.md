@@ -26,7 +26,7 @@ Topics und Events liegen in SQLite. Die YAML ist Importformat. Alle Daten-Endpun
 # Ersten Admin anlegen (Passwort wird verdeckt abgefragt)
 python -m chronicle.admin_cli --db ./chronicle.db create --username admin --role admin
 
-# Incident importieren und Server starten
+# Topic importieren und Server starten
 python -m chronicle.importer --db ./chronicle.db --data ./data
 python -m chronicle.serve --db ./chronicle.db --port 8000
 ```
