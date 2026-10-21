@@ -1,7 +1,7 @@
 # Base images are pinned by digest. Update them deliberately (e.g. via Dependabot).
 
 # Stage 1: build the Tailwind stylesheet
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS css
+FROM node:24-alpine@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d AS css
 WORKDIR /build
 COPY package.json package-lock.json tailwind.config.js ./
 RUN npm ci --no-audit --no-fund
