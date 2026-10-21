@@ -3,31 +3,20 @@
 Wandelt eine `timeline.yaml` mit Incident-Daten in ein interaktives HTML-Dashboard um:
 Zeitstrahl (vis-timeline) oben, Details mit Markdown und Evidence sowie ein Entitäten-Graph (vis-network) unten.
 
-## Start
+## Start mit Docker
 
 ```bash
-# 1. Vorlage anpassen: data/timeline.yaml und Evidence-Dateien in data/ ablegen
-# 2. Bauen und starten
-docker compose up --build
-
-# 3. Dashboard öffnen
-#    http://localhost:8080
+cp .env.example .env          # Admin-Benutzer und Passwort setzen (Passwort mind. 12 Zeichen)
+docker compose --profile import run --rm importer   # Timeline einmalig importieren
+docker compose up -d api      # API starten, danach http://localhost:8000/login
 ```
 
-Nach Änderungen an der YAML nur neu generieren und die Seite neu laden:
+Der Import läuft bewusst nicht bei jedem `up`. Jeder Lauf legt einen neuen Incident an.
+Ohne Admin-Eintrag in `.env` legt der Server keinen Admin an. Dann:
+`docker compose run --rm api python -m chronicle.admin_cli --db /db/chronicle.db create --username admin --role admin`.
 
-```bash
-docker compose run --rm generator
-```
-
-Ohne Docker (Python 3.11+):
-
-```bash
-npm ci && npm run build:css      # Tailwind-CSS bauen (einmalig bzw. nach Template-Änderungen)
-pip install -r requirements.txt
-python -m chronicle --data ./data --out ./output
-python -m http.server 8080 --directory ./output
-```
+Der statische Dashboard-Export (ohne Anmeldung, nur als Datei) läuft weiterhin ohne Compose:
+`python -m chronicle --data ./data --out ./output`.
 
 ## Server, Anmeldung und Konten (Phase 2)
 
@@ -42,10 +31,7 @@ python -m chronicle.importer --db ./chronicle.db --data ./data
 python -m chronicle.serve --db ./chronicle.db --port 8000
 ```
 
-Alternativ legt der Server beim ersten Start einen Admin an, wenn noch kein Konto existiert:
-`CHRONICLE_ADMIN_USER` und `CHRONICLE_ADMIN_PASSWORD` setzen.
-
-Login im Browser: http://localhost:8000/login
+Login im Browser: http://localhost:8000/login (mit Docker: siehe oben)
 
 | Methode | Pfad | Rolle | Inhalt |
 |---|---|---|---|
