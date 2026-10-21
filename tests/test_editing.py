@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 import re
 from pathlib import Path
 
@@ -185,7 +186,7 @@ def test_html_create_edit_delete_flow(db_path):
     assert "Neues Event" in client.get("/events").text
 
     form = {
-        "csrf_token": form_csrf(client), "key": "form-1", "t0": "2026-10-15T09:00:00+02:00",
+        "csrf_token": form_csrf(client), "key": "form-1", "t0_date": "2026-10-15", "t0_hour": "09", "t0_minute": "00", "t0_zone": "Europe/Berlin",
         "phase": "Analysis", "actor": "Analyst", "system": "", "action": "Über Formular",
         "status": "open", "triggered_by": "", "details": "**fett**",
         "topic": "inc-2026-042", "topics": ["inc-2026-042"],
@@ -222,14 +223,15 @@ def test_html_create_edit_delete_flow(db_path):
 def test_html_rejects_missing_csrf_and_shows_validation_errors(db_path):
     client = TestClient(create_app(db_path))
     login_html(client, "anna")
-    base = {"key": "x-1", "t0": "2026-10-15T09:00:00+02:00", "phase": "Analysis", "actor": "A",
+    base = {"key": "x-1", "t0_date": "2026-10-15", "t0_hour": "09", "t0_minute": "00", "t0_zone": "Europe/Berlin", "phase": "Analysis", "actor": "A",
             "action": "B", "status": "open", "topic": "inc-2026-042", "topics": []}
 
     assert client.post("/events/new", data={**base, "csrf_token": "falsch"}).status_code == 403
 
-    invalid = client.post("/events/new", data={**base, "csrf_token": form_csrf(client), "t0": "ohne-zeitzone"})
+    invalid = client.post("/events/new", data={**base, "csrf_token": form_csrf(client), "t0_date": "2026-02-31"})
     assert invalid.status_code == 422
-    assert "t0" in invalid.text
+    assert "Das Datum ist ungültig" in invalid.text
+    assert client.get("/api/v1/events/x-1").status_code == 404
 
 
 def test_html_viewer_sees_list_but_no_write_pages(db_path):
@@ -246,3 +248,67 @@ def test_html_pages_redirect_to_login_without_session(db_path):
     response = client.get("/events", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
+
+
+def test_html_new_event_is_stored_in_utc_with_attachments(db_path):
+    client = TestClient(create_app(db_path))
+    login_html(client, "anna")
+    page = client.get("/events/new").text
+    assert 'type="date"' in page and 'name="t0_zone"' in page
+    assert '<option value="Activity"' in page
+    assert '<option value="siem-alert"' in page  # the trigger is picked from existing events
+
+    created = client.post(
+        "/events/new",
+        data={
+            "csrf_token": form_csrf(client), "key": "files-1", "t0_date": "2026-10-15", "t0_hour": "09",
+            "t0_minute": "30", "t0_zone": "Europe/Berlin", "phase": "Activity", "actor": "Anna", "system": "",
+            "action": "Mit Anhängen", "status": "open", "triggered_by": "siem-alert", "details": "",
+            "topic": "inc-2026-042", "topics": [], "evidence_type": "screenshot",
+        },
+        files=[("files", ("one.png", PNG, "image/png")), ("files", ("two.png", PNG, "image/png"))],
+        follow_redirects=False,
+    )
+    assert created.status_code == 303, created.text
+
+    stored = client.get("/api/v1/events/files-1").json()
+    assert datetime.fromisoformat(stored["t0"]) == datetime(2026, 10, 15, 7, 30, tzinfo=UTC)
+    assert stored["phase"] == "Activity"
+    assert stored["triggered_by"] == "siem-alert"
+    assert [item["file"] for item in stored["evidence"]] == ["one.png", "two.png"]
+
+
+def test_html_bad_attachment_writes_no_event(db_path):
+    client = TestClient(create_app(db_path))
+    login_html(client, "anna")
+    rejected = client.post(
+        "/events/new",
+        data={
+            "csrf_token": form_csrf(client), "key": "files-2", "t0_date": "2026-10-15", "t0_hour": "09",
+            "t0_minute": "30", "t0_zone": "Europe/Berlin", "phase": "Activity", "actor": "Anna", "system": "",
+            "action": "Falsche Datei", "status": "open", "triggered_by": "", "details": "",
+            "topic": "inc-2026-042", "topics": [], "evidence_type": "screenshot",
+        },
+        files=[("files", ("kein-bild.png", b"kein png", "image/png"))],
+        follow_redirects=False,
+    )
+    assert rejected.status_code == 422
+    assert "kein-bild.png" in rejected.text
+    assert client.get("/api/v1/events/files-2").status_code == 404
+
+
+def test_html_edit_form_shows_stored_time_in_berlin(db_path):
+    client = TestClient(create_app(db_path))
+    login_html(client, "anna")
+    created = client.post("/events/new", data={
+        "csrf_token": form_csrf(client), "key": "zeit-1", "t0_date": "2026-01-15", "t0_hour": "09",
+        "t0_minute": "05", "t0_zone": "UTC", "phase": "Analysis", "actor": "A", "action": "Winterzeit",
+        "status": "open", "triggered_by": "", "details": "", "topic": "inc-2026-042", "topics": [],
+    }, follow_redirects=False)
+    assert created.status_code == 303
+
+    page = client.get("/events/zeit-1").text
+    # Stored as 09:05 UTC; the form shows the same instant in Europe/Berlin (UTC+1 in January).
+    assert '<option value="10" selected>' in page
+    assert '<option value="05" selected>' in page
+    assert '<option value="Europe/Berlin" selected>' in page
