@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import secrets
 import sqlite3
 from collections.abc import Callable, Iterator
@@ -39,8 +40,40 @@ class Auth:
     session_user: Callable[[Request, sqlite3.Connection], dict | None]
 
 
+def parse_trusted_proxies(value: str | None) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Comma separated IP addresses or networks, e.g. '10.0.0.1, 172.18.0.0/16'. Empty means no proxy is trusted."""
+    networks = []
+    for item in (value or "").split(","):
+        item = item.strip()
+        if item:
+            networks.append(ipaddress.ip_network(item, strict=False))
+    return tuple(networks)
+
+
 def client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    """The address of the client. X-Forwarded-For counts only if the connection comes from a trusted proxy."""
+    peer = request.client.host if request.client else "unknown"
+    trusted = getattr(request.app.state, "trusted_proxies", ())
+    if not _is_trusted(peer, trusted):
+        return peer
+
+    # Walk from the nearest hop back to the client; the first address that is not a trusted proxy is the client.
+    for hop in reversed([part.strip() for part in request.headers.get("x-forwarded-for", "").split(",") if part.strip()]):
+        try:
+            address = ipaddress.ip_address(hop)
+        except ValueError:
+            return peer
+        if not _is_trusted(str(address), trusted):
+            return str(address)
+    return peer
+
+
+def _is_trusted(address: str, networks: tuple) -> bool:
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return any(parsed in network for network in networks)
 
 
 def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secure: bool) -> Auth:
@@ -83,7 +116,7 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
             accounts.audit(conn, "login_failed", target=username, ip=ip)
             raise HTTPException(status_code=401, detail="Benutzername oder Passwort falsch")
 
-        accounts.clear_login_failures(conn, username)
+        accounts.clear_login_failures(conn, username, ip)
         token, _ = accounts.create_session(conn, row["id"])
         accounts.audit(conn, "login", user_id=row["id"], ip=ip)
         return {"id": row["id"], "username": row["username"], "role": row["role"]}, token

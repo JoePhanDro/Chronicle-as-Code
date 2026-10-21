@@ -18,7 +18,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # The app reads its database path from the environment at import time.
     os.environ["CHRONICLE_DB"] = str(args.db)
-    uvicorn.run("chronicle.api:app", host=args.host, port=args.port)
+    # Client addresses come from chronicle.auth.client_ip, which trusts only CHRONICLE_TRUSTED_PROXIES.
+    uvicorn.run("chronicle.api:app", host=args.host, port=args.port, proxy_headers=False)
     return 0
 
 

@@ -11,7 +11,10 @@ from .security import hash_token, new_token
 ROLES = ("admin", "analyst", "viewer")
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]{3,64}$")
 SESSION_TTL_SECONDS = 8 * 60 * 60
+# Failures are counted per (account, client IP) and per client IP, never per account alone.
+# Otherwise anyone who knows a username could lock that person out (issue #27).
 MAX_FAILED_LOGINS = 5
+MAX_FAILED_LOGINS_PER_IP = 20
 FAILURE_WINDOW_SECONDS = 15 * 60
 
 
@@ -117,34 +120,42 @@ def delete_sessions_of_user(conn: sqlite3.Connection, user_id: int) -> None:
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
 
 
-# Login throttling: failures are counted per username and per IP address.
+# Login throttling. A lock affects only the source that caused it:
+# - pair:<account>|<ip> locks one account for one client, after MAX_FAILED_LOGINS failures
+# - ip:<ip> locks one client across all accounts, after MAX_FAILED_LOGINS_PER_IP failures
+# Nothing locks an account for everybody, so a third party cannot lock the owner out.
 
-def _throttle_keys(username: str, ip: str) -> tuple[str, str]:
-    return f"user:{username.lower()}", f"ip:{ip}"
+def _pair_key(username: str, ip: str) -> str:
+    return f"pair:{username.lower()}|{ip}"
+
+
+def _ip_key(ip: str) -> str:
+    return f"ip:{ip}"
+
+
+def _count_since(conn: sqlite3.Connection, key: str, since: int) -> int:
+    return conn.execute("SELECT COUNT(*) FROM login_failures WHERE key = ? AND ts > ?", (key, since)).fetchone()[0]
 
 
 def login_blocked(conn: sqlite3.Connection, username: str, ip: str) -> bool:
     since = now() - FAILURE_WINDOW_SECONDS
-    for key in _throttle_keys(username, ip):
-        count = conn.execute(
-            "SELECT COUNT(*) FROM login_failures WHERE key = ? AND ts > ?", (key, since)
-        ).fetchone()[0]
-        if count >= MAX_FAILED_LOGINS:
-            return True
-    return False
+    if _count_since(conn, _pair_key(username, ip), since) >= MAX_FAILED_LOGINS:
+        return True
+    return _count_since(conn, _ip_key(ip), since) >= MAX_FAILED_LOGINS_PER_IP
 
 
 def record_login_failure(conn: sqlite3.Connection, username: str, ip: str) -> None:
     with conn:
         conn.executemany(
             "INSERT INTO login_failures (key, ts) VALUES (?, ?)",
-            [(key, now()) for key in _throttle_keys(username, ip)],
+            [(_pair_key(username, ip), now()), (_ip_key(ip), now())],
         )
 
 
-def clear_login_failures(conn: sqlite3.Connection, username: str) -> None:
+def clear_login_failures(conn: sqlite3.Connection, username: str, ip: str) -> None:
+    # Only the pair of this account and this client; the IP counter stays.
     with conn:
-        conn.execute("DELETE FROM login_failures WHERE key = ?", (f"user:{username.lower()}",))
+        conn.execute("DELETE FROM login_failures WHERE key = ?", (_pair_key(username, ip),))
 
 
 # Audit log: records who did what, never passwords or tokens.
