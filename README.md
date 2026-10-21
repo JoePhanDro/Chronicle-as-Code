@@ -208,7 +208,7 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | DELETE | `/topics/{key}` | analyst, admin | Topic löschen (409, solange Heimat-Events darin liegen) |
 | POST | `/topics/{key}/events` | analyst, admin | Event mit dem Topic verknüpfen (JSON `{event}`) |
 | DELETE | `/topics/{key}/events/{event_key}` | analyst, admin | Verknüpfung lösen. Das Heimat-Topic eines Events lässt sich nicht lösen (422) |
-| POST | `/events` | analyst, admin | Event anlegen (`topic` = Heimat, `topics` = weitere). Evidence im Body gibt es nicht, siehe unten |
+| POST | `/events` | analyst, admin | Event anlegen (`topic` = Heimat, `topics` = weitere). `key` ist optional, ohne Key vergibt der Server einen (`ev-<Datum>-<zufällig>`). Evidence im Body gibt es nicht, siehe unten |
 | PUT | `/events/{key}` | analyst, admin | Event ändern, Body mit `version` (sonst 409) |
 | DELETE | `/events/{key}` | analyst, admin | Event löschen (409, solange ein anderes Event darauf verweist) |
 | POST | `/events/{key}/evidence` | analyst, admin | Datei hochladen, multipart mit `file`, `type`, `description` |
