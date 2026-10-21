@@ -18,6 +18,7 @@ from .auth import client_ip, make_auth
 from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
 from .pages import make_pages
+from .report import make_report, report_headers
 from .event_input import EventUpdate, EventWrite, event_of, topic_list
 
 DEFAULT_DB = "/data/chronicle.db"
@@ -255,6 +256,16 @@ def create_app(db_path: str | Path) -> FastAPI:
                 ip=client_ip(request),
             )
         return accounts.get_user(conn, user_id)
+
+    @app.get("/api/v1/topics/{key}/report")
+    def topic_report(
+        key: str,
+        request: Request,
+        conn: sqlite3.Connection = Depends(get_conn),
+        admin: dict = Depends(admin_only),
+    ) -> Response:
+        filename, body = _write(lambda: make_report(conn, key, admin["id"], client_ip(request)))
+        return Response(content=body, media_type="text/html; charset=utf-8", headers=report_headers(filename))
 
     @app.get("/api/v1/audit")
     def audit_log(

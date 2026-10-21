@@ -70,26 +70,52 @@ def _build(conn) -> tuple[dict[str, bytes], ExportReport]:
     files: dict[str, bytes] = {}
     report = ExportReport()
     for topic in repository.list_topics(conn):
-        events = []
-        refs = []
-        for event in repository.list_topic_events(conn, topic["key"]):
-            if event["home_topic"] == topic["key"]:
-                events.append(_event_document(conn, event, files, report))
-            else:
-                refs.append(event["key"])
-
-        document = {
-            "topic": {"key": topic["key"], "title": topic["title"], "kind": topic["kind"], "summary": topic["summary"]},
-        }
-        if events:
-            document["events"] = sorted(events, key=lambda item: (item["t0"], item["key"]))
-        if refs:
-            document["refs"] = sorted(refs)
-
-        text = yaml.dump(document, Dumper=_Dumper, allow_unicode=True, sort_keys=False, width=float("inf"))
-        files[f"{topic['key']}.yaml"] = (HEADER + text).encode("utf-8")
+        document, evidence = _topic_document(conn, topic, report)
+        files.update(evidence)
+        files[f"{topic['key']}.yaml"] = _yaml_bytes(document)
         report.topics += 1
     return files, report
+
+
+def topic_document(conn, key: str, *, expand_refs: bool = False) -> tuple[dict, dict[str, bytes]] | None:
+    """One topic in the import format, plus the evidence contents it refers to. Used for reports.
+
+    With expand_refs, events from other topics that are linked to this one are written out in full
+    instead of as keys.
+    """
+    topic = repository.get_topic(conn, key)
+    if topic is None:
+        return None
+    return _topic_document(conn, topic, ExportReport(), expand_refs=expand_refs)
+
+
+def _topic_document(
+    conn, topic: dict, report: ExportReport, *, expand_refs: bool = False
+) -> tuple[dict, dict[str, bytes]]:
+    files: dict[str, bytes] = {}
+    events = []
+    refs = []
+    for event in repository.list_topic_events(conn, topic["key"]):
+        if event["home_topic"] == topic["key"]:
+            events.append(_event_document(conn, event, files, report))
+        elif expand_refs:
+            events.append(_event_document(conn, repository.get_event(conn, event["key"]), files, report))
+        else:
+            refs.append(event["key"])
+
+    document = {
+        "topic": {"key": topic["key"], "title": topic["title"], "kind": topic["kind"], "summary": topic["summary"]},
+    }
+    if events:
+        document["events"] = sorted(events, key=lambda item: (item["t0"], item["key"]))
+    if refs:
+        document["refs"] = sorted(refs)
+    return document, files
+
+
+def _yaml_bytes(document: dict) -> bytes:
+    text = yaml.dump(document, Dumper=_Dumper, allow_unicode=True, sort_keys=False, width=float("inf"))
+    return (HEADER + text).encode("utf-8")
 
 
 def _event_document(conn, event: dict, files: dict[str, bytes], report: ExportReport) -> dict:

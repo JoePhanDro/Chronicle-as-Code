@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import PurePosixPath
 from urllib.parse import quote
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
-from .models import PHASE_COLORS, Event, Phase, Timeline
+from .models import PHASE_COLORS, Evidence, Event, Phase, Timeline
 
 ACTOR_COLOR = "#38bdf8"
 SYSTEM_COLOR = "#a78bfa"
@@ -22,12 +23,19 @@ _env = Environment(
 )
 
 
-def render_dashboard(timeline: Timeline) -> str:
+def render_dashboard(
+    timeline: Timeline,
+    *,
+    inline_css: str | None = None,
+    src_for: Callable[[Evidence], str] | None = None,
+    generated_at: str | None = None,
+) -> str:
+    """`inline_css` replaces the stylesheet link, `src_for` gives the image URL of each evidence item."""
     events = sorted(timeline.events, key=lambda event: event.t0)
     nodes, edges = _build_graph(events)
 
     payload = {
-        "events": [_event_payload(event) for event in events],
+        "events": [_event_payload(event, src_for or _relative_src) for event in events],
         "nodes": nodes,
         "edges": edges,
     }
@@ -38,6 +46,8 @@ def render_dashboard(timeline: Timeline) -> str:
         summary=timeline.topic.summary,
         phases=phases,
         payload=payload,
+        inline_css=inline_css,
+        generated_at=generated_at,
     )
 
 
@@ -49,7 +59,12 @@ def _evidence_key(event: Event, file: str) -> str:
     return f"evidence:{event.key}:{file}"
 
 
-def _event_payload(event: Event) -> dict:
+def _relative_src(item: Evidence) -> str:
+    # Relative to index.html; builder copies each file to the same path.
+    return quote(item.file)
+
+
+def _event_payload(event: Event, src_for: Callable[[Evidence], str]) -> dict:
     return {
         "id": event.key,
         "t0": event.t0.isoformat(),
@@ -63,8 +78,7 @@ def _event_payload(event: Event) -> dict:
         "details": event.details,
         "evidence": [
             {
-                # Relative to index.html; builder copies each file to the same path.
-                "src": quote(item.file),
+                "src": src_for(item),
                 "file": item.file,
                 "type": item.type,
                 "description": item.description,

@@ -63,17 +63,14 @@ CHRONICLE_COOKIE_SECURE=0 python -m chronicle.serve --db ./chronicle.db --port 8
 `CHRONICLE_COOKIE_SECURE=0` ist nur für Tests über HTTP gedacht. Ohne diese Variable setzt der Server das Cookie
 mit `Secure`, und Browser schicken es über `http://localhost` trotzdem zurück.
 
-## Berichts-Export (ohne Anmeldung)
+## Berichte
 
-Für ein Post-Mortem gibt es einen eigenständigen HTML-Bericht aus einer `timeline.yaml` (ADR 0001). Er enthält das Topic, alle seine Events und die Evidence-Dateien, ohne Anmeldung und ohne Live-Stand.
+Ein Bericht ist eine einzelne HTML-Datei zu einem Topic, etwa als Anhang zu einem Post-Mortem (ADR 0001, ADR 0006). Er enthält Timeline, Graph, Event-Details, die verknüpften Events aus anderen Topics und alle Evidence-Dateien eingebettet. Er braucht weder Server noch Anmeldung und zeigt den Stand zum Zeitpunkt des Downloads.
 
-```bash
-python -m chronicle --data ./data --out ./bericht
-docker run --rm -v "$PWD/data:/data:ro" -v "$PWD/bericht:/output" \
-  --entrypoint python chronicle-dashboard:local -m chronicle --data /data --out /output
-```
+- **In der Anwendung:** Admins öffnen **Berichte**, wählen ein Topic und laden die Datei. Die API hat dafür `GET /api/v1/topics/{key}/report`. Andere Rollen bekommen 403.
+- **Über die Kommandozeile:** `python -m chronicle --data ./data --out ./bericht` erzeugt den Bericht aus einer `timeline.yaml`, ohne Datenbank. Das ist der Weg für Dateien, die nicht in der Datenbank liegen.
 
-Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie nur bewusst und lösche sie danach. Der Standard-Entrypoint des Images ist die API, nicht der Bericht.
+Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie nur bewusst und lösche sie danach. Der Standard-Entrypoint des Images ist die API.
 
 ## Konfiguration
 
@@ -172,6 +169,7 @@ Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ers
 | `/events` | angemeldet | alle Events, zeitlich sortiert |
 | `/events/new` | analyst, admin | Event anlegen |
 | `/events/{key}` | angemeldet | Details, Evidence mit Vorschau, Topics; bearbeiten, Evidence hochladen und löschen für analyst und admin |
+| `/reports` | admin | Topics mit Download des HTML-Berichts |
 
 Die Oberfläche ist serverseitig gerendert. Formulare sind mit einem CSRF-Token der Sitzung geschützt.
 
@@ -195,6 +193,7 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | DELETE | `/events/{key}` | analyst, admin | Event löschen (409, solange ein anderes Event darauf verweist) |
 | POST | `/events/{key}/evidence` | analyst, admin | Datei hochladen, multipart mit `file`, `type`, `description` |
 | GET | `/evidence/{id}` | angemeldet | Inhalt einer Evidence-Datei |
+| GET | `/topics/{key}/report` | admin | HTML-Bericht des Topics als Download |
 | DELETE | `/evidence/{id}` | analyst, admin | Evidence entfernen |
 | GET | `/users` | admin | Konten |
 | POST | `/users` | admin | Konto anlegen |
@@ -261,7 +260,7 @@ Die CI läuft bei jeder Pull-Request: Tests, Smoke-Lauf des Dashboard-Exports, J
 
 Die wichtigsten offenen Punkte, mit Issue-Nummern:
 
-- Der Berichts-Export (`python -m chronicle`) liefert ein Topic ohne Anmeldung. Er ist ein Snapshot und kein Live-Stand ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24))
+- Ein Bericht liefert ein Topic ohne Anmeldung, sobald man die Datei hat. Er ist ein Snapshot und kein Live-Stand ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24))
 - Timeline und Graph gibt es nur im statischen Export, nicht hinter der Anmeldung ([#25](https://github.com/JoePhanDro/Chronicle-as-Code/issues/25))
 - Topics lassen sich nur über API und YAML anlegen ([#26](https://github.com/JoePhanDro/Chronicle-as-Code/issues/26))
 - Keine Suche und keine Paginierung ([#30](https://github.com/JoePhanDro/Chronicle-as-Code/issues/30))
@@ -276,6 +275,7 @@ Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/is
   - [ADR 0003](docs/adr/0003-editing-in-the-ui.md): Bearbeiten in der Oberfläche (zu bestätigen)
   - [ADR 0004](docs/adr/0004-evidence-storage.md): Evidence in der Datenbank, Abweichung von ADR 0001 (zu bestätigen)
   - [ADR 0005](docs/adr/0005-export-and-backup.md): YAML-Export, Backup und Import mehrerer Topic-Dateien (zu bestätigen)
+  - [ADR 0006](docs/adr/0006-reports-from-the-app.md): Berichte aus der Datenbank, nur für Admins (zu bestätigen)
 - Wie man beiträgt, steht in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Die Beispieldaten in `data/` sind fiktiv. Die PNG-Dateien sind Platzhalter, aus SVG-Vorlagen gerendert, keine echten Screenshots.
