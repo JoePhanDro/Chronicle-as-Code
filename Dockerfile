@@ -28,7 +28,6 @@ COPY --from=css /build/chronicle/static/app.css ./chronicle/static/app.css
 
 USER chronicle
 
-# Default: the API. The report export (python -m chronicle) is an explicit command, not the default,
-# because its output is an unprotected copy of one topic (ADR 0001, issue #24).
+# Default: the API. Reports are built in the app by admins (ADR 0006), not by a command in the image.
 ENTRYPOINT ["python", "-m", "chronicle.serve"]
 CMD ["--db", "/db/chronicle.db", "--host", "0.0.0.0", "--port", "8000"]

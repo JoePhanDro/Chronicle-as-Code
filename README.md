@@ -4,7 +4,7 @@ Chronicle organisiert Sicherheitswissen: **Events** (Ereignisse mit Zeitpunkt, A
 
 ![Dashboard: Timeline oben, Entitäten-Graph unten, Phasen farblich markiert](docs/screenshots/dashboard.png)
 
-*Dashboard-Export für das Beispiel `data/`. Fiktive Demo-Daten.*
+*Dashboard-Ansicht des Beispiels `data/`. Fiktive Demo-Daten.*
 
 > **Status:** Entwicklungsstand. Anmeldung, Rollen, Benutzerverwaltung über API und CLI, Event-Pflege in der Oberfläche und der API-Server laufen. Timeline und Graph in der Oberfläche (Phase 3) sind noch nicht umgesetzt. Offene Punkte stehen in den [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
 
@@ -68,7 +68,6 @@ mit `Secure`, und Browser schicken es über `http://localhost` trotzdem zurück.
 Ein Bericht ist eine einzelne HTML-Datei zu einem Topic, etwa als Anhang zu einem Post-Mortem (ADR 0001, ADR 0006). Er enthält Timeline, Graph, Event-Details, die verknüpften Events aus anderen Topics und alle Evidence-Dateien eingebettet. Er braucht weder Server noch Anmeldung und zeigt den Stand zum Zeitpunkt des Downloads.
 
 - **In der Anwendung:** Admins öffnen **Berichte**, wählen ein Topic und laden die Datei. Die API hat dafür `GET /api/v1/topics/{key}/report`. Andere Rollen bekommen 403.
-- **Über die Kommandozeile:** `python -m chronicle --data ./data --out ./bericht` erzeugt den Bericht aus einer `timeline.yaml`, ohne Datenbank. Das ist der Weg für Dateien, die nicht in der Datenbank liegen.
 
 Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie nur bewusst und lösche sie danach. Der Standard-Entrypoint des Images ist die API.
 
@@ -254,8 +253,8 @@ chronicle/
   admin_cli.py     Konten über die Kommandozeile verwalten
   models.py        Pydantic-Schema der YAML (strikt)
   loader.py        Suche, Validierung und Evidence-Prüfung der YAML
-  renderer.py      Dashboard-Export (statisch, siehe Issue #24)
-  builder.py       schreibt den Dashboard-Export
+  renderer.py      Dashboard-Ansicht als HTML, Grundlage der Berichte
+  report.py        Bericht zu einem Topic aus der Datenbank
   templates/       Jinja2-Vorlagen für Oberfläche und Dashboard
   static/          input.css (Quelle) und app.css (gebaut, nicht versioniert)
 data/              Beispiel-YAML und Platzhalter-Evidence
@@ -270,7 +269,7 @@ npm ci && npm run build:css      # nach jeder Template-Änderung mit neuen Tailw
 pytest                           # Tests (requirements-dev.txt)
 ```
 
-Die CI läuft bei jeder Pull-Request: Tests, Smoke-Lauf des Dashboard-Exports, JavaScript-Syntaxprüfung, Docker-Build und Start des API-Containers mit Health-Check. Ein Merge ist nur möglich, wenn beide Checks grün sind.
+Die CI läuft bei jeder Pull-Request: Tests, Render-Lauf des Dashboards aus den Beispieldaten, JavaScript-Syntaxprüfung, Docker-Build und Start des API-Containers mit Health-Check. Ein Merge ist nur möglich, wenn beide Checks grün sind.
 
 ## Bekannte Einschränkungen
 

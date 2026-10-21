@@ -37,12 +37,19 @@ jobs:
       - name: Unit tests
         run: pytest -q
 
-      - name: Generate dashboard from sample data
-        run: python -m chronicle --data data --out "$RUNNER_TEMP/site"
+      - name: Render dashboard from sample data
+        run: |
+          python - "$RUNNER_TEMP/dashboard.html" <<'PY'
+          import sys
+          from pathlib import Path
+          from chronicle.loader import load_timeline
+          from chronicle.renderer import render_dashboard
+          Path(sys.argv[1]).write_text(render_dashboard(load_timeline(Path("data/timeline.yaml"))), encoding="utf-8")
+          PY
 
       - name: Syntax-check dashboard JavaScript
         run: |
-          python - "$RUNNER_TEMP/site/index.html" "$RUNNER_TEMP/dashboard.js" <<'PY'
+          python - "$RUNNER_TEMP/dashboard.html" "$RUNNER_TEMP/dashboard.js" <<'PY'
           import re, sys
           html = open(sys.argv[1], encoding="utf-8").read()
           open(sys.argv[2], "w", encoding="utf-8").write(re.findall(r"<script>(.*?)</script>", html, re.S)[-1])
@@ -57,13 +64,6 @@ jobs:
 
       - name: Build image
         run: docker build -t chronicle-dashboard:ci .
-
-      - name: Run generator in container
-        run: |
-          mkdir -p "$RUNNER_TEMP/site"
-          docker run --rm --user "$(id -u):$(id -g)" \
-            -v "$PWD/data:/data:ro" -v "$RUNNER_TEMP/site:/output" \
-            --entrypoint python chronicle-dashboard:ci -m chronicle --data /data --out /output
 
       - name: API container starts and answers health check
         run: |
