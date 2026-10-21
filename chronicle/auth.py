@@ -247,7 +247,10 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
         expected = request.cookies.get(SETUP_CSRF_COOKIE, "")
         if not expected or not secrets.compare_digest(csrf_token, expected):
             raise HTTPException(status_code=403, detail="Ungültiges Formular. Bitte Seite neu laden.")
+        if accounts.setup_blocked(conn):
+            return render_setup(request, error="Zu viele Fehlversuche. Bitte später erneut versuchen.", status_code=429)
         if not secrets.compare_digest(setup_code.strip().encode(), setup.token.encode()):
+            accounts.record_setup_failure(conn, client_ip(request))
             return render_setup(request, error="Der Einmal-Code stimmt nicht. Er steht im Log des Servers.", status_code=403)
 
         try:

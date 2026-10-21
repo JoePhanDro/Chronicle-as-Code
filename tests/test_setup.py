@@ -177,3 +177,55 @@ def test_first_account_creation_is_audited(db_path, capsys):
     conn.close()
     assert "setup_completed" in actions
     client.__exit__(None, None, None)
+
+
+def wrong_code(client, csrf, username="chef"):
+    return client.post(
+        "/setup",
+        data={"csrf_token": csrf, "setup_code": "falsch", "username": username, "password": PASSWORD},
+        follow_redirects=False,
+    )
+
+
+def test_too_many_wrong_codes_block_the_form_even_for_the_right_code(db_path, capsys):
+    client, code = start(db_path, capsys)
+    for _ in range(10):
+        response = wrong_code(client, form_csrf(client))
+        assert response.status_code == 403
+
+    blocked = client.post(
+        "/setup",
+        data={"csrf_token": form_csrf(client), "setup_code": code, "username": "chef", "password": PASSWORD},
+        follow_redirects=False,
+    )
+    assert blocked.status_code == 429
+    assert user_count(db_path) == 0
+    client.__exit__(None, None, None)
+
+
+def test_failures_outside_the_window_do_not_block(db_path, capsys):
+    client, code = start(db_path, capsys)
+    conn = connect(db_path)
+    old = accounts.now() - accounts.FAILURE_WINDOW_SECONDS - 60
+    conn.executemany("INSERT INTO login_failures (key, ts) VALUES (?, ?)", [("setup", old)] * 10)
+    conn.commit()
+    conn.close()
+
+    response = client.post(
+        "/setup",
+        data={"csrf_token": form_csrf(client), "setup_code": code, "username": "chef", "password": PASSWORD},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    client.__exit__(None, None, None)
+
+
+def test_wrong_codes_are_audited(db_path, capsys):
+    client, _ = start(db_path, capsys)
+    wrong_code(client, form_csrf(client))
+    conn = connect(db_path)
+    actions = [entry["action"] for entry in accounts.list_audit(conn)]
+    conn.close()
+    assert "setup_failed" in actions
+    client.__exit__(None, None, None)
+
