@@ -69,11 +69,12 @@ def test_evidence_is_replaced_not_appended(conn):
     assert count(conn, "evidence") == 1
 
 
-def test_removed_event_is_unlinked_but_kept(conn):
+def test_removed_event_stays_linked_and_kept(conn):
+    # ADR 0003: an import only adds links. Removing a link is done in the UI.
     import_timeline(conn, topic_file("a", [event("e1"), event("e2")]))
     import_timeline(conn, topic_file("a", [event("e1")]))
-    assert count(conn, "events") == 2  # knowledge is kept
-    assert [item["key"] for item in repository.list_topic_events(conn, "a")] == ["e1"]
+    assert count(conn, "events") == 2
+    assert [item["key"] for item in repository.list_topic_events(conn, "a")] == ["e1", "e2"]
 
 
 def test_event_can_belong_to_several_topics_via_refs(conn):

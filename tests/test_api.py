@@ -55,8 +55,9 @@ def test_unknown_topic_and_event_return_404(client):
 
 
 def test_import_sample_timeline_is_readable_via_api(db_path, client):
-    key = import_folder(db_path, DATA_DIR)
-    assert key == "inc-2026-042"
+    report = import_folder(db_path, DATA_DIR)
+    assert report.topic == "inc-2026-042"
+    assert len(report.created) == 7
 
     topics = client.get("/api/v1/topics").json()
     assert [item["key"] for item in topics] == ["inc-2026-042"]

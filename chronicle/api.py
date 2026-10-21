@@ -9,13 +9,15 @@ from contextlib import closing
 from pathlib import Path
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import __version__, accounts, repository, security
 from .auth import client_ip, make_auth
 from .db import connect
+from .pages import make_pages
+from .event_input import EventUpdate, EventWrite, event_of, topic_list
 
 DEFAULT_DB = "/data/chronicle.db"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -54,6 +56,7 @@ def create_app(db_path: str | Path) -> FastAPI:
     admin_only = auth.require_role("admin")
 
     app.include_router(auth.router)
+    app.include_router(make_pages(get_conn, auth))
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     _bootstrap_admin(path)
@@ -91,6 +94,47 @@ def create_app(db_path: str | Path) -> FastAPI:
         if found is None:
             raise HTTPException(status_code=404, detail="Event nicht gefunden")
         return found
+
+    # Writing events: admins and analysts. Validation is the same as for imports.
+
+    writer = auth.require_role("admin", "analyst")
+
+    @app.post("/api/v1/events", status_code=201)
+    def create_event(
+        body: EventWrite,
+        request: Request,
+        conn: sqlite3.Connection = Depends(get_conn),
+        user: dict = Depends(writer),
+    ) -> dict:
+        return _write(
+            lambda: repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request))
+        )
+
+    @app.put("/api/v1/events/{key}")
+    def update_event(
+        key: str,
+        body: EventUpdate,
+        request: Request,
+        conn: sqlite3.Connection = Depends(get_conn),
+        user: dict = Depends(writer),
+    ) -> dict:
+        if body.key != key:
+            raise HTTPException(status_code=422, detail="Der Key im Pfad und im Body müssen übereinstimmen")
+        return _write(
+            lambda: repository.update_event(
+                conn, key, event_of(body), topic_list(body), body.version, user["id"], client_ip(request)
+            )
+        )
+
+    @app.delete("/api/v1/events/{key}", status_code=204, response_class=Response)
+    def delete_event(
+        key: str,
+        request: Request,
+        conn: sqlite3.Connection = Depends(get_conn),
+        user: dict = Depends(writer),
+    ) -> Response:
+        _write(lambda: repository.delete_event(conn, key, user["id"], client_ip(request)))
+        return Response(status_code=204)
 
     # Users and audit log: admins only.
 
@@ -178,6 +222,17 @@ def create_app(db_path: str | Path) -> FastAPI:
         return accounts.list_audit(conn, limit=min(max(limit, 1), 1000))
 
     return app
+
+
+def _write(action):
+    try:
+        return action()
+    except repository.NotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except repository.Conflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except repository.Invalid as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _bootstrap_admin(path: Path) -> None:

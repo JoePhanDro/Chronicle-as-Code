@@ -8,10 +8,10 @@ from pathlib import Path
 
 from .db import connect
 from .loader import TimelineError, collect_evidence, find_timeline, load_timeline
-from .repository import import_timeline
+from .repository import ImportReport, import_timeline
 
 
-def import_folder(db_path: str | Path, data_dir: str | Path) -> str:
+def import_folder(db_path: str | Path, data_dir: str | Path) -> ImportReport:
     timeline_path = find_timeline(Path(data_dir))
     timeline = load_timeline(timeline_path)
     collect_evidence(timeline, timeline_path.parent)  # fails early if evidence files are missing
@@ -29,12 +29,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        topic_key = import_folder(args.db, args.data)
+        report = import_folder(args.db, args.data)
     except TimelineError as exc:
         print(f"Fehler: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Topic importiert: {topic_key}")
+    print(f"Topic importiert: {report.topic}")
+    print(f"  angelegt: {len(report.created)}, aktualisiert: {len(report.updated)}, übersprungen: {len(report.skipped)}")
+    for key, reason in report.skipped:
+        print(f"  übersprungen {key}: {reason}")
     return 0
 
 

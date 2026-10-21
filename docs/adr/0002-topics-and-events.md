@@ -1,6 +1,6 @@
 # ADR 0002: Events als Kern, Topics als Themen
 
-- **Status:** Vorgeschlagen (zu bestätigen)
+- **Status:** Vorgeschlagen (zu bestätigen). Teilweise geändert durch ADR 0003: Import entfernt keine Verknüpfungen mehr.
 - **Datum:** 2026-10-21
 - **Bezug:** ADR 0001, Duplikate beim Import (Abschnitt „Bekannte Lücke“ im PR #19)
 

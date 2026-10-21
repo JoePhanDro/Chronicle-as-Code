@@ -1,0 +1,80 @@
+{# Shared form fields for creating and editing an event. Expects f (dict), mode, phases, statuses, topic_choices. #}
+{% set input_class = "w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20" %}
+{% set label_class = "mb-1 block text-xs font-medium text-slate-400" %}
+
+<div class="grid gap-5 sm:grid-cols-2">
+  <label class="block">
+    <span class="{{ label_class }}">Key (eindeutig)</span>
+    <input name="key" value="{{ f.key or '' }}" required {{ 'readonly' if mode == 'view' }} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,99}"
+           class="{{ input_class }} font-mono {{ 'opacity-60' if mode == 'view' }}">
+  </label>
+  <label class="block">
+    <span class="{{ label_class }}">Zeitpunkt mit Zeitzone</span>
+    <input name="t0" value="{{ f.t0 or '' }}" required placeholder="2026-10-14T08:40:00+02:00" class="{{ input_class }} font-mono">
+  </label>
+  <label class="block">
+    <span class="{{ label_class }}">Phase</span>
+    <select name="phase" required class="{{ input_class }}">
+      {% for phase in phases %}<option value="{{ phase }}" {{ 'selected' if f.phase == phase }}>{{ phase }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="block">
+    <span class="{{ label_class }}">Status</span>
+    <select name="status" required class="{{ input_class }}">
+      {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if f.status == status }}>{{ status.replace('_', ' ') }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="block">
+    <span class="{{ label_class }}">Akteur</span>
+    <input name="actor" value="{{ f.actor or '' }}" required class="{{ input_class }}">
+  </label>
+  <label class="block">
+    <span class="{{ label_class }}">System (optional)</span>
+    <input name="system" value="{{ f.system or '' }}" class="{{ input_class }}">
+  </label>
+  <label class="block sm:col-span-2">
+    <span class="{{ label_class }}">Aktion</span>
+    <input name="action" value="{{ f.action or '' }}" required class="{{ input_class }}">
+  </label>
+  <label class="block">
+    <span class="{{ label_class }}">Ausgelöst durch (Event-Key, optional)</span>
+    <input name="triggered_by" value="{{ f.triggered_by or '' }}" class="{{ input_class }} font-mono">
+  </label>
+  {% if mode == 'new' %}
+  <label class="block">
+    <span class="{{ label_class }}">Heimat-Topic</span>
+    <select name="topic" required class="{{ input_class }}">
+      {% for choice in topic_choices %}<option value="{{ choice.key }}" {{ 'selected' if f.topic == choice.key }}>{{ choice.title }}</option>{% endfor %}
+    </select>
+  </label>
+  {% else %}
+  <input type="hidden" name="topic" value="{{ f.topic }}">
+  <div class="block">
+    <span class="{{ label_class }}">Heimat-Topic</span>
+    <span class="font-mono text-sm text-slate-300">{{ f.topic }}</span>
+  </div>
+  {% endif %}
+</div>
+
+<fieldset class="space-y-2">
+  <legend class="{{ label_class }}">Zugehörige Topics</legend>
+  <div class="flex flex-wrap gap-2">
+    {% for choice in topic_choices %}
+    <label class="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-300">
+      <input type="checkbox" name="topics" value="{{ choice.key }}" {{ 'checked' if choice.key in (f.topics or []) }} class="accent-sky-400">
+      {{ choice.title }}
+    </label>
+    {% endfor %}
+  </div>
+</fieldset>
+
+<label class="block">
+  <span class="{{ label_class }}">Details (Markdown)</span>
+  <textarea name="details" rows="6" class="{{ input_class }}">{{ f.details or '' }}</textarea>
+</label>
+
+<label class="block">
+  <span class="{{ label_class }}">Evidence, eine Zeile pro Eintrag: Datei | Typ | Beschreibung</span>
+  <textarea name="evidence" rows="3" placeholder="evidence/screenshot.png | screenshot | Alarm" class="{{ input_class }} font-mono text-xs">{{ f.evidence or '' }}</textarea>
+  <span class="mt-1 block text-xs text-slate-500">Typ: screenshot, log, report oder other. Dateien müssen im Datenordner liegen. Upload folgt später.</span>
+</label>

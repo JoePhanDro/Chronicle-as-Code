@@ -27,7 +27,15 @@ CREATE TABLE IF NOT EXISTS events (
     triggered_by  TEXT,
     details       TEXT NOT NULL DEFAULT '',
     home_topic    TEXT NOT NULL,
+    source        TEXT NOT NULL DEFAULT 'import' CHECK (source IN ('import', 'manual')),
+    version       INTEGER NOT NULL DEFAULT 1,
     updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+-- Tombstones: events deleted in the UI are not re-created by a later import.
+CREATE TABLE IF NOT EXISTS deleted_events (
+    key         TEXT PRIMARY KEY,
+    deleted_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS topic_events (
@@ -173,11 +181,21 @@ def _migrate(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE legacy_incidents")
 
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    """Add a column to a table created by an earlier version of the schema."""
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
     """Open the database, enable foreign keys, migrate old data and make sure the schema exists."""
-    conn = sqlite3.connect(path)
+    # One connection per request, never shared between threads; async form handlers may hop threads.
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     migrate_incident_schema(conn)
     _create_schema(conn)
+    _ensure_column(conn, "events", "source", "TEXT NOT NULL DEFAULT 'import'")
+    _ensure_column(conn, "events", "version", "INTEGER NOT NULL DEFAULT 1")
     return conn

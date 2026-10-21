@@ -44,12 +44,22 @@ Login im Browser: http://localhost:8000/login (mit Docker: siehe oben)
 | GET | `/api/v1/topics/{key}/events` | angemeldet | Events eines Topics, zeitlich sortiert, mit Evidence |
 | GET | `/api/v1/events` | angemeldet | alle Events |
 | GET | `/api/v1/events/{key}` | angemeldet | ein Event mit Evidence und allen zugehörigen Topics |
+| POST | `/api/v1/events` | analyst, admin | Event anlegen (Body wie in der Topic-Datei, plus `topic` und `topics`) |
+| PUT | `/api/v1/events/{key}` | analyst, admin | Event ändern, Body mit `version` der gelesenen Fassung (sonst 409) |
+| DELETE | `/api/v1/events/{key}` | analyst, admin | Event löschen (409, solange ein anderes Event darauf verweist) |
 | GET | `/api/v1/users` | admin | Konten |
 | POST | `/api/v1/users` | admin | Konto anlegen |
 | PATCH | `/api/v1/users/{id}` | admin | Rolle, Aktivierung oder Passwort ändern |
 | GET | `/api/v1/audit` | admin | Protokoll von Logins und Änderungen |
 
-Rollen: `admin` (alles), `analyst` (Lesen, später Bearbeiten), `viewer` (Lesen).
+Rollen: `admin` und `analyst` lesen und bearbeiten Events, `viewer` liest nur.
+
+Oberfläche: http://localhost:8000/events zeigt alle Events. Anlegen, Bearbeiten und Löschen laufen über Formulare
+(mit CSRF-Schutz). Die Datenbank ist nach dem Import die Quelle der Wahrheit (ADR 0003):
+
+- Ein erneuter Import überschreibt keine Events, die in der Oberfläche bearbeitet wurden, und holt keine gelöschten zurück. Er meldet beides.
+- Ein Import entfernt keine Topic-Verknüpfungen. Die werden in der Oberfläche geändert.
+- Jede Änderung hat eine Version. Wer auf einer veralteten Fassung speichert, bekommt 409 und muss neu laden.
 
 Sicherheit im Überblick:
 
