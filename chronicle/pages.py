@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile  # form uploads are Starlette objects
@@ -16,6 +16,7 @@ from starlette.datastructures import UploadFile  # form uploads are Starlette ob
 from . import repository
 from .auth import Auth, client_ip
 from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, check_file
+from .report import make_report, report_headers
 from .models import Phase, Status
 from .event_input import EventWrite, event_of, topic_list
 
@@ -159,6 +160,26 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
                           event=repository.get_event(conn, key), errors=_error_text(exc),
                           **form_context(conn, form=None))
         return RedirectResponse("/events", status_code=303)
+
+    @router.get("/reports", response_class=HTMLResponse)
+    def reports_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        if user["role"] != "admin":
+            return render(request, "forbidden.html", user, status_code=403)
+        return render(request, "reports.html", user, topics=repository.list_topics(conn))
+
+    @router.get("/reports/{key}")
+    def report_download(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        if user["role"] != "admin":
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            filename, body = make_report(conn, key, user["id"], client_ip(request))
+        except repository.NotFound:
+            return render(request, "not_found.html", user, status_code=404)
+        return Response(content=body, media_type="text/html; charset=utf-8", headers=report_headers(filename))
 
     @router.post("/events/{key}/evidence", response_class=HTMLResponse)
     async def add_evidence_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

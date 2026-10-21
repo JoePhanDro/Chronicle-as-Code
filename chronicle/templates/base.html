@@ -11,6 +11,7 @@
     <nav class="flex items-center gap-5 text-sm">
       <a href="/" class="font-semibold text-slate-100">Chronicle</a>
       <a href="/events" class="text-slate-400 hover:text-white">Ereignisse</a>
+      {% if user.role == 'admin' %}<a href="/reports" class="text-slate-400 hover:text-white">Berichte</a>{% endif %}
     </nav>
     <div class="flex items-center gap-4 text-sm">
       <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
