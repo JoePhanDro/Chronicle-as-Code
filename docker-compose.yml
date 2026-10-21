@@ -1,0 +1,40 @@
+services:
+  # Runs once: reads ./data, writes index.html + evidence/ into the shared volume, then exits.
+  generator:
+    build: .
+    image: chronicle-dashboard:local
+    command: ["--data", "/data", "--out", "/output"]
+    volumes:
+      - ./data:/data:ro
+      - dashboard:/output
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # Serves the generated site with Python's http.server. Bound to localhost only.
+  # Same image as the generator, so /output already has the right owner when the volume is created.
+  web:
+    image: chronicle-dashboard:local
+    pull_policy: never
+    depends_on:
+      generator:
+        condition: service_completed_successfully
+    entrypoint: ["python", "-m", "http.server", "8080", "--bind", "0.0.0.0", "--directory", "/output"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - dashboard:/output:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  dashboard:

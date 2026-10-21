@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/styles/vis-timeline-graph2d.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/standalone/umd/vis-timeline-graph2d.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    body { background: #020617; }
+    /* vis-timeline dark theme */
+    .vis-timeline { border: 0; background: transparent; font-family: inherit; }
+    .vis-time-axis .vis-text, .vis-labelset .vis-label { color: #94a3b8; }
+    .vis-panel.vis-bottom, .vis-panel.vis-center, .vis-panel.vis-top { border-color: #1e293b; }
+    .vis-item { border-radius: 6px; font-size: 12px; cursor: pointer; }
+    .vis-item.vis-selected { box-shadow: 0 0 0 2px #f8fafc; }
+    .vis-current-time { background: #f43f5e; }
+    /* Typography plugin adds backticks around inline code; we want the code text only. */
+    .prose code::before, .prose code::after { content: none; }
+  </style>
+</head>
+<body class="flex min-h-screen flex-col font-sans text-slate-200 lg:h-screen lg:overflow-hidden">
+
+  <header class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 px-6 py-3">
+    <div class="min-w-0">
+      <h1 class="truncate text-lg font-semibold text-slate-100">{{ title }}</h1>
+      {% if summary %}<p class="text-sm text-slate-400">{{ summary }}</p>{% endif %}
+    </div>
+    <ul class="flex flex-wrap gap-2 text-xs">
+      {% for phase in phases %}
+      <li class="flex items-center gap-1.5 rounded-full border border-slate-800 px-2.5 py-1 text-slate-300">
+        <span class="h-2.5 w-2.5 rounded-full" style="background: {{ phase.color }}"></span>{{ phase.name }}
+      </li>
+      {% endfor %}
+    </ul>
+  </header>
+
+  <section id="timeline" class="h-[38vh] min-h-[260px] border-b border-slate-800 px-2 py-2"></section>
+
+  <main class="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-5">
+    <article id="details" class="p-6 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-slate-800">
+      <p class="text-slate-500">Event in der Timeline oder im Graphen auswählen.</p>
+    </article>
+    <section class="relative h-[60vh] lg:col-span-3 lg:h-auto">
+      <div id="graph" class="absolute inset-0"></div>
+    </section>
+  </main>
+
+  <script id="payload" type="application/json">{{ payload | tojson }}</script>
+  <script>
+    const DATA = JSON.parse(document.getElementById('payload').textContent);
+    const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)$/i;
+    const eventsById = new Map(DATA.events.map(ev => [ev.id, ev]));
+    const detailsEl = document.getElementById('details');
+    let currentId = null;
+
+    // Small DOM helpers: text is always set via textContent, never via innerHTML.
+    function el(tag, className = '', content = null) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (typeof content === 'string') node.textContent = content;
+      else if (Array.isArray(content)) node.append(...content);
+      return node;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function formatTime(iso) {
+      return iso.replace('T', ' ').replace('+00:00', ' UTC');
+    }
+
+    function phaseBadge(ev) {
+      const badge = el('span', 'rounded-full px-2 py-0.5 font-semibold text-slate-900', ev.phase);
+      badge.style.background = ev.color;
+      return badge;
+    }
+
+    function renderEvidence(ev) {
+      const wrap = el('div', 'mt-6 space-y-4');
+      wrap.append(el('h3', 'text-xs font-semibold uppercase tracking-wide text-slate-400', `Evidence (${ev.evidence.length})`));
+
+      for (const item of ev.evidence) {
+        const card = el('figure', 'overflow-hidden rounded-lg border border-slate-800 bg-slate-900');
+        if (IMAGE_EXTENSIONS.test(item.file)) {
+          const img = el('img', 'w-full cursor-zoom-in bg-slate-950');
+          img.src = item.src;
+          img.alt = item.description || item.file;
+          img.loading = 'lazy';
+          img.addEventListener('click', () => window.open(item.src, '_blank', 'noopener'));
+          card.append(img);
+        }
+        const link = el('a', 'text-sky-400 hover:underline', item.file);
+        link.href = item.src;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        card.append(el('figcaption', 'space-y-1 p-3 text-xs text-slate-400', [
+          el('div', '', `${item.type} · ${item.description}`),
+          link,
+        ]));
+        wrap.append(card);
+      }
+      return wrap;
+    }
+
+    function renderDetails(ev) {
+      const header = el('div', 'space-y-2', [
+        el('div', 'flex flex-wrap items-center gap-2 text-xs', [
+          phaseBadge(ev),
+          el('span', 'rounded bg-slate-800 px-2 py-0.5 text-slate-300', ev.status),
+          el('span', 'font-mono text-slate-500', formatTime(ev.t0)),
+        ]),
+        el('h2', 'text-xl font-semibold text-slate-100', ev.action),
+        el('p', 'text-sm text-slate-400', ev.system ? `${ev.actor} · ${ev.system}` : ev.actor),
+      ]);
+      if (ev.triggered_by) {
+        header.append(el('p', 'text-xs text-orange-400', `ausgelöst durch: ${ev.triggered_by}`));
+      }
+
+      detailsEl.replaceChildren(header);
+
+      if (ev.details) {
+        const body = el('div', 'prose prose-invert mt-6 max-w-none prose-a:text-sky-400');
+        // Untrusted-looking content: marked output is sanitized before it touches the DOM.
+        body.innerHTML = DOMPurify.sanitize(marked.parse(ev.details, { gfm: true, breaks: true }));
+        body.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+        detailsEl.append(body);
+      }
+
+      if (ev.evidence.length) detailsEl.append(renderEvidence(ev));
+    }
+
+    function selectEvent(id) {
+      if (id === currentId || !eventsById.has(id)) return;
+      currentId = id;
+      renderDetails(eventsById.get(id));
+      timeline.setSelection(id);
+      network.selectNodes([`event:${id}`]);
+      history.replaceState(null, '', `#${encodeURIComponent(id)}`);
+    }
+
+    // Timeline (top)
+    const timelineItems = new vis.DataSet(DATA.events.map(ev => ({
+      id: ev.id,
+      content: escapeHtml(ev.action),
+      start: ev.t0,
+      title: `${ev.phase}: ${ev.action}`,
+      style: `background:${ev.color}; border-color:${ev.color}; color:#0f172a; font-weight:600;`,
+    })));
+
+    const timeline = new vis.Timeline(document.getElementById('timeline'), timelineItems, {
+      stack: true,
+      margin: { item: { horizontal: 10, vertical: 4 } },
+      zoomMin: 1000 * 60,
+      zoomMax: 1000 * 60 * 60 * 24 * 365 * 5,
+      height: '100%',
+      verticalScroll: true,
+    });
+    timeline.on('select', props => { if (props.items.length) selectEvent(props.items[0]); });
+
+    // Graph (bottom right)
+    const graphNodes = new vis.DataSet(DATA.nodes);
+    const network = new vis.Network(
+      document.getElementById('graph'),
+      { nodes: graphNodes, edges: new vis.DataSet(DATA.edges) },
+      {
+        physics: { solver: 'forceAtlas2Based', stabilization: { iterations: 150 } },
+        interaction: { hover: true },
+        nodes: { font: { color: '#e2e8f0', size: 13 }, borderWidth: 1, margin: 8 },
+        edges: {
+          color: { color: '#475569', highlight: '#e2e8f0' },
+          arrows: 'to',
+          font: { color: '#94a3b8', size: 10, strokeWidth: 0 },
+          smooth: { type: 'dynamic' },
+        },
+      },
+    );
+    network.on('click', params => {
+      if (!params.nodes.length) return;
+      const node = graphNodes.get(params.nodes[0]);
+      if (node.event_id) selectEvent(node.event_id);
+    });
+
+    // Deep link: index.html#evt-003 opens that event directly.
+    const initial = decodeURIComponent(location.hash.slice(1));
+    if (eventsById.has(initial)) selectEvent(initial);
+  </script>
+</body>
+</html>

