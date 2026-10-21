@@ -29,6 +29,24 @@ python -m chronicle --data ./data --out ./output
 python -m http.server 8080 --directory ./output
 ```
 
+## API (Phase 1, nur lesend)
+
+Incidents werden in SQLite gespeichert. Die YAML ist dafür Importformat.
+
+```bash
+python -m chronicle.importer --db ./chronicle.db --data ./data   # Incident importieren
+python -m chronicle.serve --db ./chronicle.db --port 8000       # API starten
+```
+
+| Methode | Pfad | Inhalt |
+|---|---|---|
+| GET | `/api/v1/health` | Status und Version |
+| GET | `/api/v1/incidents` | alle Incidents |
+| GET | `/api/v1/incidents/{id}` | ein Incident |
+| GET | `/api/v1/incidents/{id}/events` | Events in zeitlicher Reihenfolge mit Evidence |
+
+Die API hat noch keine Anmeldung und keine Schreibzugriffe. Beides folgt in Phase 2 (ADR 0001). Den Server deshalb nur lokal betreiben.
+
 ## Aufbau
 
 ```
