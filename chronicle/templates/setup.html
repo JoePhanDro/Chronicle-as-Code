@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Erster Start · Chronicle</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="min-h-screen bg-slate-950 font-sans text-slate-200 antialiased">
+  <main class="grid min-h-screen place-items-center px-4">
+    <div class="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl shadow-sky-500/10 backdrop-blur">
+      <div class="mb-6 flex items-center gap-3">
+        <div class="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-violet-500">
+          <svg viewBox="0 0 24 24" class="h-5 w-5 text-slate-950" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+        </div>
+        <div>
+          <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300/80">Chronicle</div>
+          <h1 class="text-lg font-semibold text-slate-100">Erster Start</h1>
+        </div>
+      </div>
+
+      <p class="mb-5 text-sm text-slate-400">Es gibt noch kein Konto. Den Einmal-Code findest du im Log des Servers (<code class="font-mono text-xs">docker compose logs api</code>).</p>
+
+      {% if error %}
+      <p role="alert" class="mb-4 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{{ error }}</p>
+      {% endif %}
+
+      <form method="post" action="/setup" class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="block">
+          <span class="mb-1 block text-xs font-medium text-slate-400">Einmal-Code aus dem Log</span>
+          <input name="setup_code" autocomplete="off" required autofocus
+                 class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 font-mono text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-xs font-medium text-slate-400">Benutzername des Admins</span>
+          <input name="username" autocomplete="username" required minlength="3" maxlength="64"
+                 class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-xs font-medium text-slate-400">Passwort (mindestens {{ min_length }} Zeichen)</span>
+          <input name="password" type="password" autocomplete="new-password" required minlength="{{ min_length }}"
+                 class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+        </label>
+        <button type="submit"
+                class="w-full rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:brightness-110">
+          Admin anlegen
+        </button>
+      </form>
+    </div>
+  </main>
+</body>
+</html>

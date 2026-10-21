@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import sys
+from contextlib import asynccontextmanager
 from collections.abc import Iterator
 from contextlib import closing
 from pathlib import Path
@@ -16,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import __version__, accounts, administration, repository, security
 from .admin_pages import make_admin_pages
-from .auth import PasswordChangeRequired, client_ip, make_auth, parse_trusted_proxies
+from .auth import PasswordChangeRequired, SetupState, client_ip, make_auth, parse_trusted_proxies
 from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
 from .models import Topic
@@ -53,7 +55,14 @@ class UserUpdate(BaseModel):
 def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastAPI:
     """`trusted_proxies` defaults to CHRONICLE_TRUSTED_PROXIES, see README."""
     path = Path(db_path)
-    app = FastAPI(title="Chronicle", version=__version__)
+    setup_state = SetupState()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        _announce_setup(path, setup_state)  # at server start, not at import
+        yield
+
+    app = FastAPI(title="Chronicle", version=__version__, lifespan=lifespan)
     app.state.trusted_proxies = parse_trusted_proxies(
         os.environ.get("CHRONICLE_TRUSTED_PROXIES") if trusted_proxies is None else trusted_proxies
     )
@@ -66,7 +75,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
             conn.close()
 
     cookie_secure = os.environ.get("CHRONICLE_COOKIE_SECURE", "1") != "0"
-    auth = make_auth(get_conn, cookie_secure=cookie_secure)
+    auth = make_auth(get_conn, cookie_secure=cookie_secure, setup=setup_state)
     current_user = auth.current_user
     admin_only = auth.require_role("admin")
 
@@ -306,6 +315,21 @@ def _bootstrap_admin(path: Path) -> None:
         if accounts.count_users(conn) == 0:
             accounts.create_user(conn, username, security.hash_password(password), "admin", must_change=True)
             accounts.audit(conn, "bootstrap_admin", target=username)
+
+
+def _announce_setup(path: Path, setup: SetupState) -> None:
+    """Without any account, print a one-time code for /setup to the server log. Only someone with access to the log can use it."""
+    with closing(connect(path)) as conn:
+        if accounts.count_users(conn) > 0:
+            setup.token = None
+            return
+    setup.token = security.new_token()
+    print(
+        "Chronicle: Es gibt noch kein Konto. Den ersten Admin legst du unter /setup an.\n"
+        f"Einmal-Code für /setup: {setup.token}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 # Module-level app for `uvicorn chronicle.api:app`. The database path comes from the environment.

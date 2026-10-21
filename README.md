@@ -29,7 +29,7 @@ Voraussetzung: Docker mit Compose.
 ```bash
 cp .env.example .env
 # In .env CHRONICLE_ADMIN_USER und CHRONICLE_ADMIN_PASSWORD setzen (Passwort mind. 12 Zeichen).
-# Ohne diese Werte legt der Server keinen Admin an, siehe unten.
+# Ohne diese Werte zeigt der Server beim Start einen Einmal-Code im Log, siehe unten.
 
 docker compose --profile import run --rm importer   # Topic-Datei aus ./data importieren
 docker compose up -d api                            # Server starten
@@ -39,7 +39,15 @@ Dann http://localhost:8000/login öffnen. Der Port ist nur auf `127.0.0.1` gebun
 
 Der Import läuft bewusst nicht bei jedem `up`. Er ist idempotent, kann also beliebig oft laufen.
 
-**Admin ohne `.env` anlegen:**
+**Erster Start ohne `.env`:** Solange kein Konto existiert, schreibt der Server beim Start einen Einmal-Code ins Log:
+
+```bash
+docker compose logs api | grep "Einmal-Code"
+```
+
+Dann `http://localhost:8000/setup` öffnen, den Code, einen Benutzernamen und ein Passwort (mindestens 12 Zeichen) eintragen. Der Benutzer wird Admin und ist sofort angemeldet. Danach ist `/setup` geschlossen. Wer den Code nicht aus dem Log lesen kann, kann den Admin nicht über die Oberfläche anlegen. Der Weg über die Kommandozeile bleibt möglich.
+
+**Admin über die Kommandozeile anlegen:**
 
 ```bash
 docker compose run --rm --entrypoint python api \
