@@ -29,23 +29,51 @@ python -m chronicle --data ./data --out ./output
 python -m http.server 8080 --directory ./output
 ```
 
-## API (Phase 1, nur lesend)
+## Server, Anmeldung und Konten (Phase 2)
 
-Incidents werden in SQLite gespeichert. Die YAML ist dafür Importformat.
+Incidents liegen in SQLite. Die YAML ist Importformat. Alle Daten-Endpunkte verlangen eine Anmeldung.
 
 ```bash
-python -m chronicle.importer --db ./chronicle.db --data ./data   # Incident importieren
-python -m chronicle.serve --db ./chronicle.db --port 8000       # API starten
+# Ersten Admin anlegen (Passwort wird verdeckt abgefragt)
+python -m chronicle.admin_cli --db ./chronicle.db create --username admin --role admin
+
+# Incident importieren und Server starten
+python -m chronicle.importer --db ./chronicle.db --data ./data
+python -m chronicle.serve --db ./chronicle.db --port 8000
 ```
 
-| Methode | Pfad | Inhalt |
-|---|---|---|
-| GET | `/api/v1/health` | Status und Version |
-| GET | `/api/v1/incidents` | alle Incidents |
-| GET | `/api/v1/incidents/{id}` | ein Incident |
-| GET | `/api/v1/incidents/{id}/events` | Events in zeitlicher Reihenfolge mit Evidence |
+Alternativ legt der Server beim ersten Start einen Admin an, wenn noch kein Konto existiert:
+`CHRONICLE_ADMIN_USER` und `CHRONICLE_ADMIN_PASSWORD` setzen.
 
-Die API hat noch keine Anmeldung und keine Schreibzugriffe. Beides folgt in Phase 2 (ADR 0001). Den Server deshalb nur lokal betreiben.
+Login im Browser: http://localhost:8000/login
+
+| Methode | Pfad | Rolle | Inhalt |
+|---|---|---|---|
+| GET | `/api/v1/health` | öffentlich | Status und Version |
+| POST | `/api/v1/auth/login` | öffentlich | JSON `{username, password}`, setzt Sitzungscookie |
+| POST | `/api/v1/auth/logout` | angemeldet | beendet die Sitzung (Header `X-CSRF-Token`) |
+| GET | `/api/v1/auth/me` | angemeldet | eigenes Konto und CSRF-Token |
+| GET | `/api/v1/incidents` | angemeldet | alle Incidents |
+| GET | `/api/v1/incidents/{id}` | angemeldet | ein Incident |
+| GET | `/api/v1/incidents/{id}/events` | angemeldet | Events mit Evidence |
+| GET | `/api/v1/users` | admin | Konten |
+| POST | `/api/v1/users` | admin | Konto anlegen |
+| PATCH | `/api/v1/users/{id}` | admin | Rolle, Aktivierung oder Passwort ändern |
+| GET | `/api/v1/audit` | admin | Protokoll von Logins und Änderungen |
+
+Rollen: `admin` (alles), `analyst` (Lesen, später Bearbeiten), `viewer` (Lesen).
+
+Sicherheit im Überblick:
+
+- Passwörter mit Argon2id gehasht, Mindestlänge 12 Zeichen.
+- Sitzung über zufälliges Cookie (`HttpOnly`, `SameSite=Strict`, `Secure`), in der Datenbank nur als SHA-256-Hash. Laufzeit 8 Stunden.
+- Schreibende Anfragen brauchen das CSRF-Token im Header `X-CSRF-Token`.
+- Nach 5 Fehlversuchen innerhalb von 15 Minuten wird ein Benutzername oder eine IP-Adresse gesperrt.
+- Ändern von Rolle oder Passwort und Deaktivieren beenden die Sitzungen des Kontos.
+- Der letzte aktive Admin lässt sich nicht herabstufen oder deaktivieren.
+- Jeder Login, jeder Fehlversuch und jede Kontoänderung wird im Audit-Log festgehalten.
+
+`CHRONICLE_COOKIE_SECURE=0` schaltet das `Secure`-Flag für lokale Tests über HTTP ab. Im Betrieb nicht setzen.
 
 ## Aufbau
 

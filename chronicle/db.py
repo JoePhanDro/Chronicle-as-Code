@@ -36,6 +36,39 @@ CREATE TABLE IF NOT EXISTS evidence (
     description  TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id             INTEGER PRIMARY KEY,
+    username       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash  TEXT NOT NULL,
+    role           TEXT NOT NULL CHECK (role IN ('admin', 'analyst', 'viewer')),
+    active         INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash  TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    csrf_token  TEXT NOT NULL,
+    expires_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS login_failures (
+    key  TEXT NOT NULL,
+    ts   INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_failures_key ON login_failures (key, ts);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    pk      INTEGER PRIMARY KEY,
+    ts      INTEGER NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action  TEXT NOT NULL,
+    target  TEXT,
+    detail  TEXT,
+    ip      TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_incident ON events (incident_id, t0);
 CREATE INDEX IF NOT EXISTS idx_evidence_event ON evidence (event_pk);
 """
