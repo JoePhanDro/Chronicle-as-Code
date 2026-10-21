@@ -80,6 +80,7 @@ Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie 
 | `CHRONICLE_ADMIN_USER` | Erster Admin, nur wenn noch kein Konto existiert | leer (kein Bootstrap) |
 | `CHRONICLE_ADMIN_PASSWORD` | Passwort zu `CHRONICLE_ADMIN_USER` | leer |
 | `CHRONICLE_COOKIE_SECURE` | `0` schaltet das `Secure`-Flag am Sitzungscookie ab (nur lokal über HTTP) | `1` |
+| `CHRONICLE_TRUSTED_PROXIES` | Adressen oder Netze von Reverse Proxies, z. B. `172.18.0.2, 10.0.0.0/8`. Nur von dort wird `X-Forwarded-For` gelesen | leer |
 
 Die Werte im Compose-Stack kommen aus `.env` (Vorlage: `.env.example`). `.env` wird nicht versioniert.
 
@@ -212,7 +213,7 @@ Die Antworten sind JSON. Eine interaktive Beschreibung der API gibt es noch nich
 
 - Passwörter mit Argon2id gehasht, Mindestlänge 12 Zeichen.
 - Sitzung über ein zufälliges Cookie (`HttpOnly`, `SameSite=Strict`, `Secure`). In der Datenbank liegt nur der SHA-256-Hash. Laufzeit 8 Stunden.
-- Nach 5 Fehlversuchen innerhalb von 15 Minuten sind Benutzername und IP-Adresse gesperrt. Hinter einem Reverse Proxy ist die IP-Sperre so noch nicht richtig ([Issue #27](https://github.com/JoePhanDro/Chronicle-as-Code/issues/27)).
+- Nach 5 Fehlversuchen innerhalb von 15 Minuten sperrt die Anmeldung Konto und IP-Adresse gemeinsam. Nach 20 Fehlversuchen sperrt sie die IP-Adresse für alle Konten. Ein Konto allein wird nie gesperrt. Hinter einem Reverse Proxy setzt man `CHRONICLE_TRUSTED_PROXIES`, damit die echte Adresse zählt ([Issue #27](https://github.com/JoePhanDro/Chronicle-as-Code/issues/27)).
 - Ändern von Rolle oder Passwort und Deaktivieren beenden die Sitzungen des Kontos.
 - Der letzte aktive Admin lässt sich nicht herabstufen oder deaktivieren.
 - Jeder Login, jeder Fehlversuch und jede Änderung an Konten oder Events landet im Audit-Log, ohne Inhalte.

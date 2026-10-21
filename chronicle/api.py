@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 from . import __version__, accounts, repository, security
-from .auth import client_ip, make_auth
+from .auth import client_ip, make_auth, parse_trusted_proxies
 from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
 from .pages import make_pages
@@ -41,9 +41,13 @@ class UserUpdate(BaseModel):
     password: str | None = None
 
 
-def create_app(db_path: str | Path) -> FastAPI:
+def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastAPI:
+    """`trusted_proxies` defaults to CHRONICLE_TRUSTED_PROXIES, see README."""
     path = Path(db_path)
     app = FastAPI(title="Chronicle", version=__version__)
+    app.state.trusted_proxies = parse_trusted_proxies(
+        os.environ.get("CHRONICLE_TRUSTED_PROXIES") if trusted_proxies is None else trusted_proxies
+    )
 
     def get_conn() -> Iterator[sqlite3.Connection]:
         conn = connect(path)
