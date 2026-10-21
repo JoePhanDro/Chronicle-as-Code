@@ -24,7 +24,7 @@ from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery
 from .models import Topic
 from .pages import make_pages
 from .report import make_report, report_headers
-from .event_input import EventUpdate, EventWrite, event_of, topic_list
+from .event_input import EventCreate, EventUpdate, event_of, new_event_key, topic_list
 
 DEFAULT_DB = "/data/chronicle.db"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -197,13 +197,14 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
 
     @app.post("/api/v1/events", status_code=201)
     def create_event(
-        body: EventWrite,
+        body: EventCreate,
         request: Request,
         conn: sqlite3.Connection = Depends(get_conn),
         user: dict = Depends(writer),
     ) -> dict:
+        event = body.model_copy(update={"key": body.key or new_event_key()})
         return _write(
-            lambda: repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request))
+            lambda: repository.create_event(conn, event_of(event), topic_list(event), user["id"], client_ip(request))
         )
 
     @app.put("/api/v1/events/{key}")
