@@ -20,7 +20,7 @@ from .auth import Auth, client_ip
 from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, Blob, check_file
 from .report import make_report, report_headers
 from .models import Phase, Status, Topic, TopicKind
-from .event_input import EVENT_TIMEZONES, EventWrite, event_of, t0_from_parts, t0_parts, topic_list
+from .event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 WRITER_ROLES = ("admin", "analyst")
@@ -155,7 +155,9 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         try:
-            body = EventWrite.model_validate(_payload_from_form(form))
+            payload = _payload_from_form(form)
+            payload["key"] = new_event_key()  # the UI never asks for a key
+            body = EventWrite.model_validate(payload)
             attachments = await _attachments_from_form(form)  # checked first, so a bad file writes nothing
             created = repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request))
             for blob in attachments:

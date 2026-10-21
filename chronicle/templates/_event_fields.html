@@ -11,11 +11,18 @@
       <span class="{{ label_class }}">Aktion</span>
       <input name="action" value="{{ f.action or '' }}" required placeholder="Was ist passiert?" class="{{ input_class }}">
     </label>
+    {% if mode == 'new' %}
+    <div class="block">
+      <span class="{{ label_class }}">Key</span>
+      <span class="block px-3 py-2 text-sm text-slate-500">Wird beim Speichern automatisch vergeben</span>
+    </div>
+    {% else %}
     <label class="block">
       <span class="{{ label_class }}">Key (eindeutig)</span>
       <input name="key" value="{{ f.key or '' }}" required {{ 'readonly' if mode == 'view' }} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,99}"
              class="{{ input_class }} font-mono {{ 'opacity-60' if mode == 'view' }}">
     </label>
+    {% endif %}
     <label class="block">
       <span class="{{ label_class }}">Phase</span>
       <select name="phase" required class="{{ input_class }}">
