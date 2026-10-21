@@ -12,6 +12,10 @@
       <a href="/" class="font-semibold text-slate-100">Chronicle</a>
       <a href="/events" class="text-slate-400 hover:text-white">Ereignisse</a>
       <a href="/topics" class="text-slate-400 hover:text-white">Topics</a>
+      {% if user.role == 'admin' %}
+      <a href="/admin/users" class="text-slate-400 hover:text-white">Benutzer</a>
+      <a href="/admin/audit" class="text-slate-400 hover:text-white">Audit</a>
+      {% endif %}
       {% if user.role == 'admin' %}<a href="/reports" class="text-slate-400 hover:text-white">Berichte</a>{% endif %}
     </nav>
     <div class="flex items-center gap-4 text-sm">

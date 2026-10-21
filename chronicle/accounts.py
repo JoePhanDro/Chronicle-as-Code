@@ -172,6 +172,13 @@ def record_login_failure(conn: sqlite3.Connection, username: str, ip: str) -> No
         )
 
 
+def clear_account_failures(conn: sqlite3.Connection, username: str) -> None:
+    """Lift the lock of one account for every client. Used by admins."""
+    prefix = f"pair:{username.lower()}|"
+    with conn:
+        conn.execute("DELETE FROM login_failures WHERE substr(key, 1, ?) = ?", (len(prefix), prefix))
+
+
 def clear_login_failures(conn: sqlite3.Connection, username: str, ip: str) -> None:
     # Only the pair of this account and this client; the IP counter stays.
     with conn:
@@ -195,14 +202,34 @@ def audit(
         )
 
 
-def list_audit(conn: sqlite3.Connection, limit: int = 200) -> list[dict]:
+def list_audit(
+    conn: sqlite3.Connection,
+    limit: int = 200,
+    action: str | None = None,
+    actor: str | None = None,
+    since: int | None = None,
+) -> list[dict]:
+    """Newest first. Filters are optional; `since` is a Unix timestamp in seconds."""
+    conditions: list[str] = []
+    params: list = []
+    if action:
+        conditions.append("audit_log.action = ?")
+        params.append(action)
+    if actor:
+        conditions.append("users.username = ? COLLATE NOCASE")
+        params.append(actor)
+    if since is not None:
+        conditions.append("audit_log.ts >= ?")
+        params.append(since)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     rows = conn.execute(
-        """
+        f"""
         SELECT audit_log.pk, audit_log.ts, audit_log.action, audit_log.target,
                audit_log.detail, audit_log.ip, users.username AS actor
         FROM audit_log LEFT JOIN users ON users.id = audit_log.user_id
+        {where}
         ORDER BY audit_log.pk DESC LIMIT ?
         """,
-        (limit,),
+        (*params, limit),
     ).fetchall()
     return [dict(row) for row in rows]

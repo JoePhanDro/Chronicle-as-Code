@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Audit{% endblock %}
+{% block content %}
+{% set input_class = "rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-sky-400/60" %}
+
+<h1 class="mb-6 text-xl font-semibold text-slate-100">Audit-Log</h1>
+
+<form method="get" action="/admin/audit" class="mb-6 flex flex-wrap items-end gap-3">
+  <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">Aktion</span>
+    <input name="action" value="{{ action }}" placeholder="z. B. login_failed" class="{{ input_class }} font-mono"></label>
+  <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">Benutzer</span>
+    <input name="actor" value="{{ actor }}" class="{{ input_class }}"></label>
+  <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">ab Datum</span>
+    <input name="day" value="{{ day }}" placeholder="JJJJ-MM-TT" class="{{ input_class }} font-mono"></label>
+  <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">Filtern</button>
+</form>
+
+{% if errors %}
+<p role="alert" class="mb-6 rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{{ errors }}</p>
+{% endif %}
+
+<div class="overflow-x-auto rounded-xl border border-white/10">
+  <table class="w-full text-left text-sm">
+    <thead class="bg-white/[.03] text-xs uppercase tracking-wide text-slate-500">
+      <tr>
+        <th class="px-4 py-2 font-medium">Zeit (UTC)</th>
+        <th class="px-4 py-2 font-medium">Benutzer</th>
+        <th class="px-4 py-2 font-medium">Aktion</th>
+        <th class="px-4 py-2 font-medium">Ziel</th>
+        <th class="px-4 py-2 font-medium">Detail</th>
+        <th class="px-4 py-2 font-medium">IP</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-white/5">
+      {% for entry in entries %}
+      <tr class="hover:bg-white/[.02]">
+        <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-slate-400">{{ entry.when }}</td>
+        <td class="px-4 py-2 text-slate-300">{{ entry.actor or '–' }}</td>
+        <td class="px-4 py-2 font-mono text-xs text-sky-200">{{ entry.action }}</td>
+        <td class="px-4 py-2 text-slate-300">{{ entry.target or '' }}</td>
+        <td class="px-4 py-2 text-xs text-slate-400">{{ entry.detail or '' }}</td>
+        <td class="px-4 py-2 font-mono text-xs text-slate-500">{{ entry.ip or '' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="px-4 py-6 text-center text-sm text-slate-500">Keine Einträge.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="mt-3 text-xs text-slate-500">Die neuesten {{ limit }} Einträge, die zum Filter passen.</p>
+{% endblock %}
