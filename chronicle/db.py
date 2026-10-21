@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash  TEXT NOT NULL,
     role           TEXT NOT NULL CHECK (role IN ('admin', 'analyst', 'viewer')),
     active         INTEGER NOT NULL DEFAULT 1,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
     created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
@@ -208,4 +209,5 @@ def connect(path: str | Path) -> sqlite3.Connection:
     _ensure_column(conn, "evidence", "size", "INTEGER")
     _ensure_column(conn, "evidence", "sha256", "TEXT")
     _ensure_column(conn, "evidence", "content", "BLOB")
+    _ensure_column(conn, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
     return conn

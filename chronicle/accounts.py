@@ -34,18 +34,32 @@ def validate_role(role: str) -> None:
 
 # Users
 
-def create_user(conn: sqlite3.Connection, username: str, password_hash: str, role: str) -> int:
+def create_user(conn: sqlite3.Connection, username: str, password_hash: str, role: str, must_change: bool = False) -> int:
+    """`must_change` marks a password that was set by someone else; the user must replace it at the next login."""
     validate_username(username)
     validate_role(role)
     with conn:
         cursor = conn.execute(
-            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-            (username, password_hash, role),
+            "INSERT INTO users (username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?)",
+            (username, password_hash, role, int(must_change)),
         )
     return cursor.lastrowid
 
 
-USER_COLUMNS = "id, username, role, active, created_at"
+def password_hash_of(conn: sqlite3.Connection, user_id: int) -> str | None:
+    row = conn.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
+    return row["password_hash"] if row else None
+
+
+def set_password(conn: sqlite3.Connection, user_id: int, password_hash: str, must_change: bool) -> None:
+    with conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ?, must_change_password = ? WHERE id = ?",
+            (password_hash, int(must_change), user_id),
+        )
+
+
+USER_COLUMNS = "id, username, role, active, must_change_password, created_at"
 
 
 def get_user(conn: sqlite3.Connection, user_id: int) -> dict | None:
@@ -55,7 +69,7 @@ def get_user(conn: sqlite3.Connection, user_id: int) -> dict | None:
 
 def get_user_by_name(conn: sqlite3.Connection, username: str) -> sqlite3.Row | None:
     return conn.execute(
-        "SELECT id, username, role, active, password_hash FROM users WHERE username = ?", (username,)
+        "SELECT id, username, role, active, must_change_password, password_hash FROM users WHERE username = ?", (username,)
     ).fetchone()
 
 
@@ -71,7 +85,7 @@ def count_active_admins(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) FROM users WHERE role = 'admin' AND active = 1").fetchone()[0]
 
 
-UPDATABLE_FIELDS = {"role", "active", "password_hash"}
+UPDATABLE_FIELDS = {"role", "active", "password_hash", "must_change_password"}
 
 
 def update_user(conn: sqlite3.Connection, user_id: int, **fields) -> None:
@@ -101,7 +115,7 @@ def create_session(conn: sqlite3.Connection, user_id: int) -> tuple[str, str]:
 def find_session(conn: sqlite3.Connection, token: str) -> dict | None:
     row = conn.execute(
         """
-        SELECT users.id, users.username, users.role, sessions.csrf_token
+        SELECT users.id, users.username, users.role, users.must_change_password, sessions.csrf_token
         FROM sessions JOIN users ON users.id = sessions.user_id
         WHERE sessions.token_hash = ? AND sessions.expires_at > ? AND users.active = 1
         """,
@@ -118,6 +132,12 @@ def delete_session(conn: sqlite3.Connection, token: str) -> None:
 def delete_sessions_of_user(conn: sqlite3.Connection, user_id: int) -> None:
     with conn:
         conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+
+def delete_other_sessions(conn: sqlite3.Connection, user_id: int, keep_token: str) -> None:
+    """End every session of the user except the one with `keep_token`."""
+    with conn:
+        conn.execute("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", (user_id, hash_token(keep_token)))
 
 
 # Login throttling. A lock affects only the source that caused it:

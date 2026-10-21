@@ -20,6 +20,8 @@ from . import accounts, security
 SESSION_COOKIE = "chronicle_session"
 LOGIN_CSRF_COOKIE = "chronicle_login_csrf"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+# While a password must be changed, only these paths are open to the user.
+PASSWORD_CHANGE_PATHS = {"/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/auth/password", "/logout", "/account/password"}
 LOGIN_CSRF_TTL_SECONDS = 15 * 60
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -32,12 +34,24 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class PasswordChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str
+    new_password: str
+
+
+class PasswordChangeRequired(Exception):
+    """Raised for pages while the user must change the password. The app redirects to the change form."""
+
+
 @dataclass
 class Auth:
     router: APIRouter
     current_user: Callable[..., dict]
     require_role: Callable[..., Callable[..., dict]]
     session_user: Callable[[Request, sqlite3.Connection], dict | None]
+    page_session: Callable[[Request, sqlite3.Connection], dict | None]
 
 
 def parse_trusted_proxies(value: str | None) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
@@ -83,10 +97,18 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
         token = request.cookies.get(SESSION_COOKIE)
         return accounts.find_session(conn, token) if token else None
 
+    def page_session(request: Request, conn: sqlite3.Connection) -> dict | None:
+        session = session_user(request, conn)
+        if session and session["must_change_password"] and request.url.path not in PASSWORD_CHANGE_PATHS:
+            raise PasswordChangeRequired()
+        return session
+
     def current_user(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> dict:
         session = session_user(request, conn)
         if session is None:
             raise HTTPException(status_code=401, detail="Nicht angemeldet")
+        if session["must_change_password"] and request.url.path not in PASSWORD_CHANGE_PATHS:
+            raise HTTPException(status_code=403, detail="Passwortwechsel erforderlich")
         if request.method not in SAFE_METHODS:
             sent = request.headers.get("X-CSRF-Token", "")
             if not secrets.compare_digest(sent, session["csrf_token"]):
@@ -119,7 +141,28 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
         accounts.clear_login_failures(conn, username, ip)
         token, _ = accounts.create_session(conn, row["id"])
         accounts.audit(conn, "login", user_id=row["id"], ip=ip)
-        return {"id": row["id"], "username": row["username"], "role": row["role"]}, token
+        return {
+            "id": row["id"],
+            "username": row["username"],
+            "role": row["role"],
+            "must_change_password": bool(row["must_change_password"]),
+        }, token
+
+    def change_password(conn: sqlite3.Connection, user: dict, token: str, current: str, new: str, ip: str) -> None:
+        stored = accounts.password_hash_of(conn, user["id"])
+        if stored is None or not security.verify_password(stored, current):
+            raise HTTPException(status_code=403, detail="Das aktuelle Passwort ist falsch")
+        if current == new:
+            raise HTTPException(status_code=422, detail="Das neue Passwort muss sich vom alten unterscheiden")
+        try:
+            new_hash = security.hash_password(new)
+        except security.PasswordPolicyError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        accounts.set_password(conn, user["id"], new_hash, must_change=False)
+        # Other devices lose their sessions; this one stays signed in.
+        accounts.delete_other_sessions(conn, user["id"], token)
+        accounts.audit(conn, "password_changed", user_id=user["id"], ip=ip)
 
     def set_session_cookie(response: Response, token: str) -> None:
         response.set_cookie(
@@ -175,9 +218,37 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
         response.delete_cookie(LOGIN_CSRF_COOKIE, path="/login")
         return response
 
+    @router.get("/account/password", response_class=HTMLResponse)
+    def password_page(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        session = session_user(request, conn)
+        if session is None:
+            return RedirectResponse("/login", status_code=303)
+        return TEMPLATES.TemplateResponse(request, "password.html", {"user": session, "error": None})
+
+    @router.post("/account/password", response_class=HTMLResponse)
+    def password_form(
+        request: Request,
+        current_password: str = Form(...),
+        new_password: str = Form(...),
+        csrf_token: str = Form(...),
+        conn: sqlite3.Connection = Depends(get_conn),
+    ) -> Response:
+        session = session_user(request, conn)
+        if session is None:
+            return RedirectResponse("/login", status_code=303)
+        if not secrets.compare_digest(csrf_token, session["csrf_token"]):
+            raise HTTPException(status_code=403, detail="Ungültiges Formular")
+        try:
+            change_password(conn, session, request.cookies[SESSION_COOKIE], current_password, new_password, client_ip(request))
+        except HTTPException as exc:
+            return TEMPLATES.TemplateResponse(
+                request, "password.html", {"user": session, "error": exc.detail}, status_code=exc.status_code
+            )
+        return RedirectResponse("/", status_code=303)
+
     @router.get("/", response_class=HTMLResponse)
     def home(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
-        session = session_user(request, conn)
+        session = page_session(request, conn)
         if session is None:
             return RedirectResponse("/login", status_code=303)
         return TEMPLATES.TemplateResponse(request, "home.html", {"user": session})
@@ -223,8 +294,24 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
         response.delete_cookie(SESSION_COOKIE, path="/")
         return response
 
+    @router.post("/api/v1/auth/password", status_code=204, response_class=Response)
+    def password_api(
+        body: PasswordChange,
+        request: Request,
+        conn: sqlite3.Connection = Depends(get_conn),
+        user: dict = Depends(current_user),
+    ) -> Response:
+        change_password(conn, user, request.cookies[SESSION_COOKIE], body.current_password, body.new_password, client_ip(request))
+        return Response(status_code=204)
+
     @router.get("/api/v1/auth/me")
     def me(user: dict = Depends(current_user)) -> dict:
         return {"id": user["id"], "username": user["username"], "role": user["role"], "csrf_token": user["csrf_token"]}
 
-    return Auth(router=router, current_user=current_user, require_role=require_role, session_user=session_user)
+    return Auth(
+        router=router,
+        current_user=current_user,
+        require_role=require_role,
+        session_user=session_user,
+        page_session=page_session,
+    )

@@ -15,6 +15,7 @@
     </nav>
     <div class="flex items-center gap-4 text-sm">
       <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
+      <a href="/account/password" class="text-slate-400 hover:text-white">Passwort</a>
       <form method="post" action="/logout">
         <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
         <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-slate-300 hover:border-sky-400/50 hover:text-white">Abmelden</button>
