@@ -2,6 +2,10 @@
 
 Chronicle organisiert Sicherheitswissen: **Events** (Ereignisse mit Zeitpunkt, Akteur, System und Belegen) gehören zu **Topics** (Incidents, Schwachstellen, Projekte, besondere Ereignisse). Daraus entstehen Timeline, Entitäten-Graph und Detailansicht.
 
+![Dashboard: Timeline oben, Entitäten-Graph unten, Phasen farblich markiert](docs/screenshots/dashboard.png)
+
+*Dashboard-Export für das Beispiel `data/`. Fiktive Demo-Daten.*
+
 > **Status:** Entwicklungsstand. Anmeldung, Rollen, Benutzerverwaltung über API und CLI, Event-Pflege in der Oberfläche und der API-Server laufen. Timeline und Graph in der Oberfläche (Phase 3) sind noch nicht umgesetzt. Offene Punkte stehen in den [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
 
 ## Inhalt
