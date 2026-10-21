@@ -11,6 +11,7 @@ from chronicle.importer import import_folder
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 PASSWORD = "correct horse battery"
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
 
 
 @pytest.fixture(autouse=True)
@@ -42,7 +43,6 @@ def writable(current, **changes):
     """The body a client sends back after GET: only the fields the write API accepts."""
     body = {name: current[name] for name in ("key", "t0", "phase", "actor", "system", "action",
                                               "status", "triggered_by", "details")}
-    body["evidence"] = [{"file": e["file"], "type": e["type"], "description": e["description"]} for e in current["evidence"]]
     body.update({"topic": current["home_topic"], "topics": current["topics"], "version": current["version"]})
     body.update(changes)
     return body
@@ -187,7 +187,7 @@ def test_html_create_edit_delete_flow(db_path):
     form = {
         "csrf_token": form_csrf(client), "key": "form-1", "t0": "2026-10-15T09:00:00+02:00",
         "phase": "Analysis", "actor": "Analyst", "system": "", "action": "Über Formular",
-        "status": "open", "triggered_by": "", "details": "**fett**", "evidence": "evidence/x.png | screenshot | Probe",
+        "status": "open", "triggered_by": "", "details": "**fett**",
         "topic": "inc-2026-042", "topics": ["inc-2026-042"],
     }
     created = client.post("/events/new", data=form, follow_redirects=False)
@@ -195,7 +195,15 @@ def test_html_create_edit_delete_flow(db_path):
     assert created.headers["location"] == "/events/form-1"
     detail = client.get("/events/form-1").text
     assert "Über Formular" in detail
-    assert "evidence/x.png" in detail
+
+    upload = client.post(
+        "/events/form-1/evidence",
+        data={"csrf_token": form_csrf(client), "type": "screenshot", "description": "Probe"},
+        files={"file": ("probe.png", PNG, "image/png")},
+        follow_redirects=False,
+    )
+    assert upload.status_code == 303
+    assert "probe.png" in client.get("/events/form-1").text
 
     version = client.get("/api/v1/events/form-1").json()["version"]
     edit = {**form, "action": "Geändert im Formular", "version": str(version)}

@@ -2,6 +2,7 @@
 {% block title %}{{ 'Neues Event' if mode == 'new' else event.action }}{% endblock %}
 {% block content %}
 {% set editing = can_write and mode == 'view' %}
+{% set input_class = "w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20" %}
 
 {% if errors %}
 <p role="alert" class="mb-6 rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{{ errors }}</p>
@@ -41,16 +42,62 @@
   </section>
   {% endif %}
 
-  {% if event.evidence %}
   <section class="mb-8">
-    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence</h2>
-    <ul class="space-y-1 text-sm text-slate-300">
+    <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence</h2>
+    {% if event.evidence %}
+    <ul class="grid gap-4 sm:grid-cols-2">
       {% for item in event.evidence %}
-      <li><span class="font-mono text-xs text-slate-500">{{ item.type }}</span> {{ item.file }}{% if item.description %} – {{ item.description }}{% endif %}</li>
+      <li class="flex flex-col rounded-xl border border-white/10 bg-white/[.02] p-3">
+        {% if item.mime %}
+          {% if item.mime.startswith('image/') %}
+          <a href="/api/v1/evidence/{{ item.id }}" target="_blank" rel="noopener" class="mb-2 block">
+            <img src="/api/v1/evidence/{{ item.id }}" alt="{{ item.description or item.file }}" loading="lazy"
+                 class="max-h-56 w-full rounded-lg bg-slate-950 object-contain">
+          </a>
+          {% endif %}
+          <a href="/api/v1/evidence/{{ item.id }}" target="_blank" rel="noopener" class="break-all text-sm text-sky-300 hover:underline">{{ item.file }}</a>
+        {% else %}
+          <span class="break-all text-sm text-slate-300">{{ item.file }}</span>
+          <span class="mt-1 text-xs text-amber-300">Inhalt fehlt. Bitte den Import erneut ausführen.</span>
+        {% endif %}
+        <div class="mt-1 text-xs text-slate-500"><span class="font-mono">{{ item.type }}</span>{% if item.description %} · {{ item.description }}{% endif %}</div>
+        {% if can_write %}
+        <form method="post" action="/events/{{ event.key }}/evidence/{{ item.id }}/delete" class="mt-auto pt-3"
+              onsubmit="return confirm('Evidence wirklich löschen?');">
+          <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+          <button type="submit" class="text-xs text-rose-300 hover:underline">Entfernen</button>
+        </form>
+        {% endif %}
+      </li>
       {% endfor %}
     </ul>
+    {% else %}
+    <p class="text-sm text-slate-500">Noch keine Evidence.</p>
+    {% endif %}
+
+    {% if can_write %}
+    <form method="post" action="/events/{{ event.key }}/evidence" enctype="multipart/form-data"
+          class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_auto] sm:items-end">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <label class="block">
+        <span class="mb-1 block text-xs font-medium text-slate-400">Datei (PNG, JPEG, GIF, WebP, PDF, TXT/LOG, max. 10 MiB)</span>
+        <input type="file" name="file" required accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.log"
+               class="block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200">
+      </label>
+      <label class="block">
+        <span class="mb-1 block text-xs font-medium text-slate-400">Typ</span>
+        <select name="type" class="{{ input_class }}">
+          {% for evidence_type in evidence_types %}<option value="{{ evidence_type }}">{{ evidence_type }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="block">
+        <span class="mb-1 block text-xs font-medium text-slate-400">Beschreibung (optional)</span>
+        <input name="description" maxlength="500" class="{{ input_class }}">
+      </label>
+      <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Hochladen</button>
+    </form>
+    {% endif %}
   </section>
-  {% endif %}
 
   <section class="mb-8 text-sm text-slate-400">
     <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Topics</h2>
@@ -60,12 +107,10 @@
   {% if editing %}
   <section>
     <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Bearbeiten</h2>
-    {% set ns = namespace(text='') %}
-    {% for item in event.evidence %}{% set ns.text = ns.text ~ item.file ~ ' | ' ~ item.type ~ ' | ' ~ item.description ~ '\n' %}{% endfor %}
     {% set f = {
       'key': event.key, 't0': event.t0, 'phase': event.phase, 'actor': event.actor, 'system': event.system or '',
       'action': event.action, 'status': event.status, 'triggered_by': event.triggered_by or '', 'details': event.details,
-      'evidence': ns.text, 'topics': event.topics, 'topic': event.home_topic, 'version': event.version
+      'topics': event.topics, 'topic': event.home_topic, 'version': event.version
     } %}
     <form method="post" action="/events/{{ event.key }}/edit" class="space-y-6">
       <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">

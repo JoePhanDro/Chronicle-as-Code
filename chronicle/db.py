@@ -44,12 +44,18 @@ CREATE TABLE IF NOT EXISTS topic_events (
     PRIMARY KEY (topic_pk, event_pk)
 );
 
+-- Evidence is stored in the database (ADR 0004). content is NULL for rows written before that change;
+-- a new import fills it in.
 CREATE TABLE IF NOT EXISTS evidence (
     pk           INTEGER PRIMARY KEY,
     event_pk     INTEGER NOT NULL REFERENCES events(pk) ON DELETE CASCADE,
     file         TEXT NOT NULL,
     type         TEXT NOT NULL,
-    description  TEXT NOT NULL DEFAULT ''
+    description  TEXT NOT NULL DEFAULT '',
+    mime         TEXT,
+    size         INTEGER,
+    sha256       TEXT,
+    content      BLOB
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_t0 ON events (t0);
@@ -198,4 +204,8 @@ def connect(path: str | Path) -> sqlite3.Connection:
     _create_schema(conn)
     _ensure_column(conn, "events", "source", "TEXT NOT NULL DEFAULT 'import'")
     _ensure_column(conn, "events", "version", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(conn, "evidence", "mime", "TEXT")
+    _ensure_column(conn, "evidence", "size", "INTEGER")
+    _ensure_column(conn, "evidence", "sha256", "TEXT")
+    _ensure_column(conn, "evidence", "content", "BLOB")
     return conn

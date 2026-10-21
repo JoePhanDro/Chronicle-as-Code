@@ -6,7 +6,7 @@ import os
 import shutil
 from pathlib import Path
 
-from .loader import TimelineError, collect_evidence, find_timeline, load_timeline
+from .loader import TimelineError, find_timeline, load_evidence, load_timeline
 from .renderer import render_dashboard
 
 STYLESHEET = Path(__file__).parent / "static" / "app.css"
@@ -15,7 +15,7 @@ STYLESHEET = Path(__file__).parent / "static" / "app.css"
 def build_site(data_dir: Path, out_dir: Path) -> Path:
     timeline_path = find_timeline(data_dir)
     timeline = load_timeline(timeline_path)
-    evidence = collect_evidence(timeline, timeline_path.parent)
+    evidence = load_evidence(timeline, timeline_path.parent)
 
     if not STYLESHEET.is_file():
         raise TimelineError("app.css fehlt. Bitte vorher `npm ci && npm run build:css` ausführen.")
@@ -24,10 +24,10 @@ def build_site(data_dir: Path, out_dir: Path) -> Path:
     shutil.copy2(STYLESHEET, out_dir / "app.css")
 
     # Evidence keeps its relative layout, so the browser can use the same path as in the YAML.
-    for relative, source in evidence.items():
+    for relative, blob in evidence.items():
         target = out_dir / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        target.write_bytes(blob.content)
 
     # Write to a temp file and swap it in, so a browser never reads a half-written page.
     index = out_dir / "index.html"

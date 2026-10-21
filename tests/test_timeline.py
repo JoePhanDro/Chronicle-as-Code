@@ -116,6 +116,25 @@ def test_multiple_timeline_files_are_rejected(tmp_path):
 def test_build_site_writes_index_and_evidence(tmp_path):
     data = tmp_path / "data"
     (data / "evidence").mkdir(parents=True)
+    (data / "evidence" / "shot.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
+    (data / "timeline.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "topic": TOPIC,
+                "events": [minimal_event(evidence=[{"file": "evidence/shot.png", "type": "screenshot"}])],
+            }
+        )
+    )
+
+    index = build_site(data, tmp_path / "out")
+
+    assert "Test" in index.read_text(encoding="utf-8")
+    assert (tmp_path / "out" / "evidence" / "shot.png").is_file()
+
+
+def test_build_site_rejects_svg_evidence(tmp_path):
+    data = tmp_path / "data"
+    (data / "evidence").mkdir(parents=True)
     (data / "evidence" / "shot.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
     (data / "timeline.yaml").write_text(
         yaml.safe_dump(
@@ -126,10 +145,8 @@ def test_build_site_writes_index_and_evidence(tmp_path):
         )
     )
 
-    index = build_site(data, tmp_path / "out")
-
-    assert "Test" in index.read_text(encoding="utf-8")
-    assert (tmp_path / "out" / "evidence" / "shot.svg").is_file()
+    with pytest.raises(TimelineError, match="shot.svg"):
+        build_site(data, tmp_path / "out")
 
 
 def test_rendered_html_embeds_payload_safely():

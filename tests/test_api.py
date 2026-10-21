@@ -71,8 +71,8 @@ def test_import_sample_timeline_is_readable_via_api(db_path, client):
     analysis = client.get("/api/v1/events/analysis").json()
     assert analysis["triggered_by"] == "exploit"
     assert analysis["topics"] == ["inc-2026-042"]
-    assert analysis["evidence"] == [
-        {"file": "evidence/waf-block.svg", "type": "screenshot", "description": "WAF blockiert nachträglichen Zugriff auf die Webshell"}
+    assert [(item["file"], item["type"], item["mime"]) for item in analysis["evidence"]] == [
+        ("evidence/waf-block.png", "screenshot", "image/png")
     ]
 
 

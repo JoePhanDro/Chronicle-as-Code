@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from .models import Event
 
@@ -12,6 +12,14 @@ class EventWrite(Event):
 
     topic: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
     topics: list[str] = Field(default_factory=list)
+
+    @field_validator("evidence")
+    @classmethod
+    def _no_inline_evidence(cls, value: list) -> list:
+        # Files are uploaded separately, so that their content is checked and stored (ADR 0004).
+        if value:
+            raise ValueError("Evidence wird nicht im Event-Body gesendet, sondern als Datei hochgeladen")
+        return value
 
 
 class EventUpdate(EventWrite):

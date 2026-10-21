@@ -8,30 +8,19 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
+from starlette.datastructures import UploadFile  # form uploads are Starlette objects
 
 from . import repository
 from .auth import Auth, client_ip
+from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, check_file
 from .models import Phase, Status
 from .event_input import EventWrite, event_of, topic_list
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 WRITER_ROLES = ("admin", "analyst")
-
-
-def _evidence_from_text(text: str) -> list[dict]:
-    """One evidence item per line: `datei | typ | beschreibung`."""
-    items = []
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        parts = [part.strip() for part in line.split("|")]
-        if len(parts) < 2:
-            raise ValueError(f"Evidence-Zeile braucht mindestens Datei und Typ: {line!r}")
-        items.append({"file": parts[0], "type": parts[1], "description": parts[2] if len(parts) > 2 else ""})
-    return items
 
 
 def _payload_from_form(form, topic_home: str | None = None) -> dict:
@@ -46,7 +35,6 @@ def _payload_from_form(form, topic_home: str | None = None) -> dict:
         "status": form.get("status") or "",
         "triggered_by": (form.get("triggered_by") or "").strip() or None,
         "details": form.get("details") or "",
-        "evidence": _evidence_from_text(form.get("evidence") or ""),
         "topic": topic_home or form.get("topic") or "",
         "topics": topics,
     }
@@ -89,7 +77,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
 
     def form_context(conn: sqlite3.Connection, **extra) -> dict:
         return {"phases": [phase.value for phase in Phase], "statuses": [status.value for status in Status],
-                "topic_choices": topic_choices(conn), **extra}
+                "evidence_types": list(EVIDENCE_TYPES), "topic_choices": topic_choices(conn), **extra}
 
     @router.get("/events", response_class=HTMLResponse)
     def events_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
@@ -171,5 +159,44 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
                           event=repository.get_event(conn, key), errors=_error_text(exc),
                           **form_context(conn, form=None))
         return RedirectResponse("/events", status_code=303)
+
+    @router.post("/events/{key}/evidence", response_class=HTMLResponse)
+    async def add_evidence_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        current = repository.get_event(conn, key)
+        if current is None:
+            return render(request, "not_found.html", user, status_code=404)
+        upload = form.get("file")
+        try:
+            if not isinstance(upload, UploadFile):
+                raise ValueError("Bitte eine Datei auswählen")
+            data = await upload.read(MAX_EVIDENCE_BYTES + 1)  # one byte over the limit is enough to reject
+            repository.add_evidence(conn, key, check_file(upload.filename or "", data), form.get("type") or "",
+                                    (form.get("description") or "").strip(), user["id"], client_ip(request))
+        except (ValueError, repository.RepositoryError) as exc:
+            status = 404 if isinstance(exc, repository.NotFound) else 422
+            return render(request, "event.html", user, status_code=status, mode="view",
+                          event=repository.get_event(conn, key), errors=_error_text(exc),
+                          **form_context(conn, form=None))
+        return RedirectResponse(f"/events/{key}", status_code=303)
+
+    @router.post("/events/{key}/evidence/{evidence_id}/delete", response_class=HTMLResponse)
+    async def delete_evidence_page(key: str, evidence_id: int, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request))
+        except repository.RepositoryError as exc:
+            return render(request, "event.html", user, status_code=404, mode="view",
+                          event=repository.get_event(conn, key), errors=_error_text(exc),
+                          **form_context(conn, form=None))
+        return RedirectResponse(f"/events/{key}", status_code=303)
 
     return router

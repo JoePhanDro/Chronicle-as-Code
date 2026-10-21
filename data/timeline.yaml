@@ -29,7 +29,7 @@ events:
     details: |
       Mehrere `POST`-Requests mit verdächtigem Content-Type innerhalb von 4 Minuten.
     evidence:
-      - file: evidence/siem-alert.svg
+      - file: evidence/siem-alert.png
         type: screenshot
         description: "SIEM-Korrelationsregel hat ausgelöst"
 
@@ -60,7 +60,7 @@ events:
       eval($_REQUEST['x']);
       ```
     evidence:
-      - file: evidence/waf-block.svg
+      - file: evidence/waf-block.png
         type: screenshot
         description: "WAF blockiert nachträglichen Zugriff auf die Webshell"
 
