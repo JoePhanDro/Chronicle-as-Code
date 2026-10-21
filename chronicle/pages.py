@@ -95,7 +95,14 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
     def events_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
         if user is None:
             return RedirectResponse("/login", status_code=303)
-        return render(request, "events.html", user, events=repository.list_events(conn))
+        topic_key = (request.query_params.get("topic") or "").strip() or None
+        topic = None
+        if topic_key is not None:
+            topic = repository.get_topic(conn, topic_key)
+            if topic is None:
+                return render(request, "not_found.html", user, status_code=404)
+        return render(request, "events.html", user, events=repository.list_events(conn, topic_key),
+                      topic=topic, topics=repository.list_topics(conn))
 
     @router.get("/events/new", response_class=HTMLResponse)
     def new_event_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

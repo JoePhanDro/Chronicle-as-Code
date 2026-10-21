@@ -168,7 +168,7 @@ Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ers
 | `/login` | alle | Anmeldung mit Benutzername und Passwort |
 | `/account/password` | angemeldet | eigenes Passwort ändern. Wer ein Passwort ändern muss, landet hier |
 | `/` | angemeldet | Startseite |
-| `/events` | angemeldet | alle Events, zeitlich sortiert |
+| `/events` | angemeldet | alle Events, zeitlich sortiert. Mit `?topic=<key>` nur die Events eines Topics (Heimat und verknüpft) |
 | `/topics` | angemeldet | alle Topics mit Anzahl der Events |
 | `/topics/new` | analyst, admin | Topic anlegen (Key, Titel, Art, Zusammenfassung) |
 | `/topics/{key}` | angemeldet | Topic und seine Events; bearbeiten, löschen, Events verknüpfen und lösen für analyst und admin |
@@ -192,7 +192,7 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | GET | `/topics` | angemeldet | alle Topics mit Anzahl der Events |
 | GET | `/topics/{key}` | angemeldet | ein Topic |
 | GET | `/topics/{key}/events` | angemeldet | Events eines Topics, zeitlich sortiert |
-| GET | `/events` | angemeldet | alle Events |
+| GET | `/events` | angemeldet | alle Events, optional `?topic=<key>` |
 | GET | `/events/{key}` | angemeldet | ein Event mit Evidence-Metadaten und Topics |
 | POST | `/topics` | analyst, admin | Topic anlegen (`key`, `title`, `kind`, `summary`) |
 | PUT | `/topics/{key}` | analyst, admin | Titel, Art oder Zusammenfassung ändern. Der Key bleibt |
