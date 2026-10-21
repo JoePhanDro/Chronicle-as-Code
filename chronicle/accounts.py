@@ -1,0 +1,177 @@
+"""Users, sessions, login throttling and audit log. All queries are parameterized."""
+
+from __future__ import annotations
+
+import re
+import sqlite3
+import time
+
+from .security import hash_token, new_token
+
+ROLES = ("admin", "analyst", "viewer")
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]{3,64}$")
+SESSION_TTL_SECONDS = 8 * 60 * 60
+MAX_FAILED_LOGINS = 5
+FAILURE_WINDOW_SECONDS = 15 * 60
+
+
+def now() -> int:
+    return int(time.time())
+
+
+def validate_username(username: str) -> None:
+    if not USERNAME_PATTERN.match(username):
+        raise ValueError("Benutzername: 3 bis 64 Zeichen, nur Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich")
+
+
+def validate_role(role: str) -> None:
+    if role not in ROLES:
+        raise ValueError(f"Rolle muss eine von {', '.join(ROLES)} sein")
+
+
+# Users
+
+def create_user(conn: sqlite3.Connection, username: str, password_hash: str, role: str) -> int:
+    validate_username(username)
+    validate_role(role)
+    with conn:
+        cursor = conn.execute(
+            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+            (username, password_hash, role),
+        )
+    return cursor.lastrowid
+
+
+USER_COLUMNS = "id, username, role, active, created_at"
+
+
+def get_user(conn: sqlite3.Connection, user_id: int) -> dict | None:
+    row = conn.execute(f"SELECT {USER_COLUMNS} FROM users WHERE id = ?", (user_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_user_by_name(conn: sqlite3.Connection, username: str) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT id, username, role, active, password_hash FROM users WHERE username = ?", (username,)
+    ).fetchone()
+
+
+def list_users(conn: sqlite3.Connection) -> list[dict]:
+    return [dict(row) for row in conn.execute(f"SELECT {USER_COLUMNS} FROM users ORDER BY id").fetchall()]
+
+
+def count_users(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+
+def count_active_admins(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COUNT(*) FROM users WHERE role = 'admin' AND active = 1").fetchone()[0]
+
+
+UPDATABLE_FIELDS = {"role", "active", "password_hash"}
+
+
+def update_user(conn: sqlite3.Connection, user_id: int, **fields) -> None:
+    if not set(fields) <= UPDATABLE_FIELDS:
+        raise ValueError(f"Nicht änderbare Felder: {set(fields) - UPDATABLE_FIELDS}")
+    if not fields:
+        return
+    assignments = ", ".join(f"{name} = ?" for name in fields)
+    with conn:
+        conn.execute(f"UPDATE users SET {assignments} WHERE id = ?", (*fields.values(), user_id))
+
+
+# Sessions: the cookie carries a random token, the database only stores its hash.
+
+def create_session(conn: sqlite3.Connection, user_id: int) -> tuple[str, str]:
+    token = new_token()
+    csrf_token = new_token()
+    with conn:
+        conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (now(),))
+        conn.execute(
+            "INSERT INTO sessions (token_hash, user_id, csrf_token, expires_at) VALUES (?, ?, ?, ?)",
+            (hash_token(token), user_id, csrf_token, now() + SESSION_TTL_SECONDS),
+        )
+    return token, csrf_token
+
+
+def find_session(conn: sqlite3.Connection, token: str) -> dict | None:
+    row = conn.execute(
+        """
+        SELECT users.id, users.username, users.role, sessions.csrf_token
+        FROM sessions JOIN users ON users.id = sessions.user_id
+        WHERE sessions.token_hash = ? AND sessions.expires_at > ? AND users.active = 1
+        """,
+        (hash_token(token), now()),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def delete_session(conn: sqlite3.Connection, token: str) -> None:
+    with conn:
+        conn.execute("DELETE FROM sessions WHERE token_hash = ?", (hash_token(token),))
+
+
+def delete_sessions_of_user(conn: sqlite3.Connection, user_id: int) -> None:
+    with conn:
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+
+# Login throttling: failures are counted per username and per IP address.
+
+def _throttle_keys(username: str, ip: str) -> tuple[str, str]:
+    return f"user:{username.lower()}", f"ip:{ip}"
+
+
+def login_blocked(conn: sqlite3.Connection, username: str, ip: str) -> bool:
+    since = now() - FAILURE_WINDOW_SECONDS
+    for key in _throttle_keys(username, ip):
+        count = conn.execute(
+            "SELECT COUNT(*) FROM login_failures WHERE key = ? AND ts > ?", (key, since)
+        ).fetchone()[0]
+        if count >= MAX_FAILED_LOGINS:
+            return True
+    return False
+
+
+def record_login_failure(conn: sqlite3.Connection, username: str, ip: str) -> None:
+    with conn:
+        conn.executemany(
+            "INSERT INTO login_failures (key, ts) VALUES (?, ?)",
+            [(key, now()) for key in _throttle_keys(username, ip)],
+        )
+
+
+def clear_login_failures(conn: sqlite3.Connection, username: str) -> None:
+    with conn:
+        conn.execute("DELETE FROM login_failures WHERE key = ?", (f"user:{username.lower()}",))
+
+
+# Audit log: records who did what, never passwords or tokens.
+
+def audit(
+    conn: sqlite3.Connection,
+    action: str,
+    user_id: int | None = None,
+    target: str | None = None,
+    detail: str | None = None,
+    ip: str | None = None,
+) -> None:
+    with conn:
+        conn.execute(
+            "INSERT INTO audit_log (ts, user_id, action, target, detail, ip) VALUES (?, ?, ?, ?, ?, ?)",
+            (now(), user_id, action, target, detail, ip),
+        )
+
+
+def list_audit(conn: sqlite3.Connection, limit: int = 200) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT audit_log.pk, audit_log.ts, audit_log.action, audit_log.target,
+               audit_log.detail, audit_log.ip, users.username AS actor
+        FROM audit_log LEFT JOIN users ON users.id = audit_log.user_id
+        ORDER BY audit_log.pk DESC LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [dict(row) for row in rows]

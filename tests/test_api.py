@@ -3,10 +3,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from chronicle import accounts, security
 from chronicle.api import create_app
+from chronicle.db import connect
 from chronicle.importer import import_folder
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+PASSWORD = "correct horse battery"
 
 
 @pytest.fixture
@@ -14,9 +17,24 @@ def db_path(tmp_path):
     return tmp_path / "chronicle.db"
 
 
+@pytest.fixture(autouse=True)
+def insecure_cookies_for_http_tests(monkeypatch):
+    monkeypatch.setenv("CHRONICLE_COOKIE_SECURE", "0")
+
+
+def logged_in_client(db_path):
+    conn = connect(db_path)
+    accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
+    conn.close()
+    client = TestClient(create_app(db_path))
+    response = client.post("/api/v1/auth/login", json={"username": "viewer", "password": PASSWORD})
+    assert response.status_code == 200
+    return client
+
+
 @pytest.fixture
 def client(db_path):
-    return TestClient(create_app(db_path))
+    return logged_in_client(db_path)
 
 
 def test_health(client):
@@ -85,5 +103,5 @@ def test_import_fails_on_missing_evidence_without_writing(tmp_path, db_path):
     with pytest.raises(TimelineError):
         import_folder(db_path, data)
 
-    client = TestClient(create_app(db_path))
+    client = logged_in_client(db_path)
     assert client.get("/api/v1/incidents").json() == []

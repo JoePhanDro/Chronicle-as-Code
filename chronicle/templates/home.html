@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chronicle</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="min-h-screen bg-slate-950 font-sans text-slate-200 antialiased">
+  <header class="flex items-center justify-between border-b border-white/10 px-6 py-3">
+    <div class="text-sm font-semibold text-slate-100">Chronicle</div>
+    <div class="flex items-center gap-4 text-sm">
+      <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+        <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-slate-300 hover:border-sky-400/50 hover:text-white">Abmelden</button>
+      </form>
+    </div>
+  </header>
+  <main class="mx-auto max-w-2xl px-6 py-12">
+    <h1 class="text-2xl font-semibold text-slate-100">Angemeldet</h1>
+    <p class="mt-2 text-sm text-slate-400">
+      Die Ansichten (Timeline, Graph, Events, Evidence) folgen in Phase 3. Bis dahin ist die API unter
+      <code class="font-mono text-slate-300">/api/v1/incidents</code> erreichbar.
+    </p>
+  </main>
+</body>
+</html>
