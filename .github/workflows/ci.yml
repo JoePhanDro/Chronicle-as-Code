@@ -63,7 +63,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/site"
           docker run --rm --user "$(id -u):$(id -g)" \
             -v "$PWD/data:/data:ro" -v "$RUNNER_TEMP/site:/output" \
-            chronicle-dashboard:ci --data /data --out /output
+            --entrypoint python chronicle-dashboard:ci -m chronicle --data /data --out /output
 
       - name: API container starts and answers health check
         run: |
