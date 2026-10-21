@@ -122,7 +122,7 @@ def test_deleted_event_is_not_recreated_by_import(db_path):
     assert anna.delete("/api/v1/events/lessons").status_code == 204
     assert anna.get("/api/v1/events/lessons").status_code == 404
 
-    report = import_folder(db_path, DATA_DIR)
+    (report,) = import_folder(db_path, DATA_DIR)
     assert ("lessons", "in der Oberfläche gelöscht") in report.skipped
     assert anna.get("/api/v1/events/lessons").status_code == 404
 
@@ -133,7 +133,7 @@ def test_manually_edited_event_is_not_overwritten_by_import(db_path):
     body = writable(current, action="Von Hand korrigiert")
     assert anna.put("/api/v1/events/analysis", json=body).status_code == 200
 
-    report = import_folder(db_path, DATA_DIR)
+    (report,) = import_folder(db_path, DATA_DIR)
     assert ("analysis", "in der Oberfläche bearbeitet") in report.skipped
     assert anna.get("/api/v1/events/analysis").json()["action"] == "Von Hand korrigiert"
 

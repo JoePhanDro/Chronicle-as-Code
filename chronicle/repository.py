@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from . import accounts
@@ -115,88 +115,115 @@ def _topic_keys_of(conn: sqlite3.Connection, event_pk: int) -> list[str]:
 # Import
 
 def import_timeline(conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[str, Blob] | None = None) -> ImportReport:
-    """Create or update a topic and its events from a topic file.
+    """Import one topic file. See import_timelines."""
+    return import_timelines(conn, [(timeline, blobs or {})])[0]
 
-    `blobs` maps each evidence path of the file to its checked content (see evidence.check_file).
-    Idempotent: the same file again changes nothing. Events edited in the UI (source 'manual') and
+
+def import_timelines(
+    conn: sqlite3.Connection, items: Sequence[tuple[Timeline, Mapping[str, Blob]]]
+) -> list[ImportReport]:
+    """Create or update topics and their events from topic files, in one transaction.
+
+    `blobs` of each file maps its evidence paths to the checked content (see evidence.check_file).
+    Events may refer to each other across files, so all files are written before the references are checked.
+    Idempotent: the same files again change nothing. Events edited in the UI (source 'manual') and
     events deleted in the UI (tombstones) are skipped and reported. Links are only added, never removed.
-    Any failed check rolls back the whole import, including the evidence contents.
+    Any failed check rolls back everything, including the evidence contents.
     """
+    owners: dict[str, str] = {}
+    for timeline, _ in items:
+        for event in timeline.events:
+            if event.key in owners:
+                raise ValueError(
+                    f"Event {event.key!r} ist in den Topics {owners[event.key]!r} und {timeline.topic.key!r} definiert"
+                )
+            owners[event.key] = timeline.topic.key
+
+    with conn:
+        reports = [_write_topic(conn, timeline, blobs) for timeline, blobs in items]
+
+        for timeline, _ in items:
+            for event in timeline.events:
+                _check_trigger(conn, event.triggered_by, own_key=event.key)
+            for key in timeline.refs:
+                if _event_pk(conn, key) is None:
+                    raise ValueError(f"refs: Event {key!r} existiert nicht (in keiner Datei definiert)")
+
+        for (timeline, _), report in zip(items, reports):
+            _link_topic(conn, timeline, report)
+    return reports
+
+
+def _write_topic(conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[str, Blob]) -> ImportReport:
     topic = timeline.topic
     report = ImportReport(topic=topic.key)
 
-    with conn:
-        for event in timeline.events:
-            if conn.execute("SELECT 1 FROM deleted_events WHERE key = ?", (event.key,)).fetchone():
-                report.skipped.append((event.key, "in der Oberfläche gelöscht"))
-                continue
-            row = conn.execute("SELECT home_topic, source FROM events WHERE key = ?", (event.key,)).fetchone()
-            if row is not None and row["home_topic"] != topic.key:
-                raise ValueError(
-                    f"Event {event.key!r} ist im Topic {row['home_topic']!r} definiert. "
-                    f"In {topic.key!r} bitte per refs referenzieren."
-                )
-            if row is not None and row["source"] == "manual":
-                report.skipped.append((event.key, "in der Oberfläche bearbeitet"))
-                continue
+    for event in timeline.events:
+        if conn.execute("SELECT 1 FROM deleted_events WHERE key = ?", (event.key,)).fetchone():
+            report.skipped.append((event.key, "in der Oberfläche gelöscht"))
+            continue
+        row = conn.execute("SELECT home_topic, source FROM events WHERE key = ?", (event.key,)).fetchone()
+        if row is not None and row["home_topic"] != topic.key:
+            raise ValueError(
+                f"Event {event.key!r} ist im Topic {row['home_topic']!r} definiert. "
+                f"In {topic.key!r} bitte per refs referenzieren."
+            )
+        if row is not None and row["source"] == "manual":
+            report.skipped.append((event.key, "in der Oberfläche bearbeitet"))
 
+    conn.execute(
+        """
+        INSERT INTO topics (key, title, kind, summary, updated_at)
+        VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        ON CONFLICT (key) DO UPDATE SET
+            title = excluded.title,
+            kind = excluded.kind,
+            summary = excluded.summary,
+            updated_at = excluded.updated_at
+        """,
+        (topic.key, topic.title, topic.kind, topic.summary),
+    )
+
+    skipped = {key for key, _ in report.skipped}
+    for event in timeline.events:
+        if event.key in skipped:
+            continue
+        existed = _event_pk(conn, event.key) is not None
         conn.execute(
             """
-            INSERT INTO topics (key, title, kind, summary, updated_at)
-            VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            INSERT INTO events
+                (key, t0, phase, actor, system, action, status, triggered_by, details,
+                 home_topic, source, version, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             ON CONFLICT (key) DO UPDATE SET
-                title = excluded.title,
-                kind = excluded.kind,
-                summary = excluded.summary,
+                t0 = excluded.t0,
+                phase = excluded.phase,
+                actor = excluded.actor,
+                system = excluded.system,
+                action = excluded.action,
+                status = excluded.status,
+                triggered_by = excluded.triggered_by,
+                details = excluded.details,
+                version = events.version + 1,
                 updated_at = excluded.updated_at
             """,
-            (topic.key, topic.title, topic.kind, topic.summary),
+            (event.key, *_event_values(event), topic.key),
         )
-        topic_pk = _topic_pk(conn, topic.key)
-
-        for event in timeline.events:
-            if any(key == event.key for key, _ in report.skipped):
-                continue
-            existed = _event_pk(conn, event.key) is not None
-            conn.execute(
-                """
-                INSERT INTO events
-                    (key, t0, phase, actor, system, action, status, triggered_by, details,
-                     home_topic, source, version, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-                ON CONFLICT (key) DO UPDATE SET
-                    t0 = excluded.t0,
-                    phase = excluded.phase,
-                    actor = excluded.actor,
-                    system = excluded.system,
-                    action = excluded.action,
-                    status = excluded.status,
-                    triggered_by = excluded.triggered_by,
-                    details = excluded.details,
-                    version = events.version + 1,
-                    updated_at = excluded.updated_at
-                """,
-                (event.key, *_event_values(event), topic.key),
-            )
-            event_pk = _event_pk(conn, event.key)
-            _replace_import_evidence(conn, event_pk, event, blobs or {})
-            (report.updated if existed else report.created).append(event.key)
-
-        for event in timeline.events:
-            _check_trigger(conn, event.triggered_by, own_key=event.key)
-
-        for key in timeline.refs:
-            if _event_pk(conn, key) is None:
-                raise ValueError(f"refs: Event {key!r} existiert nicht (zuerst in seinem Topic importieren)")
-
-        for key in [event.key for event in timeline.events] + list(timeline.refs):
-            if any(skipped == key for skipped, _ in report.skipped):
-                continue
-            conn.execute(
-                "INSERT OR IGNORE INTO topic_events (topic_pk, event_pk) SELECT ?, pk FROM events WHERE key = ?",
-                (topic_pk, key),
-            )
+        _replace_import_evidence(conn, _event_pk(conn, event.key), event, blobs)
+        (report.updated if existed else report.created).append(event.key)
     return report
+
+
+def _link_topic(conn: sqlite3.Connection, timeline: Timeline, report: ImportReport) -> None:
+    skipped = {key for key, _ in report.skipped}
+    topic_pk = _topic_pk(conn, timeline.topic.key)
+    for key in [event.key for event in timeline.events] + list(timeline.refs):
+        if key in skipped:
+            continue
+        conn.execute(
+            "INSERT OR IGNORE INTO topic_events (topic_pk, event_pk) SELECT ?, pk FROM events WHERE key = ?",
+            (topic_pk, key),
+        )
 
 
 # Manual changes from the UI or the API
