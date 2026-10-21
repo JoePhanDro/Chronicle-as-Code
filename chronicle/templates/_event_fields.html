@@ -1,74 +1,124 @@
-{# Shared form fields for creating and editing an event. Expects f (dict), mode, phases, statuses, topic_choices. #}
+{# Shared form fields for creating and editing an event. Expects f (dict), mode, phases, statuses, topic_choices, event_choices, timezones, hours, minutes. #}
 {% set input_class = "w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20" %}
 {% set label_class = "mb-1 block text-xs font-medium text-slate-400" %}
+{% set section_class = "rounded-xl border border-white/10 bg-white/[.02] p-5" %}
+{% set heading_class = "mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500" %}
 
-<div class="grid gap-5 sm:grid-cols-2">
-  <label class="block">
-    <span class="{{ label_class }}">Key (eindeutig)</span>
-    <input name="key" value="{{ f.key or '' }}" required {{ 'readonly' if mode == 'view' }} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,99}"
-           class="{{ input_class }} font-mono {{ 'opacity-60' if mode == 'view' }}">
-  </label>
-  <label class="block">
-    <span class="{{ label_class }}">Zeitpunkt mit Zeitzone</span>
-    <input name="t0" value="{{ f.t0 or '' }}" required placeholder="2026-10-14T08:40:00+02:00" class="{{ input_class }} font-mono">
-  </label>
-  <label class="block">
-    <span class="{{ label_class }}">Phase</span>
-    <select name="phase" required class="{{ input_class }}">
-      {% for phase in phases %}<option value="{{ phase }}" {{ 'selected' if f.phase == phase }}>{{ phase }}</option>{% endfor %}
-    </select>
-  </label>
-  <label class="block">
-    <span class="{{ label_class }}">Status</span>
-    <select name="status" required class="{{ input_class }}">
-      {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if f.status == status }}>{{ status.replace('_', ' ') }}</option>{% endfor %}
-    </select>
-  </label>
-  <label class="block">
-    <span class="{{ label_class }}">Akteur</span>
-    <input name="actor" value="{{ f.actor or '' }}" required class="{{ input_class }}">
-  </label>
-  <label class="block">
-    <span class="{{ label_class }}">System (optional)</span>
-    <input name="system" value="{{ f.system or '' }}" class="{{ input_class }}">
-  </label>
-  <label class="block sm:col-span-2">
-    <span class="{{ label_class }}">Aktion</span>
-    <input name="action" value="{{ f.action or '' }}" required class="{{ input_class }}">
-  </label>
-  <label class="block">
-    <span class="{{ label_class }}">Ausgelöst durch (Event-Key, optional)</span>
-    <input name="triggered_by" value="{{ f.triggered_by or '' }}" class="{{ input_class }} font-mono">
-  </label>
-  {% if mode == 'new' %}
-  <label class="block">
-    <span class="{{ label_class }}">Heimat-Topic</span>
-    <select name="topic" required class="{{ input_class }}">
-      {% for choice in topic_choices %}<option value="{{ choice.key }}" {{ 'selected' if f.topic == choice.key }}>{{ choice.title }}</option>{% endfor %}
-    </select>
-  </label>
-  {% else %}
-  <input type="hidden" name="topic" value="{{ f.topic }}">
-  <div class="block">
-    <span class="{{ label_class }}">Heimat-Topic</span>
-    <span class="font-mono text-sm text-slate-300">{{ f.topic }}</span>
-  </div>
-  {% endif %}
-</div>
-
-<fieldset class="space-y-2">
-  <legend class="{{ label_class }}">Zugehörige Topics</legend>
-  <div class="flex flex-wrap gap-2">
-    {% for choice in topic_choices %}
-    <label class="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-300">
-      <input type="checkbox" name="topics" value="{{ choice.key }}" {{ 'checked' if choice.key in (f.topics or []) }} class="accent-sky-400">
-      {{ choice.title }}
+<section class="{{ section_class }}">
+  <h2 class="{{ heading_class }}">Ereignis</h2>
+  <div class="grid gap-5 sm:grid-cols-3">
+    <label class="block sm:col-span-3">
+      <span class="{{ label_class }}">Aktion</span>
+      <input name="action" value="{{ f.action or '' }}" required placeholder="Was ist passiert?" class="{{ input_class }}">
     </label>
-    {% endfor %}
+    <label class="block">
+      <span class="{{ label_class }}">Key (eindeutig)</span>
+      <input name="key" value="{{ f.key or '' }}" required {{ 'readonly' if mode == 'view' }} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,99}"
+             class="{{ input_class }} font-mono {{ 'opacity-60' if mode == 'view' }}">
+    </label>
+    <label class="block">
+      <span class="{{ label_class }}">Phase</span>
+      <select name="phase" required class="{{ input_class }}">
+        {% for phase in phases %}<option value="{{ phase }}" {{ 'selected' if f.phase == phase }}>{{ phase }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="block">
+      <span class="{{ label_class }}">Status</span>
+      <select name="status" required class="{{ input_class }}">
+        {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if f.status == status }}>{{ status.replace('_', ' ') }}</option>{% endfor %}
+      </select>
+    </label>
   </div>
-</fieldset>
+</section>
 
-<label class="block">
-  <span class="{{ label_class }}">Details (Markdown)</span>
-  <textarea name="details" rows="6" class="{{ input_class }}">{{ f.details or '' }}</textarea>
-</label>
+<section class="{{ section_class }}">
+  <h2 class="{{ heading_class }}">Zeitpunkt</h2>
+  <div class="grid gap-4 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)]">
+    <label class="block">
+      <span class="{{ label_class }}">Datum</span>
+      <input type="date" name="t0_date" value="{{ f.t0_date or '' }}" required class="{{ input_class }}">
+    </label>
+    <label class="block">
+      <span class="{{ label_class }}">Stunde</span>
+      <select name="t0_hour" required class="{{ input_class }} font-mono">
+        {% for hour in hours %}<option value="{{ hour }}" {{ 'selected' if f.t0_hour == hour }}>{{ hour }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="block">
+      <span class="{{ label_class }}">Minute</span>
+      <select name="t0_minute" required class="{{ input_class }} font-mono">
+        {% for minute in minutes %}<option value="{{ minute }}" {{ 'selected' if f.t0_minute == minute }}>{{ minute }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="block">
+      <span class="{{ label_class }}">Zeitzone</span>
+      <select name="t0_zone" required class="{{ input_class }}">
+        {% for zone in timezones %}<option value="{{ zone }}" {{ 'selected' if f.t0_zone == zone }}>{{ zone }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+</section>
+
+<section class="{{ section_class }}">
+  <h2 class="{{ heading_class }}">Beteiligte</h2>
+  <div class="grid gap-5 sm:grid-cols-2">
+    <label class="block">
+      <span class="{{ label_class }}">Akteur</span>
+      <input name="actor" value="{{ f.actor or '' }}" required class="{{ input_class }}">
+    </label>
+    <label class="block">
+      <span class="{{ label_class }}">System (optional)</span>
+      <input name="system" value="{{ f.system or '' }}" class="{{ input_class }}">
+    </label>
+  </div>
+</section>
+
+<section class="{{ section_class }}">
+  <h2 class="{{ heading_class }}">Verknüpfungen</h2>
+  <div class="space-y-5">
+    <label class="block">
+      <span class="{{ label_class }}">Ausgelöst durch</span>
+      <select name="triggered_by" class="{{ input_class }}">
+        <option value="">Kein auslösendes Ereignis</option>
+        {% for choice in event_choices if choice.key != f.key %}
+        <option value="{{ choice.key }}" {{ 'selected' if f.triggered_by == choice.key }}>{{ choice.t0[:16].replace('T', ' ') }} · {{ choice.action }} ({{ choice.key }})</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    {% if mode == 'new' %}
+    <label class="block">
+      <span class="{{ label_class }}">Heimat-Topic</span>
+      <select name="topic" required class="{{ input_class }}">
+        {% for choice in topic_choices %}<option value="{{ choice.key }}" {{ 'selected' if f.topic == choice.key }}>{{ choice.title }}</option>{% endfor %}
+      </select>
+    </label>
+    {% else %}
+    <input type="hidden" name="topic" value="{{ f.topic }}">
+    <div class="block">
+      <span class="{{ label_class }}">Heimat-Topic</span>
+      <span class="font-mono text-sm text-slate-300">{{ f.topic }}</span>
+    </div>
+    {% endif %}
+
+    <fieldset class="space-y-2">
+      <legend class="{{ label_class }}">Zugehörige Topics</legend>
+      <div class="flex flex-wrap gap-2">
+        {% for choice in topic_choices %}
+        <label class="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-300">
+          <input type="checkbox" name="topics" value="{{ choice.key }}" {{ 'checked' if choice.key in (f.topics or []) }} class="accent-sky-400">
+          {{ choice.title }}
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+  </div>
+</section>
+
+<section class="{{ section_class }}">
+  <h2 class="{{ heading_class }}">Details</h2>
+  <label class="block">
+    <span class="{{ label_class }}">Beschreibung (Markdown)</span>
+    <textarea name="details" rows="6" class="{{ input_class }}">{{ f.details or '' }}</textarea>
+  </label>
+</section>

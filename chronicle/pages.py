@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 import sqlite3
+from datetime import UTC, datetime
 from typing import get_args
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -16,21 +17,24 @@ from starlette.datastructures import UploadFile  # form uploads are Starlette ob
 
 from . import repository
 from .auth import Auth, client_ip
-from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, check_file
+from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, Blob, check_file
 from .report import make_report, report_headers
 from .models import Phase, Status, Topic, TopicKind
-from .event_input import EventWrite, event_of, topic_list
+from .event_input import EVENT_TIMEZONES, EventWrite, event_of, t0_from_parts, t0_parts, topic_list
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 WRITER_ROLES = ("admin", "analyst")
 TOPIC_KINDS = list(get_args(TopicKind))
+HOURS = [f"{hour:02d}" for hour in range(24)]
+MINUTES = [f"{minute:02d}" for minute in range(60)]
 
 
 def _payload_from_form(form, topic_home: str | None = None) -> dict:
     topics = form.getlist("topics")
     return {
         "key": (form.get("key") or "").strip(),
-        "t0": (form.get("t0") or "").strip(),
+        "t0": t0_from_parts(form.get("t0_date") or "", form.get("t0_hour") or "",
+                            form.get("t0_minute") or "", form.get("t0_zone") or ""),
         "phase": form.get("phase") or "",
         "actor": (form.get("actor") or "").strip(),
         "system": (form.get("system") or "").strip() or None,
@@ -57,6 +61,31 @@ def _form_dict(form) -> dict:
     values = {name: form.get(name) for name in form.keys()}
     values["topics"] = form.getlist("topics")
     return values
+
+
+def edit_form(event: dict) -> dict:
+    """A stored event as the edit form shows it. The timestamp is shown in the default zone."""
+    return {
+        "key": event["key"], "phase": event["phase"], "actor": event["actor"], "system": event["system"] or "",
+        "action": event["action"], "status": event["status"], "triggered_by": event["triggered_by"] or "",
+        "details": event["details"] or "", "topics": event["topics"], "topic": event["home_topic"],
+        "version": event["version"], **t0_parts(event["t0"]),
+    }
+
+
+TEMPLATES.env.globals["edit_form"] = edit_form
+
+
+async def _attachments_from_form(form) -> list[Blob]:
+    """Files chosen in the new-event form, checked before the event is written."""
+    uploads = [item for item in form.getlist("files") if isinstance(item, UploadFile) and item.filename]
+    if uploads and (form.get("evidence_type") or "") not in EVIDENCE_TYPES:
+        raise ValueError("Bitte einen Typ für die Anhänge wählen")
+    blobs = []
+    for upload in uploads:
+        data = await upload.read(MAX_EVIDENCE_BYTES + 1)  # one byte over the limit is enough to reject
+        blobs.append(check_file(upload.filename or "", data))
+    return blobs
 
 
 def _error_text(exc: Exception) -> str:
@@ -89,7 +118,9 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
 
     def form_context(conn: sqlite3.Connection, **extra) -> dict:
         return {"phases": [phase.value for phase in Phase], "statuses": [status.value for status in Status],
-                "evidence_types": list(EVIDENCE_TYPES), "topic_choices": topic_choices(conn), **extra}
+                "evidence_types": list(EVIDENCE_TYPES), "topic_choices": topic_choices(conn),
+                "event_choices": repository.list_events(conn), "timezones": EVENT_TIMEZONES,
+                "hours": HOURS, "minutes": MINUTES, **extra}
 
     @router.get("/events", response_class=HTMLResponse)
     def events_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
@@ -110,8 +141,9 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             return RedirectResponse("/login", status_code=303)
         if user["role"] not in WRITER_ROLES:
             return render(request, "forbidden.html", user, status_code=403)
+        now = t0_parts(datetime.now(UTC).isoformat())
         return render(request, "event.html", user, mode="new", event=None, errors=None,
-                      **form_context(conn, form={}))
+                      **form_context(conn, form=now))
 
     @router.post("/events/new", response_class=HTMLResponse)
     async def create_event_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
@@ -124,7 +156,11 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             return render(request, "forbidden.html", user, status_code=403)
         try:
             body = EventWrite.model_validate(_payload_from_form(form))
+            attachments = await _attachments_from_form(form)  # checked first, so a bad file writes nothing
             created = repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request))
+            for blob in attachments:
+                repository.add_evidence(conn, created["key"], blob, form.get("evidence_type") or "", "",
+                                        user["id"], client_ip(request))
         except (ValidationError, ValueError, repository.RepositoryError) as exc:
             return render(request, "event.html", user, status_code=422, mode="new", event=None,
                           errors=_error_text(exc), **form_context(conn, form=_form_dict(form)))

@@ -87,7 +87,8 @@ def test_analyst_creates_topic_and_event_through_the_forms(db_path):
     assert topic.status_code == 303, topic.text
 
     event = client.post("/events/new", data={
-        "csrf_token": csrf, "key": "menu-event", "t0": "2026-10-20T10:00:00Z", "phase": "Identification",
+        "csrf_token": csrf, "key": "menu-event", "t0_date": "2026-10-20", "t0_hour": "12", "t0_minute": "00",
+        "t0_zone": "Europe/Berlin", "phase": "Identification",
         "actor": "Analyst", "system": "", "action": "Erster Eintrag", "status": "open",
         "triggered_by": "", "details": "", "topic": "menu-test", "topics": [],
     }, follow_redirects=False)

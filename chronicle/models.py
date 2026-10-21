@@ -22,6 +22,7 @@ class Phase(StrEnum):
     MITIGATION = "Mitigation"
     RECOVERY = "Recovery"
     LESSONS_LEARNED = "Lessons Learned"
+    ACTIVITY = "Activity"  # neutral: for events outside the incident phases
 
 
 PHASE_COLORS: dict[Phase, str] = {
@@ -32,6 +33,7 @@ PHASE_COLORS: dict[Phase, str] = {
     Phase.MITIGATION: "#22c55e",  # green
     Phase.RECOVERY: "#10b981",  # emerald
     Phase.LESSONS_LEARNED: "#3b82f6",  # blue
+    Phase.ACTIVITY: "#94a3b8",  # slate
 }
 
 

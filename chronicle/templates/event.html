@@ -11,9 +11,25 @@
 {% if mode == 'new' %}
   <h1 class="mb-6 text-xl font-semibold text-slate-100">Neues Event</h1>
   {% set f = form or {} %}
-  <form method="post" action="/events/new" class="space-y-6">
+  <form method="post" action="/events/new" enctype="multipart/form-data" class="space-y-6">
     <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
     {% include "_event_fields.html" %}
+    <section class="rounded-xl border border-white/10 bg-white/[.02] p-5">
+      <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Anhänge</h2>
+      <div class="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
+        <label class="block">
+          <span class="mb-1 block text-xs font-medium text-slate-400">Dateien (PNG, JPEG, GIF, WebP, PDF, TXT/LOG, je max. 10 MiB)</span>
+          <input type="file" name="files" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.log"
+                 class="block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200">
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-xs font-medium text-slate-400">Typ</span>
+          <select name="evidence_type" class="{{ input_class }}">
+            {% for evidence_type in evidence_types %}<option value="{{ evidence_type }}">{{ evidence_type }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+    </section>
     <div class="flex gap-3">
       <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Anlegen</button>
       <a href="/events" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-300 hover:text-white">Abbrechen</a>
@@ -107,11 +123,7 @@
   {% if editing %}
   <section>
     <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Bearbeiten</h2>
-    {% set f = {
-      'key': event.key, 't0': event.t0, 'phase': event.phase, 'actor': event.actor, 'system': event.system or '',
-      'action': event.action, 'status': event.status, 'triggered_by': event.triggered_by or '', 'details': event.details,
-      'topics': event.topics, 'topic': event.home_topic, 'version': event.version
-    } %}
+    {% set f = edit_form(event) %}
     <form method="post" action="/events/{{ event.key }}/edit" class="space-y-6">
       <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
       <input type="hidden" name="version" value="{{ event.version }}">

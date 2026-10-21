@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from pydantic import Field, field_validator
 
 from .models import Event
+
+# Zones the event form offers. Times are stored in UTC, the form shows and enters them in one of these zones.
+EVENT_TIMEZONES = ("Europe/Berlin", "UTC")
+DEFAULT_TIMEZONE = EVENT_TIMEZONES[0]
 
 
 class EventWrite(Event):
@@ -33,3 +40,27 @@ def event_of(body: EventWrite) -> Event:
 def topic_list(body: EventWrite) -> list[str]:
     """Home topic first, then the others, without duplicates."""
     return list(dict.fromkeys([body.topic, *body.topics]))
+
+
+def t0_from_parts(day: str, hour: str, minute: str, zone: str) -> str:
+    """Date and time picked in the form, as ISO 8601 with offset: the input EventWrite.t0 expects."""
+    if zone not in EVENT_TIMEZONES:
+        raise ValueError("Bitte eine der angebotenen Zeitzonen wählen")
+    if not (day and hour and minute):
+        raise ValueError("Bitte Datum, Stunde und Minute angeben")
+    try:
+        local = datetime.fromisoformat(f"{day}T{hour}:{minute}:00")
+    except ValueError as exc:
+        raise ValueError("Das Datum ist ungültig") from exc
+    return local.replace(tzinfo=ZoneInfo(zone)).isoformat()
+
+
+def t0_parts(t0: str, zone: str = DEFAULT_TIMEZONE) -> dict[str, str]:
+    """A stored timestamp split into the form's fields, shown in `zone`."""
+    local = datetime.fromisoformat(t0).astimezone(ZoneInfo(zone))
+    return {
+        "t0_date": local.date().isoformat(),
+        "t0_hour": f"{local.hour:02d}",
+        "t0_minute": f"{local.minute:02d}",
+        "t0_zone": zone,
+    }
