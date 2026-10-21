@@ -4,62 +4,179 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <script>
+    tailwind.config = { theme: { extend: { fontFamily: {
+      sans: ['Inter', 'system-ui', 'sans-serif'],
+      mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+    } } } };
+  </script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/styles/vis-timeline-graph2d.min.css">
   <script src="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/standalone/umd/vis-timeline-graph2d.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
   <style>
-    :root { color-scheme: dark; }
-    body { background: #020617; }
-    /* vis-timeline dark theme */
-    .vis-timeline { border: 0; background: transparent; font-family: inherit; }
-    .vis-time-axis .vis-text, .vis-labelset .vis-label { color: #94a3b8; }
-    .vis-panel.vis-bottom, .vis-panel.vis-center, .vis-panel.vis-top { border-color: #1e293b; }
-    .vis-item { border-radius: 6px; font-size: 12px; cursor: pointer; }
-    .vis-item.vis-selected { box-shadow: 0 0 0 2px #f8fafc; }
-    .vis-current-time { background: #f43f5e; }
-    /* Typography plugin adds backticks around inline code; we want the code text only. */
-    .prose code::before, .prose code::after { content: none; }
+    :root {
+      --bg: #030712;
+      --panel: rgba(15, 23, 42, .5);
+      --line: rgba(148, 163, 184, .12);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+    }
+    html, body { height: 100%; }
+    body {
+      color: var(--text);
+      background:
+        radial-gradient(900px 520px at 8% -12%, rgba(56, 189, 248, .12), transparent 60%),
+        radial-gradient(860px 520px at 105% 115%, rgba(167, 139, 250, .12), transparent 60%),
+        var(--bg);
+    }
+    .glass {
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--line);
+    }
+    .dot-grid {
+      background-image: radial-gradient(rgba(148, 163, 184, .13) 1px, transparent 1px);
+      background-size: 22px 22px;
+    }
+    .edge-line { border-color: var(--line); }
+    .btn {
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 42, .6);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      transition: all .15s ease;
+    }
+    .btn:hover { color: #fff; border-color: rgba(56, 189, 248, .5); box-shadow: 0 0 18px -6px rgba(56, 189, 248, .6); }
+
+    /* Status indicator (open / in_progress / resolved) */
+    .st { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; margin-right: 6px; vertical-align: middle; background: #64748b; flex: none; }
+    .st-open { background: #f43f5e; }
+    .st-resolved { background: #22c55e; }
+    .st-in_progress { background: #f59e0b; animation: pulse 1.8s infinite; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, .7); }
+      70% { box-shadow: 0 0 0 7px rgba(245, 158, 11, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    }
+
+    /* vis-timeline: dark, minimal chrome, event cards in swimlanes */
+    .vis-timeline { border: 0; background: transparent; font-family: Inter, system-ui, sans-serif; }
+    .vis-panel.vis-background, .vis-panel.vis-center, .vis-panel.vis-left,
+    .vis-panel.vis-right, .vis-panel.vis-top, .vis-panel.vis-bottom { border-color: var(--line); }
+    .vis-time-axis .vis-text { color: var(--muted); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+    .vis-time-axis .vis-grid.vis-minor { border-color: rgba(148, 163, 184, .05); }
+    .vis-time-axis .vis-grid.vis-major { border-color: rgba(148, 163, 184, .12); }
+    .vis-labelset .vis-label { color: var(--muted); }
+    .vis-foreground .vis-group { border-color: rgba(148, 163, 184, .06); }
+    .vis-item.ch-item {
+      background: linear-gradient(135deg, rgba(15, 23, 42, .96), rgba(15, 23, 42, .72));
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--c);
+      border-radius: 10px;
+      box-shadow: 0 10px 28px -14px var(--c);
+      color: var(--text);
+      transition: box-shadow .2s ease, transform .2s ease;
+    }
+    .vis-item.ch-item:hover { transform: translateY(-1px); }
+    .vis-item.ch-item.vis-selected {
+      border-color: var(--c);
+      box-shadow: 0 0 0 1px var(--c), 0 0 26px -4px var(--c);
+    }
+    .vis-item.ch-item { font-size: 12px; line-height: 1.3; text-align: left; }
+    .vis-item.ch-item .vis-item-content { padding: 0; }
+    .ch-card { padding: 7px 11px 7px 10px; width: 240px; max-width: 240px; }
+    .ch-title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ch-meta { margin-top: 3px; font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ch-lane { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; }
+    .ch-lane .ch-count { margin-left: 6px; font-size: 10px; font-weight: 400; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* Markdown in details */
+    .prose-invert code { background: rgba(15, 23, 42, .9); padding: 1px 5px; border-radius: 5px; }
+    .prose-invert code::before, .prose-invert code::after { content: none; }
+    .prose-invert pre { background: rgba(2, 6, 23, .8); border: 1px solid var(--line); }
   </style>
 </head>
-<body class="flex min-h-screen flex-col font-sans text-slate-200 lg:h-screen lg:overflow-hidden">
+<body class="flex min-h-screen flex-col font-sans lg:h-screen lg:overflow-hidden">
 
-  <header class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 px-6 py-3">
-    <div class="min-w-0">
-      <h1 class="truncate text-lg font-semibold text-slate-100">{{ title }}</h1>
-      {% if summary %}<p class="text-sm text-slate-400">{{ summary }}</p>{% endif %}
+  <header class="glass flex flex-wrap items-center justify-between gap-4 border-x-0 border-t-0 px-5 py-3">
+    <div class="flex min-w-0 items-center gap-3">
+      <div class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-violet-500 shadow-lg shadow-sky-500/20">
+        <svg viewBox="0 0 24 24" class="h-5 w-5 text-slate-950" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+      </div>
+      <div class="min-w-0">
+        <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300/80">Chronicle · Incident</div>
+        <h1 class="truncate text-base font-semibold text-slate-100">{{ title }}</h1>
+        {% if summary %}<p class="truncate text-xs text-slate-400">{{ summary }}</p>{% endif %}
+      </div>
     </div>
-    <ul class="flex flex-wrap gap-2 text-xs">
-      {% for phase in phases %}
-      <li class="flex items-center gap-1.5 rounded-full border border-slate-800 px-2.5 py-1 text-slate-300">
-        <span class="h-2.5 w-2.5 rounded-full" style="background: {{ phase.color }}"></span>{{ phase.name }}
-      </li>
-      {% endfor %}
-    </ul>
+    <div id="kpis" class="flex flex-wrap items-center gap-2 text-xs"></div>
   </header>
 
-  <section id="timeline" class="h-[38vh] min-h-[260px] border-b border-slate-800 px-2 py-2"></section>
+  <div class="glass flex flex-wrap gap-1.5 border-x-0 border-t-0 px-5 py-2 text-[11px] text-slate-300">
+    {% for phase in phases %}
+    <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[.03] px-2.5 py-1 ring-1 ring-white/5">
+      <span class="h-2 w-2 rounded-full" style="background: {{ phase.color }}; box-shadow: 0 0 10px {{ phase.color }}"></span>{{ phase.name }}
+    </span>
+    {% endfor %}
+  </div>
+
+  <section class="relative h-[40vh] min-h-[280px] px-2 py-2" style="border-bottom: 1px solid var(--line)">
+    <div id="timeline" class="h-full"></div>
+  </section>
 
   <main class="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-5">
-    <article id="details" class="p-6 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto lg:border-r lg:border-slate-800">
-      <p class="text-slate-500">Event in der Timeline oder im Graphen auswählen.</p>
-    </article>
-    <section class="relative h-[60vh] lg:col-span-3 lg:h-auto">
+    <article id="details" class="glass p-5 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto" style="border-width: 0 1px 0 0"></article>
+
+    <section class="dot-grid relative h-[60vh] lg:col-span-3 lg:h-auto">
       <div id="graph" class="absolute inset-0"></div>
+
+      <div class="absolute right-4 top-4 z-10 flex gap-2">
+        <button id="btn-fit" class="btn">Zentrieren</button>
+        <button id="btn-physics" class="btn">Physik an/aus</button>
+        <button id="btn-reset" class="btn">Auswahl lösen</button>
+      </div>
+
+      <div class="glass absolute bottom-4 left-4 z-10 flex flex-wrap gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-slate-300">
+        <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-sky-400"></span>Akteur</span>
+        <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-violet-400"></span>System</span>
+        <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-rose-400"></span>Event (Phase-Farbe)</span>
+        <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-slate-400"></span>Evidence</span>
+        <span class="inline-flex items-center gap-1.5"><span class="h-px w-4 bg-orange-400"></span>löst aus</span>
+      </div>
     </section>
   </main>
 
   <script id="payload" type="application/json">{{ payload | tojson }}</script>
   <script>
     const DATA = JSON.parse(document.getElementById('payload').textContent);
-    const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)$/i;
+    const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg)$/i;
+    const EDGE_DEFAULT = 'rgba(148, 163, 184, .38)';
+    const EDGE_DIM = 'rgba(148, 163, 184, .07)';
+
     const eventsById = new Map(DATA.events.map(ev => [ev.id, ev]));
+    const lanes = [...new Set(DATA.events.map(ev => ev.actor))];
     const detailsEl = document.getElementById('details');
+    const graphEl = document.getElementById('graph');
     let currentId = null;
 
-    // Small DOM helpers: text is always set via textContent, never via innerHTML.
+    // Icon glyphs (24x24 grid) per node kind. Event icons are tinted with their phase color.
+    const KIND = {
+      actor: { color: '#38bdf8', glyph: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>' },
+      system: { color: '#a78bfa', glyph: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>' },
+      event: { color: '#f87171', glyph: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>' },
+      evidence: { color: '#94a3b8', glyph: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>' },
+    };
+
+    // Small DOM helpers. Text is always set via textContent, never via innerHTML.
     function el(tag, className = '', content = null) {
       const node = document.createElement(tag);
       if (className) node.className = className;
@@ -78,120 +195,274 @@
       return iso.replace('T', ' ').replace('+00:00', ' UTC');
     }
 
+    function iconUri(color, glyph) {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+        <rect x="3" y="3" width="58" height="58" rx="18" fill="#0b1220" stroke="${color}" stroke-width="2.5"/>
+        <rect x="3" y="3" width="58" height="58" rx="18" fill="${color}" opacity=".14"/>
+        <g transform="translate(14 14) scale(1.5)" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${glyph}</g>
+      </svg>`;
+      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    }
+
+    function statusPill(status) {
+      return el('span', 'inline-flex items-center rounded-full bg-white/[.04] px-2.5 py-0.5 text-[11px] text-slate-300 ring-1 ring-white/10', [
+        el('span', `st st-${status}`), status.replace('_', ' '),
+      ]);
+    }
+
     function phaseBadge(ev) {
-      const badge = el('span', 'rounded-full px-2 py-0.5 font-semibold text-slate-900', ev.phase);
+      const badge = el('span', 'rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-slate-950', ev.phase);
       badge.style.background = ev.color;
+      badge.style.boxShadow = `0 0 18px -4px ${ev.color}`;
       return badge;
     }
 
-    function renderEvidence(ev) {
-      const wrap = el('div', 'mt-6 space-y-4');
-      wrap.append(el('h3', 'text-xs font-semibold uppercase tracking-wide text-slate-400', `Evidence (${ev.evidence.length})`));
+    function chip(text, mono = false) {
+      return el('span', `rounded-md bg-white/[.04] px-2 py-0.5 text-xs text-slate-300 ring-1 ring-white/10 ${mono ? 'font-mono' : ''}`, text);
+    }
 
+    function eventButton(ev, prefix) {
+      const btn = el('button', 'rounded-md bg-white/[.04] px-2 py-0.5 text-xs text-sky-300 ring-1 ring-sky-400/20 hover:bg-sky-400/10', `${prefix}${ev.action}`);
+      btn.addEventListener('click', () => selectEvent(ev.id, { focusGraph: true }));
+      return btn;
+    }
+
+    function renderEmpty() {
+      detailsEl.replaceChildren(el('div', 'flex h-full min-h-[240px] flex-col items-center justify-center text-center', [
+        el('div', 'grid h-14 w-14 place-items-center rounded-2xl bg-sky-400/10 text-2xl text-sky-300 ring-1 ring-sky-400/20', '◎'),
+        el('p', 'mt-4 text-sm font-medium text-slate-300', 'Kein Event ausgewählt'),
+        el('p', 'mt-1 max-w-xs text-xs text-slate-500', 'Wähle ein Event in der Timeline oder einen Knoten im Graphen.'),
+      ]));
+    }
+
+    function renderEvidence(ev) {
+      const grid = el('div', 'grid gap-3 sm:grid-cols-2');
       for (const item of ev.evidence) {
-        const card = el('figure', 'overflow-hidden rounded-lg border border-slate-800 bg-slate-900');
-        if (IMAGE_EXTENSIONS.test(item.file)) {
-          const img = el('img', 'w-full cursor-zoom-in bg-slate-950');
+        const card = el('figure', 'group overflow-hidden rounded-xl bg-slate-950/60 ring-1 ring-white/10 transition hover:ring-sky-400/40');
+        if (IMAGE_EXT.test(item.file)) {
+          const img = el('img', 'h-40 w-full cursor-zoom-in object-contain bg-slate-950 p-2 transition duration-300 group-hover:scale-[1.02]');
           img.src = item.src;
           img.alt = item.description || item.file;
           img.loading = 'lazy';
           img.addEventListener('click', () => window.open(item.src, '_blank', 'noopener'));
           card.append(img);
         }
-        const link = el('a', 'text-sky-400 hover:underline', item.file);
+        const link = el('a', 'font-mono text-[11px] text-sky-300 hover:underline', item.file);
         link.href = item.src;
         link.target = '_blank';
         link.rel = 'noopener';
-        card.append(el('figcaption', 'space-y-1 p-3 text-xs text-slate-400', [
-          el('div', '', `${item.type} · ${item.description}`),
+        card.append(el('figcaption', 'space-y-1.5 border-t border-white/5 p-3', [
+          el('div', 'flex items-center gap-2 text-[11px]', [
+            el('span', 'rounded bg-white/5 px-1.5 py-0.5 uppercase tracking-wide text-slate-400', item.type),
+            el('span', 'text-slate-300', item.description),
+          ]),
           link,
         ]));
-        wrap.append(card);
+        grid.append(card);
       }
-      return wrap;
+      return grid;
     }
 
     function renderDetails(ev) {
-      const header = el('div', 'space-y-2', [
-        el('div', 'flex flex-wrap items-center gap-2 text-xs', [
+      const hero = el('div', 'space-y-3 rounded-2xl p-5 ring-1 ring-white/10');
+      hero.style.background = `linear-gradient(135deg, ${ev.color}2e, transparent 65%)`;
+      hero.append(
+        el('div', 'flex flex-wrap items-center gap-2', [
           phaseBadge(ev),
-          el('span', 'rounded bg-slate-800 px-2 py-0.5 text-slate-300', ev.status),
-          el('span', 'font-mono text-slate-500', formatTime(ev.t0)),
+          statusPill(ev.status),
+          el('span', 'font-mono text-[11px] text-slate-400', formatTime(ev.t0)),
         ]),
-        el('h2', 'text-xl font-semibold text-slate-100', ev.action),
-        el('p', 'text-sm text-slate-400', ev.system ? `${ev.actor} · ${ev.system}` : ev.actor),
-      ]);
+        el('h2', 'text-2xl font-semibold tracking-tight text-slate-50', ev.action),
+        el('div', 'flex flex-wrap items-center gap-2', [chip(ev.actor), ev.system ? chip(ev.system, true) : null].filter(Boolean)),
+      );
+
+      const links = [];
       if (ev.triggered_by) {
-        header.append(el('p', 'text-xs text-orange-400', `ausgelöst durch: ${ev.triggered_by}`));
+        const trigger = eventsById.get(ev.triggered_by);
+        links.push(trigger ? eventButton(trigger, '↑ ausgelöst durch: ') : el('span', 'rounded-md px-2 py-0.5 text-xs text-orange-300 ring-1 ring-orange-400/20', `↑ ausgelöst durch: ${ev.triggered_by}`));
       }
+      for (const child of DATA.events.filter(other => other.triggered_by === ev.id)) {
+        links.push(eventButton(child, '↓ löst aus: '));
+      }
+      if (links.length) hero.append(el('div', 'flex flex-wrap gap-2', links));
 
-      detailsEl.replaceChildren(header);
-
+      const sections = [hero];
       if (ev.details) {
-        const body = el('div', 'prose prose-invert mt-6 max-w-none prose-a:text-sky-400');
-        // Untrusted-looking content: marked output is sanitized before it touches the DOM.
+        const body = el('div', 'prose prose-invert mt-5 max-w-none rounded-2xl bg-slate-950/40 p-5 ring-1 ring-white/5 prose-a:text-sky-400');
+        // marked output is sanitized with DOMPurify before it touches the DOM.
         body.innerHTML = DOMPurify.sanitize(marked.parse(ev.details, { gfm: true, breaks: true }));
         body.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
-        detailsEl.append(body);
+        sections.push(body);
       }
-
-      if (ev.evidence.length) detailsEl.append(renderEvidence(ev));
+      if (ev.evidence.length) {
+        sections.push(el('div', 'mt-5', [
+          el('h3', 'mb-3 text-[11px] font-semibold uppercase tracking-[.2em] text-slate-500', `Evidence · ${ev.evidence.length}`),
+          renderEvidence(ev),
+        ]));
+      }
+      detailsEl.replaceChildren(...sections);
+      detailsEl.scrollTop = 0;
     }
 
-    function selectEvent(id) {
+    function highlightNeighborhood(nodeId) {
+      const keep = new Set([nodeId, ...network.getConnectedNodes(nodeId)]);
+      graphNodes.update(graphNodes.getIds().map(id => ({ id, opacity: keep.has(id) ? 1 : 0.14 })));
+      graphEdges.update(graphEdges.getIds().map(id => {
+        const edge = graphEdges.get(id);
+        const lit = keep.has(edge.from) && keep.has(edge.to);
+        return { id, color: { color: lit ? edgeBase.get(id) : EDGE_DIM, highlight: '#e2e8f0' } };
+      }));
+    }
+
+    function resetHighlight() {
+      graphNodes.update(graphNodes.getIds().map(id => ({ id, opacity: 1 })));
+      graphEdges.update(graphEdges.getIds().map(id => ({ id, color: { color: edgeBase.get(id), highlight: '#e2e8f0' } })));
+    }
+
+    function selectEvent(id, { focusGraph = false } = {}) {
       if (id === currentId || !eventsById.has(id)) return;
       currentId = id;
-      renderDetails(eventsById.get(id));
+      const ev = eventsById.get(id);
+      renderDetails(ev);
       timeline.setSelection(id);
       network.selectNodes([`event:${id}`]);
+      highlightNeighborhood(`event:${id}`);
+      if (focusGraph) network.focus(`event:${id}`, { scale: 1.1, animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
       history.replaceState(null, '', `#${encodeURIComponent(id)}`);
     }
 
-    // Timeline (top)
+    function clearSelection() {
+      if (currentId === null) return;
+      currentId = null;
+      timeline.setSelection([]);
+      network.unselectAll();
+      resetHighlight();
+      renderEmpty();
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+
+    // KPI chips in the header
+    const systems = new Set(DATA.events.map(ev => ev.system).filter(Boolean));
+    const evidenceCount = DATA.events.reduce((sum, ev) => sum + ev.evidence.length, 0);
+    document.getElementById('kpis').innerHTML = [
+      ['Events', DATA.events.length],
+      ['Akteure', lanes.length],
+      ['Systeme', systems.size],
+      ['Evidence', evidenceCount],
+    ].map(([label, value]) =>
+      `<span class="glass inline-flex items-center gap-2 rounded-lg px-2.5 py-1"><span class="text-slate-400">${label}</span><span class="font-mono font-semibold text-slate-100">${value}</span></span>`
+    ).join('');
+
+    // Timeline: one swimlane per actor, event cards colored by phase.
+    function laneLabel(name, count) {
+      return el('span', 'ch-lane', [name, el('span', 'ch-count', String(count))]);
+    }
+
+    const timelineGroups = new vis.DataSet(lanes.map(name => ({
+      id: name,
+      content: laneLabel(name, DATA.events.filter(ev => ev.actor === name).length),
+    })));
     const timelineItems = new vis.DataSet(DATA.events.map(ev => ({
       id: ev.id,
-      content: escapeHtml(ev.action),
+      group: ev.actor,
       start: ev.t0,
-      title: `${ev.phase}: ${ev.action}`,
-      style: `background:${ev.color}; border-color:${ev.color}; color:#0f172a; font-weight:600;`,
+      content: '',
+      className: 'ch-item',
+      style: `--c: ${ev.color}`,
     })));
-
-    const timeline = new vis.Timeline(document.getElementById('timeline'), timelineItems, {
+    const timeline = new vis.Timeline(document.getElementById('timeline'), timelineItems, timelineGroups, {
       stack: true,
-      margin: { item: { horizontal: 10, vertical: 4 } },
-      zoomMin: 1000 * 60,
-      zoomMax: 1000 * 60 * 60 * 24 * 365 * 5,
       height: '100%',
       verticalScroll: true,
-    });
-    timeline.on('select', props => { if (props.items.length) selectEvent(props.items[0]); });
-
-    // Graph (bottom right)
-    const graphNodes = new vis.DataSet(DATA.nodes);
-    const network = new vis.Network(
-      document.getElementById('graph'),
-      { nodes: graphNodes, edges: new vis.DataSet(DATA.edges) },
-      {
-        physics: { solver: 'forceAtlas2Based', stabilization: { iterations: 150 } },
-        interaction: { hover: true },
-        nodes: { font: { color: '#e2e8f0', size: 13 }, borderWidth: 1, margin: 8 },
-        edges: {
-          color: { color: '#475569', highlight: '#e2e8f0' },
-          arrows: 'to',
-          font: { color: '#94a3b8', size: 10, strokeWidth: 0 },
-          smooth: { type: 'dynamic' },
-        },
+      margin: { item: { horizontal: 8, vertical: 10 }, axis: 8 },
+      groupOrder: 'content',
+      zoomMin: 1000 * 60,
+      zoomMax: 1000 * 60 * 60 * 24 * 365 * 5,
+      showCurrentTime: false,
+      template: item => {
+        const ev = eventsById.get(item.id);
+        return `<div class="ch-card">
+          <div class="ch-title"><span class="st st-${ev.status}"></span>${escapeHtml(ev.action)}</div>
+          <div class="ch-meta">${escapeHtml(ev.phase)} · ${escapeHtml(formatTime(ev.t0).slice(11, 16))} UTC</div>
+        </div>`;
       },
-    );
+    });
+    timeline.on('select', props => {
+      if (props.items.length) selectEvent(props.items[0], { focusGraph: true });
+      else clearSelection();
+    });
+
+    // Graph: icon nodes, curved edges, neighborhood highlight on selection.
+    const graphNodes = new vis.DataSet(DATA.nodes.map(node => {
+      const kind = node.id.split(':')[0];
+      const color = node.color || KIND[kind].color;
+      return {
+        id: node.id,
+        label: node.label,
+        event_id: node.event_id,
+        shape: 'image',
+        image: iconUri(color, KIND[kind].glyph),
+        size: kind === 'event' ? 30 : 24,
+        font: { color: '#e2e8f0', size: 12, face: 'Inter', strokeWidth: 4, strokeColor: '#030712' },
+      };
+    }));
+
+    const edgeBase = new Map();
+    const graphEdges = new vis.DataSet(DATA.edges.map((edge, index) => {
+      const base = edge.color ? edge.color.color : EDGE_DEFAULT;
+      edgeBase.set(index, base);
+      return {
+        ...edge,
+        id: index,
+        width: edge.color ? 2 : 1.2,
+        color: { color: base, highlight: '#e2e8f0' },
+        arrows: { to: { enabled: true, scaleFactor: 0.55 } },
+        smooth: { type: 'continuous' },
+        font: { color: '#94a3b8', size: 10, strokeWidth: 4, strokeColor: '#030712', align: 'middle' },
+      };
+    }));
+
+    const network = new vis.Network(graphEl, { nodes: graphNodes, edges: graphEdges }, {
+      physics: {
+        solver: 'barnesHut',
+        barnesHut: { gravitationalConstant: -5200, springLength: 170, springConstant: 0.035, damping: 0.3, avoidOverlap: 0.6 },
+        stabilization: { iterations: 200, fit: true },
+      },
+      interaction: { hover: true, tooltipDelay: 150, keyboard: false },
+      nodes: {
+        borderWidth: 0,
+        shapeProperties: { useBorderWithImage: false },
+        scaling: { label: { enabled: true, min: 10, max: 16, drawThreshold: 1 } },
+      },
+      edges: {
+        selectionWidth: 2,
+        hoverWidth: 1.5,
+        scaling: { label: { enabled: true, min: 8, max: 12, drawThreshold: 2 } },
+      },
+    });
+
+    network.once('stabilized', () => network.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } }));
     network.on('click', params => {
-      if (!params.nodes.length) return;
+      if (!params.nodes.length) return clearSelection();
       const node = graphNodes.get(params.nodes[0]);
       if (node.event_id) selectEvent(node.event_id);
     });
+    network.on('hoverNode', () => { graphEl.style.cursor = 'pointer'; });
+    network.on('blurNode', () => { graphEl.style.cursor = 'default'; });
 
-    // Deep link: index.html#evt-003 opens that event directly.
+    // Toolbar
+    document.getElementById('btn-fit').addEventListener('click', () => network.fit({ animation: { duration: 500 } }));
+    document.getElementById('btn-reset').addEventListener('click', clearSelection);
+    let physicsOn = true;
+    document.getElementById('btn-physics').addEventListener('click', () => {
+      physicsOn = !physicsOn;
+      network.setOptions({ physics: { enabled: physicsOn } });
+    });
+
+    // Initial state: deep link (#evt-003) or empty state.
+    renderEmpty();
     const initial = decodeURIComponent(location.hash.slice(1));
-    if (eventsById.has(initial)) selectEvent(initial);
+    if (eventsById.has(initial)) selectEvent(initial, { focusGraph: true });
   </script>
 </body>
 </html>
