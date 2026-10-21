@@ -129,6 +129,7 @@ def test_build_site_writes_index_and_evidence(tmp_path):
     index = build_site(data, tmp_path / "out")
 
     assert "Test" in index.read_text(encoding="utf-8")
+    assert "Berichts-Snapshot" in index.read_text(encoding="utf-8")
     assert (tmp_path / "out" / "evidence" / "shot.png").is_file()
 
 

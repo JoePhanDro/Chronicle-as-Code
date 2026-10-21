@@ -63,6 +63,18 @@ CHRONICLE_COOKIE_SECURE=0 python -m chronicle.serve --db ./chronicle.db --port 8
 `CHRONICLE_COOKIE_SECURE=0` ist nur für Tests über HTTP gedacht. Ohne diese Variable setzt der Server das Cookie
 mit `Secure`, und Browser schicken es über `http://localhost` trotzdem zurück.
 
+## Berichts-Export (ohne Anmeldung)
+
+Für ein Post-Mortem gibt es einen eigenständigen HTML-Bericht aus einer `timeline.yaml` (ADR 0001). Er enthält das Topic, alle seine Events und die Evidence-Dateien, ohne Anmeldung und ohne Live-Stand.
+
+```bash
+python -m chronicle --data ./data --out ./bericht
+docker run --rm -v "$PWD/data:/data:ro" -v "$PWD/bericht:/output" \
+  --entrypoint python chronicle-dashboard:local -m chronicle --data /data --out /output
+```
+
+Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie nur bewusst und lösche sie danach. Der Standard-Entrypoint des Images ist die API, nicht der Bericht.
+
 ## Konfiguration
 
 | Variable | Wirkung | Standard |
@@ -249,7 +261,7 @@ Die CI läuft bei jeder Pull-Request: Tests, Smoke-Lauf des Dashboard-Exports, J
 
 Die wichtigsten offenen Punkte, mit Issue-Nummern:
 
-- Der statische Dashboard-Export liefert alle Daten ohne Anmeldung, wenn man ihn ausführt ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24))
+- Der Berichts-Export (`python -m chronicle`) liefert ein Topic ohne Anmeldung. Er ist ein Snapshot und kein Live-Stand ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24))
 - Timeline und Graph gibt es nur im statischen Export, nicht hinter der Anmeldung ([#25](https://github.com/JoePhanDro/Chronicle-as-Code/issues/25))
 - Topics lassen sich nur über API und YAML anlegen ([#26](https://github.com/JoePhanDro/Chronicle-as-Code/issues/26))
 - Keine Suche und keine Paginierung ([#30](https://github.com/JoePhanDro/Chronicle-as-Code/issues/30))

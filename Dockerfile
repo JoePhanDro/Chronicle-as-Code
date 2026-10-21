@@ -28,6 +28,7 @@ COPY --from=css /build/chronicle/static/app.css ./chronicle/static/app.css
 
 USER chronicle
 
-# Default: the static dashboard generator. The compose stack overrides the entrypoint for api and importer.
-ENTRYPOINT ["python", "-m", "chronicle"]
-CMD ["--data", "/data", "--out", "/output"]
+# Default: the API. The report export (python -m chronicle) is an explicit command, not the default,
+# because its output is an unprotected copy of one topic (ADR 0001, issue #24).
+ENTRYPOINT ["python", "-m", "chronicle.serve"]
+CMD ["--db", "/db/chronicle.db", "--host", "0.0.0.0", "--port", "8000"]
