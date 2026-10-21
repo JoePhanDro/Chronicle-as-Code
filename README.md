@@ -23,6 +23,7 @@ docker compose run --rm generator
 Ohne Docker (Python 3.11+):
 
 ```bash
+npm ci && npm run build:css      # Tailwind-CSS bauen (einmalig bzw. nach Template-Änderungen)
 pip install -r requirements.txt
 python -m chronicle --data ./data --out ./output
 python -m http.server 8080 --directory ./output
@@ -71,4 +72,6 @@ Farben folgen der `phase`: rot für Identification/Exploit, gelb für Analysis, 
 - Der Generator bricht mit einer klaren Fehlermeldung ab, wenn das Schema verletzt ist, eine Evidence-Datei fehlt oder ein Pfad aus dem Timeline-Ordner herausführt.
 - Der Webserver lauscht nur auf `127.0.0.1`.
 - Markdown wird im Browser mit DOMPurify bereinigt.
+- Tailwind wird lokal gebaut (kein Play-CDN). Die übrigen CDN-Skripte sind per Subresource Integrity (SRI) gepinnt. Bei einem Versionswechsel muss der `integrity`-Hash im Template mit aktualisiert werden.
+- Base-Images im Dockerfile sind per Digest gepinnt.
 - Die Beispieldaten in `data/` sind fiktiv. Die SVG-Dateien sind Platzhalter, keine echten Screenshots.
