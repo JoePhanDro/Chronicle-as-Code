@@ -1,3 +1,15 @@
+{% macro menu(id, label, entries, align_end=false) -%}
+<div class="relative" data-menu>
+  <button type="button" class="flex items-center gap-1 rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white" aria-expanded="false" aria-controls="{{ id }}">
+    {{ label }}<span class="text-xs" aria-hidden="true">▾</span>
+  </button>
+  <ul id="{{ id }}" hidden class="absolute left-0 z-20 {{ 'max-sm:left-auto max-sm:right-0' if align_end }} mt-2 min-w-[12rem] rounded-xl border border-white/10 bg-slate-900 p-1 shadow-2xl shadow-black/40">
+    {% for href, text in entries %}
+    <li><a href="{{ href }}" class="block rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white">{{ text }}</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{%- endmacro %}
 <!doctype html>
 <html lang="de">
 <head>
@@ -5,18 +17,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Chronicle{% endblock %} · Chronicle</title>
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="icon" type="image/png" href="/static/icon.png">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 </head>
 <body class="min-h-screen bg-slate-950 font-sans text-slate-200 antialiased">
+  {% set writer = user.role in ['admin', 'analyst'] %}
   <header class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-6 py-3">
-    <nav class="flex items-center gap-5 text-sm">
-      <a href="/" class="font-semibold text-slate-100">Chronicle</a>
-      <a href="/events" class="text-slate-400 hover:text-white">Ereignisse</a>
-      <a href="/topics" class="text-slate-400 hover:text-white">Topics</a>
-      {% if user.role == 'admin' %}
-      <a href="/admin/users" class="text-slate-400 hover:text-white">Benutzer</a>
-      <a href="/admin/audit" class="text-slate-400 hover:text-white">Audit</a>
+    <nav aria-label="Hauptmenü" class="flex flex-wrap items-center gap-1 text-sm">
+      <a href="/" class="mr-3 font-semibold text-slate-100">Chronicle</a>
+      {{ menu("menu-views", "Ansichten", [("/events", "Ereignisse"), ("/topics", "Topics")] + ([("/reports", "Berichte")] if user.role == 'admin' else [])) }}
+      {% if writer %}
+      {{ menu("menu-new", "Neu", [("/events/new", "Ereignis"), ("/topics/new", "Topic")], align_end=true) }}
       {% endif %}
-      {% if user.role == 'admin' %}<a href="/reports" class="text-slate-400 hover:text-white">Berichte</a>{% endif %}
+      {% if user.role == 'admin' %}
+      {{ menu("menu-admin", "Verwaltung", [("/admin/users", "Benutzer"), ("/admin/audit", "Audit-Log")], align_end=true) }}
+      {% endif %}
     </nav>
     <div class="flex items-center gap-4 text-sm">
       <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
@@ -30,5 +45,31 @@
   <main class="mx-auto max-w-5xl px-6 py-8">
     {% block content %}{% endblock %}
   </main>
+  <script>
+    // Disclosure menus: one open at a time. Escape closes the open menu and returns focus to its button.
+    (() => {
+      const triggers = [...document.querySelectorAll('[data-menu] > button')];
+      const setOpen = (trigger, open) => {
+        trigger.setAttribute('aria-expanded', String(open));
+        document.getElementById(trigger.getAttribute('aria-controls')).hidden = !open;
+      };
+      triggers.forEach(trigger => {
+        trigger.addEventListener('click', () => {
+          const wasOpen = trigger.getAttribute('aria-expanded') === 'true';
+          triggers.forEach(other => setOpen(other, false));
+          setOpen(trigger, !wasOpen);
+        });
+        trigger.parentElement.addEventListener('keydown', event => {
+          if (event.key === 'Escape' && trigger.getAttribute('aria-expanded') === 'true') {
+            setOpen(trigger, false);
+            trigger.focus();
+          }
+        });
+      });
+      document.addEventListener('click', event => {
+        if (!event.target.closest('[data-menu]')) triggers.forEach(trigger => setOpen(trigger, false));
+      });
+    })();
+  </script>
 </body>
 </html>
