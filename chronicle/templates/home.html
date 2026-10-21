@@ -1,28 +1,33 @@
-<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Chronicle</title>
-  <link rel="stylesheet" href="/static/app.css">
-</head>
-<body class="min-h-screen bg-slate-950 font-sans text-slate-200 antialiased">
-  <header class="flex items-center justify-between border-b border-white/10 px-6 py-3">
-    <div class="text-sm font-semibold text-slate-100">Chronicle</div>
-    <div class="flex items-center gap-4 text-sm">
-      <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
-      <form method="post" action="/logout">
-        <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-        <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-slate-300 hover:border-sky-400/50 hover:text-white">Abmelden</button>
-      </form>
-    </div>
-  </header>
-  <main class="mx-auto max-w-2xl px-6 py-12">
-    <h1 class="text-2xl font-semibold text-slate-100">Angemeldet</h1>
-    <p class="mt-2 text-sm text-slate-400">
-      Die Ansichten (Timeline, Graph, Events, Evidence) folgen in Phase 3. Bis dahin ist die API unter
-      <code class="font-mono text-slate-300">/api/v1/topics</code> erreichbar.
-    </p>
-  </main>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Start{% endblock %}
+{% block content %}
+<h1 class="text-xl font-semibold text-slate-100">Chronicle</h1>
+<p class="mt-1 text-sm text-slate-400">Ereignisse und Topics festhalten, Belege zuordnen und Berichte erstellen.</p>
+
+<div class="mt-8 grid gap-4 sm:grid-cols-2">
+  <a href="/events" class="rounded-xl border border-white/10 px-5 py-4 hover:border-sky-400/50 hover:bg-white/[.02]">
+    <span class="block text-sm font-semibold text-slate-100">Ereignisse</span>
+    <span class="mt-1 block text-sm text-slate-400">Zeitlich geordnetes Protokoll aller Vorfälle</span>
+  </a>
+  <a href="/topics" class="rounded-xl border border-white/10 px-5 py-4 hover:border-sky-400/50 hover:bg-white/[.02]">
+    <span class="block text-sm font-semibold text-slate-100">Topics</span>
+    <span class="mt-1 block text-sm text-slate-400">Vorfälle und Projekte, denen Ereignisse zugeordnet sind</span>
+  </a>
+  {% if user.role == 'admin' %}
+  <a href="/reports" class="rounded-xl border border-white/10 px-5 py-4 hover:border-sky-400/50 hover:bg-white/[.02]">
+    <span class="block text-sm font-semibold text-slate-100">Berichte</span>
+    <span class="mt-1 block text-sm text-slate-400">Zusammenfassungen für Lessons Learned</span>
+  </a>
+  {% endif %}
+  {% if user.role in ['admin', 'analyst'] %}
+  <a href="/events/new" class="rounded-xl border border-sky-400/30 bg-sky-400/5 px-5 py-4 hover:border-sky-400/60">
+    <span class="block text-sm font-semibold text-sky-200">Neues Ereignis</span>
+    <span class="mt-1 block text-sm text-slate-400">Eine neue Aktion im Protokoll erfassen</span>
+  </a>
+  <a href="/topics/new" class="rounded-xl border border-sky-400/30 bg-sky-400/5 px-5 py-4 hover:border-sky-400/60">
+    <span class="block text-sm font-semibold text-sky-200">Neues Topic</span>
+    <span class="mt-1 block text-sm text-slate-400">Einen Vorfall oder ein Projekt anlegen</span>
+  </a>
+  {% endif %}
+</div>
+{% endblock %}
