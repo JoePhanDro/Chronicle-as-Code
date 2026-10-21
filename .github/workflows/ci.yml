@@ -32,7 +32,7 @@ jobs:
       - name: Generate dashboard from sample data
         run: python -m chronicle --data data --out "$RUNNER_TEMP/site"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
 
