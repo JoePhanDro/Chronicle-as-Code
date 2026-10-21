@@ -80,6 +80,16 @@ def test_analyst_creates_event_and_it_is_listed(db_path):
     assert len(anna.get("/api/v1/topics/inc-2026-042/events").json()) == 8
 
 
+def test_api_generates_key_when_none_is_sent(db_path):
+    anna = api_login(db_path, "anna")
+    body = new_event()
+    del body["key"]
+    response = anna.post("/api/v1/events", json=body)
+    assert response.status_code == 201
+    assert re.fullmatch(r"ev-\d{8}-[0-9a-f]{8}", response.json()["key"])
+    assert anna.post("/api/v1/events", json={**body, "key": "bad key!"}).status_code == 422
+
+
 def test_duplicate_key_is_conflict(db_path):
     anna = api_login(db_path, "anna")
     assert anna.post("/api/v1/events", json=new_event("exploit")).status_code == 409

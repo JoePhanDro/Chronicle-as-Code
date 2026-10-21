@@ -30,6 +30,12 @@ class EventWrite(Event):
         return value
 
 
+class EventCreate(EventWrite):
+    """Event for a new record. Without a key the server generates one (see new_event_key)."""
+
+    key: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+
+
 class EventUpdate(EventWrite):
     version: int = Field(ge=1, description="Version the change is based on")
 
