@@ -56,6 +56,7 @@ jobs:
 
       - name: Run generator in container
         run: |
+          mkdir -p "$RUNNER_TEMP/site"
           docker run --rm --user "$(id -u):$(id -g)" \
             -v "$PWD/data:/data:ro" -v "$RUNNER_TEMP/site:/output" \
             chronicle-dashboard:ci --data /data --out /output
