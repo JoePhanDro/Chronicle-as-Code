@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from . import accounts
+from .evidence import EVIDENCE_TYPES, MAX_DESCRIPTION_LENGTH, Blob
 from .models import Event, Timeline
 
 EVENT_SELECT = """
@@ -59,13 +61,28 @@ def _event_pk(conn: sqlite3.Connection, key: str) -> int | None:
     return row["pk"] if row else None
 
 
-def _replace_evidence(conn: sqlite3.Connection, event_pk: int, event: Event) -> None:
+def _replace_import_evidence(conn: sqlite3.Connection, event_pk: int, event: Event, blobs: Mapping[str, Blob]) -> None:
+    """Replace the evidence of an imported event. Each file must have been read and checked by the caller."""
     conn.execute("DELETE FROM evidence WHERE event_pk = ?", (event_pk,))
     for item in event.evidence:
+        blob = blobs.get(item.file)
+        if blob is None:
+            raise ValueError(f"Evidence-Datei fehlt für Event {event.key!r}: {item.file!r}")
         conn.execute(
-            "INSERT INTO evidence (event_pk, file, type, description) VALUES (?, ?, ?, ?)",
-            (event_pk, item.file, item.type, item.description),
+            """
+            INSERT INTO evidence (event_pk, file, type, description, mime, size, sha256, content)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (event_pk, item.file, item.type, item.description, blob.mime, blob.size, blob.sha256, blob.content),
         )
+
+
+def _mark_manual(conn: sqlite3.Connection, event_pk: int) -> None:
+    """Changes in the UI or API keep the event out of later imports (ADR 0003)."""
+    conn.execute(
+        "UPDATE events SET source = 'manual', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE pk = ?",
+        (event_pk,),
+    )
 
 
 def _check_trigger(conn: sqlite3.Connection, triggered_by: str | None, own_key: str | None = None) -> None:
@@ -97,12 +114,13 @@ def _topic_keys_of(conn: sqlite3.Connection, event_pk: int) -> list[str]:
 
 # Import
 
-def import_timeline(conn: sqlite3.Connection, timeline: Timeline) -> ImportReport:
+def import_timeline(conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[str, Blob] | None = None) -> ImportReport:
     """Create or update a topic and its events from a topic file.
 
+    `blobs` maps each evidence path of the file to its checked content (see evidence.check_file).
     Idempotent: the same file again changes nothing. Events edited in the UI (source 'manual') and
     events deleted in the UI (tombstones) are skipped and reported. Links are only added, never removed.
-    Any failed check rolls back the whole import.
+    Any failed check rolls back the whole import, including the evidence contents.
     """
     topic = timeline.topic
     report = ImportReport(topic=topic.key)
@@ -161,7 +179,7 @@ def import_timeline(conn: sqlite3.Connection, timeline: Timeline) -> ImportRepor
                 (event.key, *_event_values(event), topic.key),
             )
             event_pk = _event_pk(conn, event.key)
-            _replace_evidence(conn, event_pk, event)
+            _replace_import_evidence(conn, event_pk, event, blobs or {})
             (report.updated if existed else report.created).append(event.key)
 
         for event in timeline.events:
@@ -201,7 +219,6 @@ def create_event(conn: sqlite3.Connection, event: Event, topic_keys: list[str], 
             """,
             (event.key, *_event_values(event), home),
         )
-        _replace_evidence(conn, cursor.lastrowid, event)
         _set_links(conn, cursor.lastrowid, topic_keys)
 
     accounts.audit(conn, "event_created", user_id=actor_id, target=event.key, detail=f"topics={','.join(topic_keys)}", ip=ip)
@@ -218,7 +235,7 @@ def update_event(
     ip: str,
 ) -> dict:
     row = conn.execute(
-        f"SELECT pk, version, home_topic FROM events WHERE key = ?", (key,)
+        "SELECT pk, version, home_topic FROM events WHERE key = ?", (key,)
     ).fetchone()
     if row is None:
         raise NotFound(f"Event {key!r} nicht gefunden")
@@ -234,8 +251,6 @@ def update_event(
                   "system": event.system, "action": event.action, "status": event.status.value,
                   "triggered_by": event.triggered_by, "details": event.details}
     changed = [name for name in EDITABLE_FIELDS if str(old[name]) != str(new_values[name])]
-    if old["evidence"] != [item.model_dump() for item in event.evidence]:
-        changed.append("evidence")
     if sorted(old_topics) != sorted(topic_keys):
         changed.append("topics")
 
@@ -251,12 +266,55 @@ def update_event(
             """,
             (*_event_values(event), row["pk"]),
         )
-        _replace_evidence(conn, row["pk"], event)
         _set_links(conn, row["pk"], topic_keys)
 
     if changed:
         accounts.audit(conn, "event_updated", user_id=actor_id, target=key, detail=",".join(changed), ip=ip)
     return get_event(conn, key)
+
+
+def add_evidence(
+    conn: sqlite3.Connection, key: str, blob: Blob, evidence_type: str, description: str, actor_id: int, ip: str
+) -> dict:
+    if evidence_type not in EVIDENCE_TYPES:
+        raise Invalid(f"Unbekannter Evidence-Typ {evidence_type!r}")
+    if len(description) > MAX_DESCRIPTION_LENGTH:
+        raise Invalid(f"Die Beschreibung darf höchstens {MAX_DESCRIPTION_LENGTH} Zeichen lang sein")
+
+    with conn:
+        event_pk = _event_pk(conn, key)
+        if event_pk is None:
+            raise NotFound(f"Event {key!r} nicht gefunden")
+        cursor = conn.execute(
+            """
+            INSERT INTO evidence (event_pk, file, type, description, mime, size, sha256, content)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (event_pk, blob.name, evidence_type, description.strip(), blob.mime, blob.size, blob.sha256, blob.content),
+        )
+        _mark_manual(conn, event_pk)
+
+    accounts.audit(conn, "evidence_added", user_id=actor_id, target=key, detail=blob.name, ip=ip)
+    return _evidence_meta(conn, cursor.lastrowid)
+
+
+def delete_evidence(conn: sqlite3.Connection, evidence_id: int, actor_id: int, ip: str) -> None:
+    row = conn.execute(
+        """
+        SELECT evidence.event_pk, evidence.file, events.key
+        FROM evidence JOIN events ON events.pk = evidence.event_pk
+        WHERE evidence.pk = ?
+        """,
+        (evidence_id,),
+    ).fetchone()
+    if row is None:
+        raise NotFound("Evidence nicht gefunden")
+
+    with conn:
+        conn.execute("DELETE FROM evidence WHERE pk = ?", (evidence_id,))
+        _mark_manual(conn, row["event_pk"])
+
+    accounts.audit(conn, "evidence_deleted", user_id=actor_id, target=row["key"], detail=row["file"], ip=ip)
 
 
 def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) -> None:
@@ -286,13 +344,23 @@ def _set_links(conn: sqlite3.Connection, event_pk: int, topic_keys: list[str]) -
 
 # Reads
 
+EVIDENCE_META = "SELECT pk AS id, file, type, description, mime, size, sha256 FROM evidence"
+
+
+def _evidence_meta(conn: sqlite3.Connection, evidence_id: int) -> dict:
+    return dict(conn.execute(f"{EVIDENCE_META} WHERE pk = ?", (evidence_id,)).fetchone())
+
+
+def get_evidence_content(conn: sqlite3.Connection, evidence_id: int) -> dict | None:
+    row = conn.execute("SELECT file, mime, content FROM evidence WHERE pk = ?", (evidence_id,)).fetchone()
+    return dict(row) if row else None
+
+
 def _with_evidence(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[dict]:
     events = []
     for row in rows:
         event = {key: row[key] for key in row.keys() if key != "pk"}
-        evidence = conn.execute(
-            "SELECT file, type, description FROM evidence WHERE event_pk = ? ORDER BY pk", (row["pk"],)
-        ).fetchall()
+        evidence = conn.execute(f"{EVIDENCE_META} WHERE event_pk = ? ORDER BY pk", (row["pk"],)).fetchall()
         event["evidence"] = [dict(item) for item in evidence]
         events.append(event)
     return events

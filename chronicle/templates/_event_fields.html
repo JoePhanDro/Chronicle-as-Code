@@ -72,9 +72,3 @@
   <span class="{{ label_class }}">Details (Markdown)</span>
   <textarea name="details" rows="6" class="{{ input_class }}">{{ f.details or '' }}</textarea>
 </label>
-
-<label class="block">
-  <span class="{{ label_class }}">Evidence, eine Zeile pro Eintrag: Datei | Typ | Beschreibung</span>
-  <textarea name="evidence" rows="3" placeholder="evidence/screenshot.png | screenshot | Alarm" class="{{ input_class }} font-mono text-xs">{{ f.evidence or '' }}</textarea>
-  <span class="mt-1 block text-xs text-slate-500">Typ: screenshot, log, report oder other. Dateien müssen im Datenordner liegen. Upload folgt später.</span>
-</label>

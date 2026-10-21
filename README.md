@@ -93,7 +93,7 @@ events:
     details: |                       # optional, Markdown
       …
     evidence:                        # optional, Pfade relativ zur Datei
-      - file: evidence/waf-block.svg
+      - file: evidence/waf-block.png
         type: screenshot             # screenshot | log | report | other
         description: "…"
 
@@ -103,6 +103,7 @@ refs:                                # optional: Events, die in einer anderen Da
 
 - **Heimat:** Jedes Event wird in genau einer Datei definiert. Andere Topics binden es über `refs` ein.
 - **Unbekannte Felder** sind Fehler. Das verhindert stille Tippfehler.
+- **Evidence** wird beim Import geprüft und in der Datenbank gespeichert. Erlaubt sind PNG, JPEG, GIF, WebP, PDF und UTF-8-Text (`.txt`, `.log`), höchstens 10 MiB je Datei. Endung und Inhalt müssen zusammenpassen. SVG und HTML sind nicht erlaubt, weil Browser darin Skripte ausführen ([ADR 0004](docs/adr/0004-evidence-storage.md)).
 - **Farben** folgen der Phase: rot für Identification und Exploit, gelb für Analysis, orange für Containment, grün für Mitigation und Recovery, blau für Lessons Learned.
 
 ## Datenhaltung und Bearbeitung
@@ -114,6 +115,10 @@ Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0
 - Jede Änderung erhöht die Version eines Events. Wer auf einer veralteten Fassung speichert, bekommt `409` und muss neu laden.
 - Ein Event, das ein anderes auslöst, lässt sich nicht löschen, solange der Verweis besteht.
 
+- Evidence wird nur über `GET /api/v1/evidence/{id}` ausgeliefert, und nur an angemeldete Nutzer. Dateien können Analyst und Admin in der Oberfläche oder über die API hochladen und entfernen. Uploads ändern das Event wie eine Bearbeitung: Ein erneuter Import überschreibt es nicht.
+
+**Nach einem Update** auf diese Version einmal den Import ausführen (`docker compose --profile import run --rm importer`). Evidence, die vorher nur als Pfad vorlag, bekommt dabei seinen Inhalt. Bis dahin antwortet der Download mit 404.
+
 **Achtung:** Es gibt noch keinen Export zurück in YAML. Die Datenbank ist dann die einzige vollständige Kopie. Sichere das SQLite-File oder das Volume `chronicle-db` selbst ([Issue #23](https://github.com/JoePhanDro/Chronicle-as-Code/issues/23)).
 
 ## Oberfläche
@@ -124,7 +129,7 @@ Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0
 | `/` | angemeldet | Startseite |
 | `/events` | angemeldet | alle Events, zeitlich sortiert |
 | `/events/new` | analyst, admin | Event anlegen |
-| `/events/{key}` | angemeldet | Details, Evidence, Topics; bearbeiten und löschen für analyst und admin |
+| `/events/{key}` | angemeldet | Details, Evidence mit Vorschau, Topics; bearbeiten, Evidence hochladen und löschen für analyst und admin |
 
 Die Oberfläche ist serverseitig gerendert. Formulare sind mit einem CSRF-Token der Sitzung geschützt.
 
@@ -142,10 +147,13 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | GET | `/topics/{key}` | angemeldet | ein Topic |
 | GET | `/topics/{key}/events` | angemeldet | Events eines Topics, zeitlich sortiert |
 | GET | `/events` | angemeldet | alle Events |
-| GET | `/events/{key}` | angemeldet | ein Event mit Evidence und Topics |
-| POST | `/events` | analyst, admin | Event anlegen (`topic` = Heimat, `topics` = weitere) |
+| GET | `/events/{key}` | angemeldet | ein Event mit Evidence-Metadaten und Topics |
+| POST | `/events` | analyst, admin | Event anlegen (`topic` = Heimat, `topics` = weitere). Evidence im Body gibt es nicht, siehe unten |
 | PUT | `/events/{key}` | analyst, admin | Event ändern, Body mit `version` (sonst 409) |
 | DELETE | `/events/{key}` | analyst, admin | Event löschen (409, solange ein anderes Event darauf verweist) |
+| POST | `/events/{key}/evidence` | analyst, admin | Datei hochladen, multipart mit `file`, `type`, `description` |
+| GET | `/evidence/{id}` | angemeldet | Inhalt einer Evidence-Datei |
+| DELETE | `/evidence/{id}` | analyst, admin | Evidence entfernen |
 | GET | `/users` | admin | Konten |
 | POST | `/users` | admin | Konto anlegen |
 | PATCH | `/users/{id}` | admin | Rolle, Aktivierung oder Passwort ändern |
@@ -209,7 +217,6 @@ Die CI läuft bei jeder Pull-Request: Tests, Smoke-Lauf des Dashboard-Exports, J
 
 Die wichtigsten offenen Punkte, mit Issue-Nummern:
 
-- Evidence wird nur als Pfad gespeichert, nicht ausgeliefert ([#22](https://github.com/JoePhanDro/Chronicle-as-Code/issues/22))
 - Kein Export zurück in YAML ([#23](https://github.com/JoePhanDro/Chronicle-as-Code/issues/23))
 - Der statische Dashboard-Export liefert alle Daten ohne Anmeldung, wenn man ihn ausführt ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24))
 - Timeline und Graph gibt es nur im statischen Export, nicht hinter der Anmeldung ([#25](https://github.com/JoePhanDro/Chronicle-as-Code/issues/25))
@@ -224,6 +231,7 @@ Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/is
   - [ADR 0001](docs/adr/0001-backend-auth-pages.md): Server, Anmeldung, Seiten (akzeptiert)
   - [ADR 0002](docs/adr/0002-topics-and-events.md): Events und Topics (zu bestätigen)
   - [ADR 0003](docs/adr/0003-editing-in-the-ui.md): Bearbeiten in der Oberfläche (zu bestätigen)
+  - [ADR 0004](docs/adr/0004-evidence-storage.md): Evidence in der Datenbank, Abweichung von ADR 0001 (zu bestätigen)
 - Wie man beiträgt, steht in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Die Beispieldaten in `data/` sind fiktiv. Die SVG-Dateien sind Platzhalter, keine echten Screenshots.
+Die Beispieldaten in `data/` sind fiktiv. Die PNG-Dateien sind Platzhalter, aus SVG-Vorlagen gerendert, keine echten Screenshots.

@@ -9,13 +9,14 @@ from contextlib import closing
 from pathlib import Path
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from . import __version__, accounts, repository, security
 from .auth import client_ip, make_auth
 from .db import connect
+from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
 from .pages import make_pages
 from .event_input import EventUpdate, EventWrite, event_of, topic_list
 
@@ -95,9 +96,51 @@ def create_app(db_path: str | Path) -> FastAPI:
             raise HTTPException(status_code=404, detail="Event nicht gefunden")
         return found
 
+    # Evidence is served only to logged-in users, never as a public file (ADR 0004).
+    @app.get("/api/v1/evidence/{evidence_id}")
+    def evidence_file(evidence_id: int, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> Response:
+        found = repository.get_evidence_content(conn, evidence_id)
+        if found is None or found["content"] is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Evidence nicht gefunden oder ohne gespeicherten Inhalt. Bitte den Import erneut ausführen.",
+            )
+        return Response(
+            content=found["content"],
+            media_type=found["mime"],
+            headers=delivery_headers(display_name(found["file"]), found["mime"]),
+        )
+
     # Writing events: admins and analysts. Validation is the same as for imports.
 
     writer = auth.require_role("admin", "analyst")
+
+    @app.post("/api/v1/events/{key}/evidence", status_code=201)
+    async def upload_evidence(
+        key: str,
+        request: Request,
+        file: UploadFile = File(...),
+        evidence_type: str = Form(..., alias="type"),
+        description: str = Form(""),
+        conn: sqlite3.Connection = Depends(get_conn),
+        user: dict = Depends(writer),
+    ) -> dict:
+        data = await file.read(MAX_EVIDENCE_BYTES + 1)  # one byte over the limit is enough to reject
+        return _write(
+            lambda: repository.add_evidence(
+                conn, key, check_file(file.filename or "", data), evidence_type, description, user["id"], client_ip(request)
+            )
+        )
+
+    @app.delete("/api/v1/evidence/{evidence_id}", status_code=204, response_class=Response)
+    def delete_evidence(
+        evidence_id: int,
+        request: Request,
+        conn: sqlite3.Connection = Depends(get_conn),
+        user: dict = Depends(writer),
+    ) -> Response:
+        _write(lambda: repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request)))
+        return Response(status_code=204)
 
     @app.post("/api/v1/events", status_code=201)
     def create_event(
@@ -231,7 +274,7 @@ def _write(action):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except repository.Conflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except repository.Invalid as exc:
+    except (repository.Invalid, EvidenceRejected) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

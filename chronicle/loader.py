@@ -7,11 +7,14 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from .evidence import MAX_EVIDENCE_BYTES, Blob, EvidenceRejected, check_file
 from .models import Timeline
 
 TIMELINE_NAME = "timeline.yaml"
 # Evidence is copied next to index.html, so these names must not be overwritten.
 RESERVED_OUTPUT_NAMES = {"index.html", "index.html.tmp"}
+# One byte more than the limit, so that check_file can report files that are too large.
+MAX_READ_BYTES = MAX_EVIDENCE_BYTES + 1
 
 
 class TimelineError(Exception):
@@ -41,6 +44,23 @@ def load_timeline(path: Path) -> Timeline:
         return Timeline.model_validate(raw)
     except ValidationError as exc:
         raise TimelineError(f"Schema-Validierung fehlgeschlagen für {path}:\n{exc}") from exc
+
+
+def load_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Blob]:
+    """Read and check every evidence file. Keys are the relative paths used in the YAML."""
+    blobs: dict[str, Blob] = {}
+    problems: list[str] = []
+    for relative, source in collect_evidence(timeline, base_dir).items():
+        with source.open("rb") as handle:
+            data = handle.read(MAX_READ_BYTES)
+        try:
+            blobs[relative] = check_file(relative, data)
+        except EvidenceRejected as exc:
+            problems.append(str(exc))
+
+    if problems:
+        raise TimelineError("Ungültige Evidence-Dateien:\n  " + "\n  ".join(problems))
+    return blobs
 
 
 def collect_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Path]:

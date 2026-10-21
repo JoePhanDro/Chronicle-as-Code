@@ -7,17 +7,17 @@ import sys
 from pathlib import Path
 
 from .db import connect
-from .loader import TimelineError, collect_evidence, find_timeline, load_timeline
+from .loader import TimelineError, find_timeline, load_evidence, load_timeline
 from .repository import ImportReport, import_timeline
 
 
 def import_folder(db_path: str | Path, data_dir: str | Path) -> ImportReport:
     timeline_path = find_timeline(Path(data_dir))
     timeline = load_timeline(timeline_path)
-    collect_evidence(timeline, timeline_path.parent)  # fails early if evidence files are missing
+    blobs = load_evidence(timeline, timeline_path.parent)  # fails before anything is written
     conn = connect(db_path)
     try:
-        return import_timeline(conn, timeline)
+        return import_timeline(conn, timeline, blobs)
     finally:
         conn.close()
 

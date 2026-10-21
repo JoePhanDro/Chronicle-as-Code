@@ -4,8 +4,11 @@ import pytest
 
 from chronicle import repository
 from chronicle.db import connect
+from chronicle.evidence import check_file
 from chronicle.models import Timeline
 from chronicle.repository import import_timeline
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
 
 
 def event(key, **overrides):
@@ -64,9 +67,18 @@ def test_topic_metadata_is_updated_in_place(conn):
 
 def test_evidence_is_replaced_not_appended(conn):
     with_evidence = event("e1", evidence=[{"file": "a.png", "type": "screenshot"}])
-    import_timeline(conn, topic_file("a", [with_evidence]))
-    import_timeline(conn, topic_file("a", [with_evidence]))
+    blobs = {"a.png": check_file("a.png", PNG)}
+    import_timeline(conn, topic_file("a", [with_evidence]), blobs)
+    import_timeline(conn, topic_file("a", [with_evidence]), blobs)
     assert count(conn, "evidence") == 1
+
+
+def test_evidence_without_checked_content_rolls_back_the_import(conn):
+    with_evidence = event("e1", evidence=[{"file": "a.png", "type": "screenshot"}])
+    with pytest.raises(ValueError, match="Evidence-Datei fehlt"):
+        import_timeline(conn, topic_file("a", [with_evidence]), {})
+    assert count(conn, "topics") == 0
+    assert count(conn, "events") == 0
 
 
 def test_removed_event_stays_linked_and_kept(conn):
@@ -148,7 +160,9 @@ def test_legacy_incidents_migrate_to_topics_once(tmp_path):
     second = repository.get_event(conn, "legacy-1-second")
     assert second["triggered_by"] == "legacy-1-first"
     assert second["topics"] == ["legacy-1"]
-    assert second["evidence"] == [{"file": "shot.png", "type": "screenshot", "description": "Beleg"}]
+    assert [(item["file"], item["type"], item["description"]) for item in second["evidence"]] == [
+        ("shot.png", "screenshot", "Beleg")
+    ]
     assert count(conn, "events") == 2
     conn.close()
 
