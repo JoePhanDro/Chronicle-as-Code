@@ -1,6 +1,6 @@
 # ADR 0001: Server mit Anmeldung, Benutzerverwaltung und Seiten
 
-- **Status:** Vorgeschlagen
+- **Status:** Akzeptiert (Richtung bestätigt, Details siehe unten)
 - **Datum:** 2026-10-21
 - **Bezug:** #9 (Bestandsaufnahme), #11 (Seiten statt Tabs), #12 (Menü), #13 (Anmeldung)
 
@@ -16,7 +16,8 @@ Das Dashboard ist heute eine statische Seite, die aus einer YAML-Datei gebaut wi
 
 **Ein Python-Server (FastAPI) rendert die Seiten serverseitig und hält die Daten in SQLite.**
 
-- **Delivery bleibt schlank.** Keine SPA und kein Node-Build für die Seiten. Jinja2-Templates, kleine Module für vis-timeline und vis-network, Tailwind wie bisher. Die Seiten sind wie heute statisch aufgebaut, nur die Inhalte kommen aus der Datenbank.
+- **„Statisch“ heißt hier:** keine SPA und kein Frontend-Framework. Die Seiten werden serverseitig aus Jinja2-Templates gerendert, die Inhalte kommen aus der Datenbank. CSS, JavaScript und Icons sind statische Dateien, die der Server ausliefert. Tailwind wird wie bisher lokal gebaut.
+- **Export für Berichte.** Zusätzlich gibt es einen eigenständigen HTML-Export eines Incidents (ohne Server, ohne Login), etwa als Anhang zum Post-Mortem. Der Export ist eine eigene Funktion und kein Ersatz für die Live-Ansicht.
 - **Speicher.** SQLite in einem Docker-Volume. Die YAML bleibt als **Import- und Exportformat** erhalten, das bestehende Pydantic-Schema wird weiterverwendet.
 - **Anmeldung.** Benutzername und Passwort. Passwörter mit Argon2id gehasht. Sitzungen als `HttpOnly`-, `SameSite=Strict`-Cookies, serverseitig mit Ablaufzeit. CSRF-Schutz für alle schreibenden Requests. Login-Versuche gedrosselt.
 - **Benutzerverwaltung.** Rollen `admin`, `analyst`, `viewer`. Admins legen Benutzer an, setzen Rollen und Passwörter zurück und deaktivieren Konten. Der Bootstrap-Admin kommt aus Umgebungsvariablen beim ersten Start, nie aus dem Repo.
@@ -27,7 +28,7 @@ Das Dashboard ist heute eine statische Seite, die aus einer YAML-Datei gebaut wi
 
 ## Konsequenzen
 
-- Der Dienst braucht eine laufende Instanz, die statische Auslieferung entfällt. Das ist der Preis für Zugriffsschutz und Live-Bearbeitung.
+- Der Dienst braucht eine laufende Instanz. Das ist der Preis für Zugriffsschutz, Rollen und Live-Bearbeitung. Statische Dateien bleiben nur für CSS, JavaScript und den Berichts-Export.
 - Evidence-Dateien werden nur noch über einen autorisierten Endpunkt ausgeliefert, nicht mehr als öffentliche Dateien.
 - Uploads brauchen Grenzen: Dateigröße, erlaubte Typen per Magic-Bytes prüfen, Dateinamen neu vergeben, nichts unter dem Original-Namen speichern.
 - Mehr Testaufwand: API- und Auth-Tests, dazu die bisherigen Browser-Tests.
