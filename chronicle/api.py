@@ -11,7 +11,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Literal
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -112,10 +112,16 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         return repository.list_topic_events(conn, key)
 
     @app.get("/api/v1/events")
-    def events(topic: str | None = None, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
+    def events(
+        topic: str | None = None,
+        limit: int | None = Query(None, ge=1, le=500, description="Without a limit, all events are returned"),
+        offset: int = Query(0, ge=0),
+        conn: sqlite3.Connection = Depends(get_conn),
+        _: dict = Depends(current_user),
+    ) -> list[dict]:
         if topic is not None and repository.get_topic(conn, topic) is None:
             raise HTTPException(status_code=404, detail="Topic nicht gefunden")
-        return repository.list_events(conn, topic)
+        return repository.list_events(conn, topic, limit=limit, offset=offset)
 
     @app.get("/api/v1/events/{key}")
     def event(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> dict:
