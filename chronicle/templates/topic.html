@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Neues Topic' if mode == 'new' else topic.title }}{% endblock %}
+{% block content %}
+{% set input_class = "w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20" %}
+{% set label_class = "mb-1 block text-xs font-medium text-slate-400" %}
+
+{% if errors %}
+<p role="alert" class="mb-6 rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{{ errors }}</p>
+{% endif %}
+
+{% if mode == 'new' %}
+<h1 class="mb-6 text-xl font-semibold text-slate-100">Neues Topic</h1>
+<form method="post" action="/topics/new" class="max-w-2xl space-y-5">
+  <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+  <label class="block"><span class="{{ label_class }}">Key (eindeutig, danach nicht mehr änderbar)</span>
+    <input name="key" value="{{ form.key or '' }}" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,99}" class="{{ input_class }} font-mono"></label>
+  <label class="block"><span class="{{ label_class }}">Titel</span>
+    <input name="title" value="{{ form.title or '' }}" required class="{{ input_class }}"></label>
+  <label class="block"><span class="{{ label_class }}">Art</span>
+    <select name="kind" class="{{ input_class }}">
+      {% for kind in kinds %}<option value="{{ kind }}" {{ 'selected' if form.kind == kind }}>{{ kind }}</option>{% endfor %}
+    </select></label>
+  <label class="block"><span class="{{ label_class }}">Zusammenfassung</span>
+    <textarea name="summary" rows="4" class="{{ input_class }}">{{ form.summary or '' }}</textarea></label>
+  <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Anlegen</button>
+</form>
+
+{% else %}
+<div class="mb-6 flex flex-wrap items-start justify-between gap-3">
+  <div class="min-w-0">
+    <div class="font-mono text-xs text-slate-500">{{ topic.key }} · {{ topic.kind }}</div>
+    <h1 class="mt-1 text-xl font-semibold text-slate-100">{{ topic.title }}</h1>
+    {% if topic.summary %}<p class="mt-2 max-w-2xl text-sm text-slate-400">{{ topic.summary }}</p>{% endif %}
+  </div>
+  {% if can_write %}
+  <form method="post" action="/topics/{{ topic.key }}/delete" onsubmit="return confirm('Topic wirklich löschen?');">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <button type="submit" class="rounded-lg border border-rose-400/30 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-500/10">Löschen</button>
+  </form>
+  {% endif %}
+</div>
+
+<section class="mb-10">
+  <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Events ({{ events|length }})</h2>
+  <ul class="divide-y divide-white/10 rounded-xl border border-white/10">
+    {% for event in events %}
+    <li class="flex items-center justify-between gap-4 px-4 py-3">
+      <a href="/events/{{ event.key }}" class="min-w-0 hover:underline">
+        <span class="block truncate text-sm text-slate-100">{{ event.action }}</span>
+        <span class="font-mono text-xs text-slate-500">{{ event.t0[:16].replace('T', ' ') }} · {{ event.phase }} · {{ event.key }}</span>
+      </a>
+      <span class="flex flex-none items-center gap-3 text-xs">
+        {% if event.home_topic == topic.key %}
+          <span class="rounded-md bg-white/5 px-2 py-0.5 text-slate-300">Heimat</span>
+        {% else %}
+          <span class="rounded-md bg-white/5 px-2 py-0.5 text-slate-400">verknüpft</span>
+          {% if can_write %}
+          <form method="post" action="/topics/{{ topic.key }}/unlink/{{ event.key }}">
+            <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+            <button type="submit" class="text-rose-300 hover:underline">Lösen</button>
+          </form>
+          {% endif %}
+        {% endif %}
+      </span>
+    </li>
+    {% else %}
+    <li class="px-4 py-3 text-sm text-slate-500">Noch keine Events in diesem Topic.</li>
+    {% endfor %}
+  </ul>
+
+  {% if can_write and addable %}
+  <form method="post" action="/topics/{{ topic.key }}/link" class="mt-4 flex flex-wrap items-end gap-3">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <label class="block min-w-[16rem] flex-1"><span class="{{ label_class }}">Event verknüpfen</span>
+      <select name="event" class="{{ input_class }}">
+        {% for event in addable %}<option value="{{ event.key }}">{{ event.action }} ({{ event.key }})</option>{% endfor %}
+      </select></label>
+    <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Verknüpfen</button>
+  </form>
+  {% endif %}
+</section>
+
+{% if can_write %}
+<section>
+  <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Bearbeiten</h2>
+  <form method="post" action="/topics/{{ topic.key }}/edit" class="max-w-2xl space-y-5">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <label class="block"><span class="{{ label_class }}">Key (nicht änderbar)</span>
+      <input value="{{ topic.key }}" readonly class="{{ input_class }} font-mono opacity-60"></label>
+    <label class="block"><span class="{{ label_class }}">Titel</span>
+      <input name="title" value="{{ topic.title }}" required class="{{ input_class }}"></label>
+    <label class="block"><span class="{{ label_class }}">Art</span>
+      <select name="kind" class="{{ input_class }}">
+        {% for kind in kinds %}<option value="{{ kind }}" {{ 'selected' if topic.kind == kind }}>{{ kind }}</option>{% endfor %}
+      </select></label>
+    <label class="block"><span class="{{ label_class }}">Zusammenfassung</span>
+      <textarea name="summary" rows="4" class="{{ input_class }}">{{ topic.summary }}</textarea></label>
+    <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Speichern</button>
+  </form>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

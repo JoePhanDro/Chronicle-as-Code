@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Topics{% endblock %}
+{% block content %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+  <h1 class="text-xl font-semibold text-slate-100">Topics</h1>
+  {% if can_write %}<a href="/topics/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Neues Topic</a>{% endif %}
+</div>
+<ul class="divide-y divide-white/10 rounded-xl border border-white/10">
+  {% for topic in topics %}
+  <li>
+    <a href="/topics/{{ topic.key }}" class="flex items-center justify-between gap-4 px-4 py-3 hover:bg-white/[.03]">
+      <span class="min-w-0">
+        <span class="block truncate text-sm font-medium text-slate-100">{{ topic.title }}</span>
+        <span class="font-mono text-xs text-slate-500">{{ topic.key }} · {{ topic.kind }}</span>
+      </span>
+      <span class="flex-none text-xs text-slate-400">{{ topic.event_count }} Events</span>
+    </a>
+  </li>
+  {% else %}
+  <li class="px-4 py-3 text-sm text-slate-500">Noch keine Topics.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
