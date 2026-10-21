@@ -34,7 +34,7 @@ Der Import las bisher genau eine `timeline.yaml`. Ein Export mit mehreren Topics
 
 - Die Datenbank ist nicht mehr die einzige Kopie. Export und Backup laufen unabhängig voneinander: Der Export ist für Menschen und andere Werkzeuge lesbar, das Backup ist für die Wiederherstellung des Dienstes.
 - Das Importformat ändert sich: Ein Ordner mit mehreren Topic-Dateien ist jetzt gültig. Eine einzelne `timeline.yaml` funktioniert weiter.
-- Der statische Builder (`chronicle.builder`) liest weiterhin genau eine `timeline.yaml`. Ein Multi-Topic-Export lässt er bewusst fehlschlagen. Die Entscheidung über den statischen Export steht in #24.
+- Der statische Builder (`chronicle.builder`) liest genau eine `timeline.yaml`. Er ist seit #24 entfernt. Der Export ist damit die einzige Datei-Ausgabe, und sie ist nicht öffentlich.
 - Das Backup enthält Passwort-Hashes und Sitzungs-Hashes. Es ist so zu behandeln wie die Datenbank selbst.
 
 ## Offene Punkte
