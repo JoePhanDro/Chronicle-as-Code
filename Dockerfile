@@ -15,8 +15,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 RUN useradd --create-home --uid 1000 chronicle \
-    && mkdir /output \
-    && chown chronicle:chronicle /output
+    && mkdir /output /db \
+    && chown chronicle:chronicle /output /db
 
 WORKDIR /app
 
@@ -28,5 +28,6 @@ COPY --from=css /build/chronicle/static/app.css ./chronicle/static/app.css
 
 USER chronicle
 
+# Default: the static dashboard generator. The compose stack overrides the entrypoint for api and importer.
 ENTRYPOINT ["python", "-m", "chronicle"]
 CMD ["--data", "/data", "--out", "/output"]

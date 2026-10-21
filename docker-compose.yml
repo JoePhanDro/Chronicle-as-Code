@@ -1,12 +1,23 @@
+# Chronicle API stack. Setup:
+#   cp .env.example .env                                 # set CHRONICLE_ADMIN_USER / _PASSWORD
+#   docker compose --profile import run --rm importer    # once per incident, not on every `up`
+#   docker compose up -d api                             # then open http://localhost:8000/login
+
 services:
-  # Runs once: reads ./data, writes index.html + evidence/ into the shared volume, then exits.
-  generator:
+  api:
     build: .
     image: chronicle-dashboard:local
-    command: ["--data", "/data", "--out", "/output"]
+    entrypoint: ["python", "-m", "chronicle.serve"]
+    command: ["--db", "/db/chronicle.db", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      CHRONICLE_ADMIN_USER: ${CHRONICLE_ADMIN_USER:-}
+      CHRONICLE_ADMIN_PASSWORD: ${CHRONICLE_ADMIN_PASSWORD:-}
+      CHRONICLE_DB: /db/chronicle.db
+    ports:
+      # Localhost only. Put a TLS reverse proxy in front before exposing this anywhere else.
+      - "127.0.0.1:8000:8000"
     volumes:
-      - ./data:/data:ro
-      - dashboard:/output
+      - chronicle-db:/db
     read_only: true
     tmpfs:
       - /tmp
@@ -14,20 +25,23 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
-  # Serves the generated site with Python's http.server. Bound to localhost only.
-  # Same image as the generator, so /output already has the right owner when the volume is created.
-  web:
+  # Reads ./data and stores the timeline in the database. Only runs with --profile import.
+  importer:
+    build: .
     image: chronicle-dashboard:local
-    pull_policy: never
-    depends_on:
-      generator:
-        condition: service_completed_successfully
-    entrypoint: ["python", "-m", "http.server", "8080", "--bind", "0.0.0.0", "--directory", "/output"]
-    ports:
-      - "127.0.0.1:8080:8080"
+    profiles: ["import"]
+    entrypoint: ["python", "-m", "chronicle.importer"]
+    command: ["--db", "/db/chronicle.db", "--data", "/input"]
     volumes:
-      - dashboard:/output:ro
+      - ./data:/input:ro
+      - chronicle-db:/db
     read_only: true
     tmpfs:
       - /tmp
@@ -37,4 +51,4 @@ services:
       - no-new-privileges:true
 
 volumes:
-  dashboard:
+  chronicle-db:
