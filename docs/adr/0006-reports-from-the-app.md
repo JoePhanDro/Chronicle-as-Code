@@ -16,7 +16,7 @@ ADR 0001 sieht einen eigenständigen HTML-Bericht für Post-Mortems vor, ohne Se
 - **Verknüpfte Events.** Events aus anderen Topics, die mit dem Topic verknüpft sind, gehören zum Bericht und stehen in der Timeline.
 - **Kennzeichnung.** Die Seite trägt „Berichts-Snapshot · vertraulich · ohne Anmeldung“ und den Erstellungszeitpunkt.
 - **Protokoll.** Jeder Bericht wird im Audit-Log festgehalten (`report_created`, Topic und Anzahl Evidence, ohne Inhalt).
-- **Kommandozeile bleibt.** `python -m chronicle` bleibt für Dateien außerhalb der Datenbank. Der Docker-Standard ist weiterhin die API.
+- **Kommandozeile entfällt.** `python -m chronicle` ist entfernt (Issue #24). Es gibt keinen Weg mehr, außerhalb der Anwendung eine ungeschützte Kopie zu erzeugen. Dateien außerhalb der Datenbank kommen über den Import in die Datenbank.
 
 ## Konsequenzen
 

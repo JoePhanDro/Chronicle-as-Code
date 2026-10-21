@@ -10,7 +10,6 @@ from pydantic import ValidationError
 from .evidence import MAX_EVIDENCE_BYTES, Blob, EvidenceRejected, check_file
 from .models import Timeline
 
-TIMELINE_NAME = "timeline.yaml"
 # Evidence is copied next to index.html, so these names must not be overwritten.
 RESERVED_OUTPUT_NAMES = {"index.html", "index.html.tmp"}
 # One byte more than the limit, so that check_file can report files that are too large.
@@ -30,19 +29,6 @@ def find_topic_files(data_dir: Path) -> list[Path]:
     if not files:
         raise TimelineError(f"Keine YAML-Datei unterhalb von {data_dir} gefunden")
     return files
-
-
-def find_timeline(data_dir: Path) -> Path:
-    if not data_dir.is_dir():
-        raise TimelineError(f"Datenordner existiert nicht: {data_dir}")
-
-    candidates = sorted(data_dir.rglob(TIMELINE_NAME))
-    if not candidates:
-        raise TimelineError(f"Keine {TIMELINE_NAME} unterhalb von {data_dir} gefunden")
-    if len(candidates) > 1:
-        listing = ", ".join(str(path) for path in candidates)
-        raise TimelineError(f"Mehrere {TIMELINE_NAME} gefunden, bitte nur eine behalten: {listing}")
-    return candidates[0]
 
 
 def load_timeline(path: Path) -> Timeline:

@@ -60,7 +60,7 @@ def _evidence_key(event: Event, file: str) -> str:
 
 
 def _relative_src(item: Evidence) -> str:
-    # Relative to index.html; builder copies each file to the same path.
+    # Relative to the page. The report embeds its evidence as data URIs instead (see report.py).
     return quote(item.file)
 
 

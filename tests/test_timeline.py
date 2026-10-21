@@ -1,10 +1,8 @@
 from pathlib import Path
 
 import pytest
-import yaml
 
-from chronicle.builder import build_site
-from chronicle.loader import TimelineError, collect_evidence, find_timeline, load_timeline
+from chronicle.loader import TimelineError, collect_evidence, load_timeline
 from chronicle.models import Timeline
 from chronicle.renderer import render_dashboard
 
@@ -33,7 +31,7 @@ def timeline(events=None, refs=None, topic=None):
 
 
 def test_sample_timeline_is_valid():
-    loaded = load_timeline(find_timeline(DATA_DIR))
+    loaded = load_timeline(DATA_DIR / "timeline.yaml")
     assert loaded.topic.key == "inc-2026-042"
     assert len(loaded.events) == 7
     assert all(event.key for event in loaded.events)
@@ -102,52 +100,6 @@ def test_reserved_output_name_is_rejected(tmp_path):
     result = timeline(events=[minimal_event(evidence=[{"file": "index.html", "type": "other"}])])
     with pytest.raises(TimelineError, match="reserviert"):
         collect_evidence(result, tmp_path)
-
-
-def test_multiple_timeline_files_are_rejected(tmp_path):
-    for name in ("a", "b"):
-        folder = tmp_path / name
-        folder.mkdir()
-        (folder / "timeline.yaml").write_text(yaml.safe_dump({"topic": TOPIC, "events": [minimal_event()]}))
-    with pytest.raises(TimelineError, match="Mehrere"):
-        find_timeline(tmp_path)
-
-
-def test_build_site_writes_index_and_evidence(tmp_path):
-    data = tmp_path / "data"
-    (data / "evidence").mkdir(parents=True)
-    (data / "evidence" / "shot.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
-    (data / "timeline.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "topic": TOPIC,
-                "events": [minimal_event(evidence=[{"file": "evidence/shot.png", "type": "screenshot"}])],
-            }
-        )
-    )
-
-    index = build_site(data, tmp_path / "out")
-
-    assert "Test" in index.read_text(encoding="utf-8")
-    assert "Berichts-Snapshot" in index.read_text(encoding="utf-8")
-    assert (tmp_path / "out" / "evidence" / "shot.png").is_file()
-
-
-def test_build_site_rejects_svg_evidence(tmp_path):
-    data = tmp_path / "data"
-    (data / "evidence").mkdir(parents=True)
-    (data / "evidence" / "shot.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
-    (data / "timeline.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "topic": TOPIC,
-                "events": [minimal_event(evidence=[{"file": "evidence/shot.svg", "type": "screenshot"}])],
-            }
-        )
-    )
-
-    with pytest.raises(TimelineError, match="shot.svg"):
-        build_site(data, tmp_path / "out")
 
 
 def test_rendered_html_embeds_payload_safely():

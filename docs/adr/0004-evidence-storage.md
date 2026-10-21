@@ -30,7 +30,7 @@ Zu klären war, wo der Inhalt liegt: als Datei im Volume oder als Blob in der SQ
 - **Atomarer Import.** Ein Fehler in einer Evidence-Datei rollt den ganzen Import zurück, einschließlich der Inhalte.
 - **Die Datenbank wächst.** Bei vielen großen Dateien wird die Datenbank groß. Das ist für Vorfallsdaten in diesem Umfang vertretbar. Ein Umzug auf Dateispeicher bleibt möglich, weil der Zugriff in einer Funktion liegt (`get_evidence_content`).
 - **Altdaten.** Evidence aus Imports vor dieser Änderung hat keinen Inhalt. Die Auslieferung antwortet dann mit 404 und dem Hinweis, den Import erneut auszuführen. Der nächste Import füllt den Inhalt nach.
-- **Die statische Ausgabe ist davon nicht erfasst.** `python -m chronicle.builder` schreibt Evidence weiterhin als öffentliche Dateien in den Ausgabeordner. Das bleibt offen, siehe #24. Der Builder prüft Dateien jetzt mit derselben Regel wie der Import.
+- **Die statische Ausgabe ist davon nicht erfasst.** Der Befehl `python -m chronicle.builder` schreibt Evidence als öffentliche Dateien. Er ist seit #24 entfernt, Berichte entstehen nur noch in der App (ADR 0006).
 
 ## Offene Punkte
 
