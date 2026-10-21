@@ -1,0 +1,4 @@
+# Jede PR braucht eine Freigabe der Code-Owner, bevor sie gemergt werden kann.
+*                       @JoePhanDro
+/.github/              @JoePhanDro
+/chronicle/templates/  @JoePhanDro
