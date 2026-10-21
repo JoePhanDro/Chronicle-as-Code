@@ -1,96 +1,78 @@
 # Chronicle
 
-Wandelt eine `timeline.yaml` mit Incident-Daten in ein interaktives HTML-Dashboard um:
-Zeitstrahl (vis-timeline) oben, Details mit Markdown und Evidence sowie ein Entitäten-Graph (vis-network) unten.
+Chronicle organisiert Sicherheitswissen: **Events** (Ereignisse mit Zeitpunkt, Akteur, System und Belegen) gehören zu **Topics** (Incidents, Schwachstellen, Projekte, besondere Ereignisse). Daraus entstehen Timeline, Entitäten-Graph und Detailansicht.
 
-## Start mit Docker
+> **Status:** Entwicklungsstand. Anmeldung, Rollen, Benutzerverwaltung über API und CLI, Event-Pflege in der Oberfläche und der API-Server laufen. Timeline und Graph in der Oberfläche (Phase 3) sind noch nicht umgesetzt. Offene Punkte stehen in den [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
+
+## Inhalt
+
+- [Schnellstart mit Docker](#schnellstart-mit-docker)
+- [Lokal ohne Docker](#lokal-ohne-docker)
+- [Konfiguration](#konfiguration)
+- [Datenformat (`timeline.yaml`)](#datenformat-timelineyaml)
+- [Datenhaltung und Bearbeitung](#datenhaltung-und-bearbeitung)
+- [API](#api)
+- [Rollen und Sicherheit](#rollen-und-sicherheit)
+- [Projektstruktur](#projektstruktur)
+- [Entwicklung und Tests](#entwicklung-und-tests)
+- [Bekannte Einschränkungen](#bekannte-einschränkungen)
+- [Dokumentation und Beitragen](#dokumentation-und-beitragen)
+
+## Schnellstart mit Docker
+
+Voraussetzung: Docker mit Compose.
 
 ```bash
-cp .env.example .env          # Admin-Benutzer und Passwort setzen (Passwort mind. 12 Zeichen)
-docker compose --profile import run --rm importer   # Topic-Datei importieren (beliebig oft, ohne Duplikate)
-docker compose up -d api      # API starten, danach http://localhost:8000/login
+cp .env.example .env
+# In .env CHRONICLE_ADMIN_USER und CHRONICLE_ADMIN_PASSWORD setzen (Passwort mind. 12 Zeichen).
+# Ohne diese Werte legt der Server keinen Admin an, siehe unten.
+
+docker compose --profile import run --rm importer   # Topic-Datei aus ./data importieren
+docker compose up -d api                            # Server starten
 ```
 
-Der Import läuft bewusst nicht bei jedem `up`, auch wenn er idempotent ist.
-Ohne Admin-Eintrag in `.env` legt der Server keinen Admin an. Dann:
-`docker compose run --rm api python -m chronicle.admin_cli --db /db/chronicle.db create --username admin --role admin`.
+Dann http://localhost:8000/login öffnen. Der Port ist nur auf `127.0.0.1` gebunden.
 
-Der statische Dashboard-Export (ohne Anmeldung, nur als Datei) läuft weiterhin ohne Compose:
-`python -m chronicle --data ./data --out ./output`.
+Der Import läuft bewusst nicht bei jedem `up`. Er ist idempotent, kann also beliebig oft laufen.
 
-## Server, Anmeldung und Konten (Phase 2)
-
-Topics und Events liegen in SQLite. Die YAML ist Importformat. Alle Daten-Endpunkte verlangen eine Anmeldung.
+**Admin ohne `.env` anlegen:**
 
 ```bash
-# Ersten Admin anlegen (Passwort wird verdeckt abgefragt)
+docker compose run --rm --entrypoint python api \
+  -m chronicle.admin_cli --db /db/chronicle.db create --username admin --role admin
+```
+
+## Lokal ohne Docker
+
+Voraussetzungen: Python 3.12 und Node.js 20 (nur für das CSS-Build).
+
+```bash
+npm ci && npm run build:css                 # Tailwind-CSS bauen
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+
 python -m chronicle.admin_cli --db ./chronicle.db create --username admin --role admin
-
-# Topic importieren und Server starten
 python -m chronicle.importer --db ./chronicle.db --data ./data
-python -m chronicle.serve --db ./chronicle.db --port 8000
+CHRONICLE_COOKIE_SECURE=0 python -m chronicle.serve --db ./chronicle.db --port 8000
 ```
 
-Login im Browser: http://localhost:8000/login (mit Docker: siehe oben)
+`CHRONICLE_COOKIE_SECURE=0` ist nur für Tests über HTTP gedacht. Ohne diese Variable setzt der Server das Cookie
+mit `Secure`, und Browser schicken es über `http://localhost` trotzdem zurück.
 
-| Methode | Pfad | Rolle | Inhalt |
-|---|---|---|---|
-| GET | `/api/v1/health` | öffentlich | Status und Version |
-| POST | `/api/v1/auth/login` | öffentlich | JSON `{username, password}`, setzt Sitzungscookie |
-| POST | `/api/v1/auth/logout` | angemeldet | beendet die Sitzung (Header `X-CSRF-Token`) |
-| GET | `/api/v1/auth/me` | angemeldet | eigenes Konto und CSRF-Token |
-| GET | `/api/v1/topics` | angemeldet | alle Topics mit Anzahl der Events |
-| GET | `/api/v1/topics/{key}` | angemeldet | ein Topic |
-| GET | `/api/v1/topics/{key}/events` | angemeldet | Events eines Topics, zeitlich sortiert, mit Evidence |
-| GET | `/api/v1/events` | angemeldet | alle Events |
-| GET | `/api/v1/events/{key}` | angemeldet | ein Event mit Evidence und allen zugehörigen Topics |
-| POST | `/api/v1/events` | analyst, admin | Event anlegen (Body wie in der Topic-Datei, plus `topic` und `topics`) |
-| PUT | `/api/v1/events/{key}` | analyst, admin | Event ändern, Body mit `version` der gelesenen Fassung (sonst 409) |
-| DELETE | `/api/v1/events/{key}` | analyst, admin | Event löschen (409, solange ein anderes Event darauf verweist) |
-| GET | `/api/v1/users` | admin | Konten |
-| POST | `/api/v1/users` | admin | Konto anlegen |
-| PATCH | `/api/v1/users/{id}` | admin | Rolle, Aktivierung oder Passwort ändern |
-| GET | `/api/v1/audit` | admin | Protokoll von Logins und Änderungen |
+## Konfiguration
 
-Rollen: `admin` und `analyst` lesen und bearbeiten Events, `viewer` liest nur.
+| Variable | Wirkung | Standard |
+|---|---|---|
+| `CHRONICLE_DB` | Pfad zur SQLite-Datenbank für die API | `/data/chronicle.db` |
+| `CHRONICLE_ADMIN_USER` | Erster Admin, nur wenn noch kein Konto existiert | leer (kein Bootstrap) |
+| `CHRONICLE_ADMIN_PASSWORD` | Passwort zu `CHRONICLE_ADMIN_USER` | leer |
+| `CHRONICLE_COOKIE_SECURE` | `0` schaltet das `Secure`-Flag am Sitzungscookie ab (nur lokal über HTTP) | `1` |
 
-Oberfläche: http://localhost:8000/events zeigt alle Events. Anlegen, Bearbeiten und Löschen laufen über Formulare
-(mit CSRF-Schutz). Die Datenbank ist nach dem Import die Quelle der Wahrheit (ADR 0003):
+Die Werte im Compose-Stack kommen aus `.env` (Vorlage: `.env.example`). `.env` wird nicht versioniert.
 
-- Ein erneuter Import überschreibt keine Events, die in der Oberfläche bearbeitet wurden, und holt keine gelöschten zurück. Er meldet beides.
-- Ein Import entfernt keine Topic-Verknüpfungen. Die werden in der Oberfläche geändert.
-- Jede Änderung hat eine Version. Wer auf einer veralteten Fassung speichert, bekommt 409 und muss neu laden.
+## Datenformat (`timeline.yaml`)
 
-Sicherheit im Überblick:
-
-- Passwörter mit Argon2id gehasht, Mindestlänge 12 Zeichen.
-- Sitzung über zufälliges Cookie (`HttpOnly`, `SameSite=Strict`, `Secure`), in der Datenbank nur als SHA-256-Hash. Laufzeit 8 Stunden.
-- Schreibende Anfragen brauchen das CSRF-Token im Header `X-CSRF-Token`.
-- Nach 5 Fehlversuchen innerhalb von 15 Minuten wird ein Benutzername oder eine IP-Adresse gesperrt.
-- Ändern von Rolle oder Passwort und Deaktivieren beenden die Sitzungen des Kontos.
-- Der letzte aktive Admin lässt sich nicht herabstufen oder deaktivieren.
-- Jeder Login, jeder Fehlversuch und jede Kontoänderung wird im Audit-Log festgehalten.
-
-`CHRONICLE_COOKIE_SECURE=0` schaltet das `Secure`-Flag für lokale Tests über HTTP ab. Im Betrieb nicht setzen.
-
-## Aufbau
-
-```
-chronicle/
-  models.py      Pydantic-Schema (strikt, unbekannte Felder sind Fehler)
-  loader.py      sucht timeline.yaml, validiert, prüft Evidence-Pfade
-  renderer.py    baut Graph-Daten und rendert das Jinja2-Template
-  builder.py     kopiert Evidence, schreibt index.html atomar
-  templates/     dashboard.html (Tailwind, vis-timeline, vis-network, marked, DOMPurify)
-data/            Eingabe: timeline.yaml + Evidence
-Dockerfile       ein Image für Generator und Webserver
-docker-compose.yml
-```
-
-## Schema (Kurzfassung)
-
-Eine Datei beschreibt ein Topic (Incident, Schwachstelle, Projekt, besonderes Ereignis) und die Events dazu.
-Events haben einen stabilen `key` und können zu mehreren Topics gehören.
+Eine Datei beschreibt ein Topic und die Events, die es definiert. Ein Beispiel liegt in `data/timeline.yaml`.
 
 ```yaml
 topic:
@@ -101,7 +83,7 @@ topic:
 
 events:
   - key: exploit-2026-10-14          # eindeutig über alle Topics, Pflicht
-    t0: 2026-10-14T08:40:00+02:00    # Pflicht, mit Zeitzone
+    t0: 2026-10-14T08:40:00+02:00    # Pflicht, mit Zeitzone (gespeichert als UTC)
     phase: Exploit                   # Identification | Exploit | Analysis | Containment | Mitigation | Recovery | Lessons Learned
     actor: Angreifer (extern)
     system: wp-portal-01             # optional
@@ -119,20 +101,129 @@ refs:                                # optional: Events, die in einer anderen Da
   - cve-2026-xxxx
 ```
 
-**Heimat und Verweise:** Jedes Event wird in genau einer Datei definiert. Andere Topics binden es über `refs` ein.
-Ein Event in zwei Dateien zu definieren, ist ein Fehler.
+- **Heimat:** Jedes Event wird in genau einer Datei definiert. Andere Topics binden es über `refs` ein.
+- **Unbekannte Felder** sind Fehler. Das verhindert stille Tippfehler.
+- **Farben** folgen der Phase: rot für Identification und Exploit, gelb für Analysis, orange für Containment, grün für Mitigation und Recovery, blau für Lessons Learned.
 
-**Import ist idempotent.** Dieselbe Datei beliebig oft importieren ergibt denselben Stand. Events werden über ihren
-Key aktualisiert, nicht neu angelegt. Entfernt man ein Event aus einer Datei, wird es nur von diesem Topic gelöst,
-bleibt aber erhalten. Schlägt eine Prüfung fehl (z. B. unbekanntes `triggered_by`), wird nichts geschrieben.
+## Datenhaltung und Bearbeitung
 
-Farben folgen der `phase`: rot für Identification/Exploit, gelb für Analysis, orange für Containment, grün für Mitigation/Recovery, blau für Lessons Learned.
+Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
 
-## Hinweise
+- Ein erneuter Import überschreibt keine Events, die in der Oberfläche bearbeitet wurden. Gelöschte Events kehren nicht zurück. Beides meldet der Import.
+- Ein Import entfernt keine Topic-Verknüpfungen. Die ändert man in der Oberfläche.
+- Jede Änderung erhöht die Version eines Events. Wer auf einer veralteten Fassung speichert, bekommt `409` und muss neu laden.
+- Ein Event, das ein anderes auslöst, lässt sich nicht löschen, solange der Verweis besteht.
 
-- Der Generator bricht mit einer klaren Fehlermeldung ab, wenn das Schema verletzt ist, eine Evidence-Datei fehlt oder ein Pfad aus dem Timeline-Ordner herausführt.
-- Der Webserver lauscht nur auf `127.0.0.1`.
-- Markdown wird im Browser mit DOMPurify bereinigt.
-- Tailwind wird lokal gebaut (kein Play-CDN). Die übrigen CDN-Skripte sind per Subresource Integrity (SRI) gepinnt. Bei einem Versionswechsel muss der `integrity`-Hash im Template mit aktualisiert werden.
-- Base-Images im Dockerfile sind per Digest gepinnt.
-- Die Beispieldaten in `data/` sind fiktiv. Die SVG-Dateien sind Platzhalter, keine echten Screenshots.
+**Achtung:** Es gibt noch keinen Export zurück in YAML. Die Datenbank ist dann die einzige vollständige Kopie. Sichere das SQLite-File oder das Volume `chronicle-db` selbst ([Issue #23](https://github.com/JoePhanDro/Chronicle-as-Code/issues/23)).
+
+## Oberfläche
+
+| Pfad | Wer | Inhalt |
+|---|---|---|
+| `/login` | alle | Anmeldung mit Benutzername und Passwort |
+| `/` | angemeldet | Startseite |
+| `/events` | angemeldet | alle Events, zeitlich sortiert |
+| `/events/new` | analyst, admin | Event anlegen |
+| `/events/{key}` | angemeldet | Details, Evidence, Topics; bearbeiten und löschen für analyst und admin |
+
+Die Oberfläche ist serverseitig gerendert. Formulare sind mit einem CSRF-Token der Sitzung geschützt.
+
+## API
+
+Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-CSRF-Token` mit dem Wert aus `GET /api/v1/auth/me`.
+
+| Methode | Pfad | Rolle | Inhalt |
+|---|---|---|---|
+| GET | `/health` | öffentlich | Status und Version |
+| POST | `/auth/login` | öffentlich | JSON `{username, password}`, setzt Sitzungscookie |
+| POST | `/auth/logout` | angemeldet | beendet die Sitzung |
+| GET | `/auth/me` | angemeldet | eigenes Konto und CSRF-Token |
+| GET | `/topics` | angemeldet | alle Topics mit Anzahl der Events |
+| GET | `/topics/{key}` | angemeldet | ein Topic |
+| GET | `/topics/{key}/events` | angemeldet | Events eines Topics, zeitlich sortiert |
+| GET | `/events` | angemeldet | alle Events |
+| GET | `/events/{key}` | angemeldet | ein Event mit Evidence und Topics |
+| POST | `/events` | analyst, admin | Event anlegen (`topic` = Heimat, `topics` = weitere) |
+| PUT | `/events/{key}` | analyst, admin | Event ändern, Body mit `version` (sonst 409) |
+| DELETE | `/events/{key}` | analyst, admin | Event löschen (409, solange ein anderes Event darauf verweist) |
+| GET | `/users` | admin | Konten |
+| POST | `/users` | admin | Konto anlegen |
+| PATCH | `/users/{id}` | admin | Rolle, Aktivierung oder Passwort ändern |
+| GET | `/audit` | admin | Protokoll von Anmeldungen und Änderungen |
+
+Die Antworten sind JSON. Eine interaktive Beschreibung der API gibt es noch nicht.
+
+## Rollen und Sicherheit
+
+| Rolle | Darf |
+|---|---|
+| `viewer` | lesen |
+| `analyst` | lesen, Events anlegen, ändern, löschen |
+| `admin` | alles, plus Benutzer und Audit-Log |
+
+- Passwörter mit Argon2id gehasht, Mindestlänge 12 Zeichen.
+- Sitzung über ein zufälliges Cookie (`HttpOnly`, `SameSite=Strict`, `Secure`). In der Datenbank liegt nur der SHA-256-Hash. Laufzeit 8 Stunden.
+- Nach 5 Fehlversuchen innerhalb von 15 Minuten sind Benutzername und IP-Adresse gesperrt. Hinter einem Reverse Proxy ist die IP-Sperre so noch nicht richtig ([Issue #27](https://github.com/JoePhanDro/Chronicle-as-Code/issues/27)).
+- Ändern von Rolle oder Passwort und Deaktivieren beenden die Sitzungen des Kontos.
+- Der letzte aktive Admin lässt sich nicht herabstufen oder deaktivieren.
+- Jeder Login, jeder Fehlversuch und jede Änderung an Konten oder Events landet im Audit-Log, ohne Inhalte.
+
+Der Compose-Stack hat noch kein TLS. Für einen Betrieb im Netzwerk braucht es einen Reverse Proxy mit HTTPS ([Issue #35](https://github.com/JoePhanDro/Chronicle-as-Code/issues/35)).
+
+## Projektstruktur
+
+```
+chronicle/
+  api.py           HTTP-App: API, Routen für Benutzer und Audit, Bootstrap-Admin
+  pages.py         Oberfläche: Events anlegen, bearbeiten, löschen (Formulare)
+  auth.py          Anmeldung, Sitzung, CSRF, Rollen
+  accounts.py      Konten, Sitzungen, Drosselung, Audit-Log (Datenbank)
+  security.py      Passwort-Hashing, Token
+  repository.py    Topics und Events: Import und Schreibzugriffe
+  event_input.py   Eingabemodell für Schreibzugriffe (gleiche Regeln wie der Import)
+  db.py            SQLite-Schema und Migration
+  importer.py      YAML in die Datenbank importieren
+  serve.py         API mit uvicorn starten
+  admin_cli.py     Konten über die Kommandozeile verwalten
+  models.py        Pydantic-Schema der YAML (strikt)
+  loader.py        Suche, Validierung und Evidence-Prüfung der YAML
+  renderer.py      Dashboard-Export (statisch, siehe Issue #24)
+  builder.py       schreibt den Dashboard-Export
+  templates/       Jinja2-Vorlagen für Oberfläche und Dashboard
+  static/          input.css (Quelle) und app.css (gebaut, nicht versioniert)
+data/              Beispiel-YAML und Platzhalter-Evidence
+docs/adr/          Architekturentscheidungen
+tests/             pytest
+```
+
+## Entwicklung und Tests
+
+```bash
+npm ci && npm run build:css      # nach jeder Template-Änderung mit neuen Tailwind-Klassen
+pytest                           # Tests (requirements-dev.txt)
+```
+
+Die CI läuft bei jeder Pull-Request: Tests, Smoke-Lauf des Dashboard-Exports, JavaScript-Syntaxprüfung, Docker-Build und Start des API-Containers mit Health-Check. Ein Merge ist nur möglich, wenn beide Checks grün sind.
+
+## Bekannte Einschränkungen
+
+Die wichtigsten offenen Punkte, mit Issue-Nummern:
+
+- Evidence wird nur als Pfad gespeichert, nicht ausgeliefert ([#22](https://github.com/JoePhanDro/Chronicle-as-Code/issues/22))
+- Kein Export zurück in YAML ([#23](https://github.com/JoePhanDro/Chronicle-as-Code/issues/23))
+- Der statische Dashboard-Export liefert alle Daten ohne Anmeldung, wenn man ihn ausführt ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24))
+- Timeline und Graph gibt es nur im statischen Export, nicht hinter der Anmeldung ([#25](https://github.com/JoePhanDro/Chronicle-as-Code/issues/25))
+- Topics lassen sich nur über API und YAML anlegen ([#26](https://github.com/JoePhanDro/Chronicle-as-Code/issues/26))
+- Keine Suche und keine Paginierung ([#30](https://github.com/JoePhanDro/Chronicle-as-Code/issues/30))
+
+Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
+
+## Dokumentation und Beitragen
+
+- Architekturentscheidungen: [`docs/adr/`](docs/adr/)
+  - [ADR 0001](docs/adr/0001-backend-auth-pages.md): Server, Anmeldung, Seiten (akzeptiert)
+  - [ADR 0002](docs/adr/0002-topics-and-events.md): Events und Topics (zu bestätigen)
+  - [ADR 0003](docs/adr/0003-editing-in-the-ui.md): Bearbeiten in der Oberfläche (zu bestätigen)
+- Wie man beiträgt, steht in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Die Beispieldaten in `data/` sind fiktiv. Die SVG-Dateien sind Platzhalter, keine echten Screenshots.
