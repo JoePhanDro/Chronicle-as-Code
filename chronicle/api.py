@@ -12,12 +12,13 @@ from typing import Literal
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import __version__, accounts, repository, security
 from .auth import PasswordChangeRequired, client_ip, make_auth, parse_trusted_proxies
 from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
+from .models import Topic
 from .pages import make_pages
 from .report import make_report, report_headers
 from .event_input import EventUpdate, EventWrite, event_of, topic_list
@@ -32,6 +33,12 @@ class UserCreate(BaseModel):
     username: str
     password: str
     role: Literal["admin", "analyst", "viewer"] = "viewer"
+
+
+class TopicLink(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
 
 class UserUpdate(BaseModel):
@@ -122,6 +129,31 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
     # Writing events: admins and analysts. Validation is the same as for imports.
 
     writer = auth.require_role("admin", "analyst")
+
+    @app.post("/api/v1/topics", status_code=201)
+    def create_topic(body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
+        return _write(lambda: repository.create_topic(conn, body, user["id"], client_ip(request)))
+
+    @app.put("/api/v1/topics/{key}")
+    def update_topic(key: str, body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
+        if body.key != key:
+            raise HTTPException(status_code=422, detail="Der Key im Pfad und im Body müssen übereinstimmen")
+        return _write(lambda: repository.update_topic(conn, key, body, user["id"], client_ip(request)))
+
+    @app.delete("/api/v1/topics/{key}", status_code=204, response_class=Response)
+    def delete_topic(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> Response:
+        _write(lambda: repository.delete_topic(conn, key, user["id"], client_ip(request)))
+        return Response(status_code=204)
+
+    @app.post("/api/v1/topics/{key}/events", status_code=201)
+    def link_event(key: str, body: TopicLink, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
+        _write(lambda: repository.link_event(conn, key, body.event, user["id"], client_ip(request)))
+        return {"topic": key, "event": body.event}
+
+    @app.delete("/api/v1/topics/{key}/events/{event_key}", status_code=204, response_class=Response)
+    def unlink_event(key: str, event_key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> Response:
+        _write(lambda: repository.unlink_event(conn, key, event_key, user["id"], client_ip(request)))
+        return Response(status_code=204)
 
     @app.post("/api/v1/events/{key}/evidence", status_code=201)
     async def upload_evidence(

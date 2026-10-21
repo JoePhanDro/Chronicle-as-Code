@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 import sqlite3
+from typing import get_args
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -17,11 +18,12 @@ from . import repository
 from .auth import Auth, client_ip
 from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, check_file
 from .report import make_report, report_headers
-from .models import Phase, Status
+from .models import Phase, Status, Topic, TopicKind
 from .event_input import EventWrite, event_of, topic_list
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 WRITER_ROLES = ("admin", "analyst")
+TOPIC_KINDS = list(get_args(TopicKind))
 
 
 def _payload_from_form(form, topic_home: str | None = None) -> dict:
@@ -38,6 +40,15 @@ def _payload_from_form(form, topic_home: str | None = None) -> dict:
         "details": form.get("details") or "",
         "topic": topic_home or form.get("topic") or "",
         "topics": topics,
+    }
+
+
+def _topic_values(form) -> dict:
+    return {
+        "key": (form.get("key") or "").strip(),
+        "title": (form.get("title") or "").strip(),
+        "kind": form.get("kind") or "other",
+        "summary": form.get("summary") or "",
     }
 
 
@@ -219,5 +230,111 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
                           event=repository.get_event(conn, key), errors=_error_text(exc),
                           **form_context(conn, form=None))
         return RedirectResponse(f"/events/{key}", status_code=303)
+
+    # Topics: any logged-in user reads; analysts and admins change topics and links.
+
+    def topic_page(request: Request, conn: sqlite3.Connection, user: dict, key: str, status_code: int = 200, errors: str | None = None):
+        topic = repository.get_topic(conn, key)
+        if topic is None:
+            return render(request, "not_found.html", user, status_code=404)
+        events = repository.list_topic_events(conn, key)
+        linked = {event["key"] for event in events}
+        addable = [event for event in repository.list_events(conn) if event["key"] not in linked]
+        return render(request, "topic.html", user, status_code=status_code, mode="view", topic=topic,
+                      events=events, addable=addable, errors=errors, kinds=TOPIC_KINDS, form=None)
+
+    @router.get("/topics", response_class=HTMLResponse)
+    def topics_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        return render(request, "topics.html", user, topics=repository.list_topics(conn))
+
+    @router.get("/topics/new", response_class=HTMLResponse)
+    def new_topic_page(request: Request, user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        if user["role"] not in WRITER_ROLES:
+            return render(request, "forbidden.html", user, status_code=403)
+        return render(request, "topic.html", user, mode="new", topic=None, events=[], addable=[], errors=None,
+                      kinds=TOPIC_KINDS, form={"kind": "incident"})
+
+    @router.post("/topics/new", response_class=HTMLResponse)
+    async def create_topic_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        values = _topic_values(form)
+        try:
+            created = repository.create_topic(conn, Topic.model_validate(values), user["id"], client_ip(request))
+        except (ValidationError, repository.RepositoryError) as exc:
+            status = 409 if isinstance(exc, repository.Conflict) else 422
+            return render(request, "topic.html", user, status_code=status, mode="new", topic=None, events=[], addable=[],
+                          errors=_error_text(exc), kinds=TOPIC_KINDS, form=values)
+        return RedirectResponse(f"/topics/{created['key']}", status_code=303)
+
+    @router.get("/topics/{key}", response_class=HTMLResponse)
+    def topic_view(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        return topic_page(request, conn, user, key)
+
+    @router.post("/topics/{key}/edit", response_class=HTMLResponse)
+    async def edit_topic_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        values = {**_topic_values(form), "key": key}
+        try:
+            repository.update_topic(conn, key, Topic.model_validate(values), user["id"], client_ip(request))
+        except (ValidationError, repository.RepositoryError) as exc:
+            status = 404 if isinstance(exc, repository.NotFound) else 422
+            return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
+        return RedirectResponse(f"/topics/{key}", status_code=303)
+
+    @router.post("/topics/{key}/delete", response_class=HTMLResponse)
+    async def delete_topic_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            repository.delete_topic(conn, key, user["id"], client_ip(request))
+        except repository.RepositoryError as exc:
+            status = 404 if isinstance(exc, repository.NotFound) else 409
+            return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
+        return RedirectResponse("/topics", status_code=303)
+
+    @router.post("/topics/{key}/link", response_class=HTMLResponse)
+    async def link_event_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            repository.link_event(conn, key, (form.get("event") or "").strip(), user["id"], client_ip(request))
+        except repository.RepositoryError as exc:
+            status = 404 if isinstance(exc, repository.NotFound) else 422
+            return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
+        return RedirectResponse(f"/topics/{key}", status_code=303)
+
+    @router.post("/topics/{key}/unlink/{event_key}", response_class=HTMLResponse)
+    async def unlink_event_page(key: str, event_key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            repository.unlink_event(conn, key, event_key, user["id"], client_ip(request))
+        except repository.RepositoryError as exc:
+            status = 404 if isinstance(exc, repository.NotFound) else 422
+            return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
+        return RedirectResponse(f"/topics/{key}", status_code=303)
 
     return router

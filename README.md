@@ -169,6 +169,9 @@ Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ers
 | `/account/password` | angemeldet | eigenes Passwort ändern. Wer ein Passwort ändern muss, landet hier |
 | `/` | angemeldet | Startseite |
 | `/events` | angemeldet | alle Events, zeitlich sortiert |
+| `/topics` | angemeldet | alle Topics mit Anzahl der Events |
+| `/topics/new` | analyst, admin | Topic anlegen (Key, Titel, Art, Zusammenfassung) |
+| `/topics/{key}` | angemeldet | Topic und seine Events; bearbeiten, löschen, Events verknüpfen und lösen für analyst und admin |
 | `/events/new` | analyst, admin | Event anlegen |
 | `/events/{key}` | angemeldet | Details, Evidence mit Vorschau, Topics; bearbeiten, Evidence hochladen und löschen für analyst und admin |
 | `/reports` | admin | Topics mit Download des HTML-Berichts |
@@ -191,6 +194,11 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | GET | `/topics/{key}/events` | angemeldet | Events eines Topics, zeitlich sortiert |
 | GET | `/events` | angemeldet | alle Events |
 | GET | `/events/{key}` | angemeldet | ein Event mit Evidence-Metadaten und Topics |
+| POST | `/topics` | analyst, admin | Topic anlegen (`key`, `title`, `kind`, `summary`) |
+| PUT | `/topics/{key}` | analyst, admin | Titel, Art oder Zusammenfassung ändern. Der Key bleibt |
+| DELETE | `/topics/{key}` | analyst, admin | Topic löschen (409, solange Heimat-Events darin liegen) |
+| POST | `/topics/{key}/events` | analyst, admin | Event mit dem Topic verknüpfen (JSON `{event}`) |
+| DELETE | `/topics/{key}/events/{event_key}` | analyst, admin | Verknüpfung lösen. Das Heimat-Topic eines Events lässt sich nicht lösen (422) |
 | POST | `/events` | analyst, admin | Event anlegen (`topic` = Heimat, `topics` = weitere). Evidence im Body gibt es nicht, siehe unten |
 | PUT | `/events/{key}` | analyst, admin | Event ändern, Body mit `version` (sonst 409) |
 | DELETE | `/events/{key}` | analyst, admin | Event löschen (409, solange ein anderes Event darauf verweist) |
@@ -267,7 +275,6 @@ Die wichtigsten offenen Punkte, mit Issue-Nummern:
 
 - Ein Bericht liefert ein Topic ohne Anmeldung, sobald man die Datei hat. Er ist ein Snapshot und kein Live-Stand ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24))
 - Timeline und Graph gibt es nur im statischen Export, nicht hinter der Anmeldung ([#25](https://github.com/JoePhanDro/Chronicle-as-Code/issues/25))
-- Topics lassen sich nur über API und YAML anlegen ([#26](https://github.com/JoePhanDro/Chronicle-as-Code/issues/26))
 - Keine Suche und keine Paginierung ([#30](https://github.com/JoePhanDro/Chronicle-as-Code/issues/30))
 
 Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
