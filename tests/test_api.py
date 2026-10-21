@@ -55,7 +55,7 @@ def test_unknown_topic_and_event_return_404(client):
 
 
 def test_import_sample_timeline_is_readable_via_api(db_path, client):
-    report = import_folder(db_path, DATA_DIR)
+    (report,) = import_folder(db_path, DATA_DIR)
     assert report.topic == "inc-2026-042"
     assert len(report.created) == 7
 

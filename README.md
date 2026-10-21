@@ -72,7 +72,7 @@ Die Werte im Compose-Stack kommen aus `.env` (Vorlage: `.env.example`). `.env` w
 
 ## Datenformat (`timeline.yaml`)
 
-Eine Datei beschreibt ein Topic und die Events, die es definiert. Ein Beispiel liegt in `data/timeline.yaml`.
+Eine Datei beschreibt ein Topic und die Events, die es definiert. Ein Beispiel liegt in `data/timeline.yaml`. Der Importer liest jede `*.yaml` im Datenordner, eine Datei je Topic. Verweise zwischen Dateien (`triggered_by`, `refs`) sind in beide Richtungen erlaubt ([ADR 0005](docs/adr/0005-export-and-backup.md)).
 
 ```yaml
 topic:
@@ -119,7 +119,33 @@ Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0
 
 **Nach einem Update** auf diese Version einmal den Import ausführen (`docker compose --profile import run --rm importer`). Evidence, die vorher nur als Pfad vorlag, bekommt dabei seinen Inhalt. Bis dahin antwortet der Download mit 404.
 
-**Achtung:** Es gibt noch keinen Export zurück in YAML. Die Datenbank ist dann die einzige vollständige Kopie. Sichere das SQLite-File oder das Volume `chronicle-db` selbst ([Issue #23](https://github.com/JoePhanDro/Chronicle-as-Code/issues/23)).
+### Export und Backup
+
+Zwei Befehle, mit unterschiedlichem Zweck:
+
+- **Export** schreibt jedes Topic als YAML im Importformat, Evidence daneben. Die Dateien lassen sich mit dem Importer in eine leere Datenbank einspielen und ergeben dort wieder denselben Export. Konten, Sitzungen und das Audit-Log gehören nicht dazu.
+- **Backup** kopiert die ganze Datenbank konsistent, auch während der Dienst läuft. Die Kopie enthält Passwort-Hashes, Sitzungen und das Audit-Log. Sie ist nur für den Eigentümer lesbar und gehört entsprechend gesichert.
+
+```bash
+mkdir -p export backup
+docker compose run --rm -v "$PWD/export:/export" --entrypoint python api \
+  -m chronicle.exporter --db /db/chronicle.db --out /export
+docker compose run --rm -v "$PWD/backup:/backup" --entrypoint python api \
+  -m chronicle.backup --db /db/chronicle.db --out /backup
+```
+
+Die Ordner `export` und `backup` müssen für den Benutzer `1000` beschreibbar sein, unter dem der Container läuft. Falls nicht: `sudo chown 1000:1000 export backup`.
+
+**Wiederherstellen** aus einem Backup, nur bei gestopptem Dienst:
+
+```bash
+docker compose stop api
+docker compose run --rm -v "$PWD/backup:/backup:ro" --entrypoint python api -c \
+  "import shutil; shutil.copyfile('/backup/chronicle-JJJJMMTT-HHMMSS.db', '/db/chronicle.db')"
+docker compose up -d api
+```
+
+Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ersatz für ein Backup. Er stellt Inhalte in lesbarer Form bereit, nicht Konten oder Protokoll.
 
 ## Oberfläche
 
@@ -191,6 +217,8 @@ chronicle/
   event_input.py   Eingabemodell für Schreibzugriffe (gleiche Regeln wie der Import)
   db.py            SQLite-Schema und Migration
   importer.py      YAML in die Datenbank importieren
+  exporter.py      Datenbank als YAML-Dateien je Topic exportieren
+  backup.py        konsistente Kopie der Datenbank
   serve.py         API mit uvicorn starten
   admin_cli.py     Konten über die Kommandozeile verwalten
   models.py        Pydantic-Schema der YAML (strikt)
@@ -217,7 +245,6 @@ Die CI läuft bei jeder Pull-Request: Tests, Smoke-Lauf des Dashboard-Exports, J
 
 Die wichtigsten offenen Punkte, mit Issue-Nummern:
 
-- Kein Export zurück in YAML ([#23](https://github.com/JoePhanDro/Chronicle-as-Code/issues/23))
 - Der statische Dashboard-Export liefert alle Daten ohne Anmeldung, wenn man ihn ausführt ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24))
 - Timeline und Graph gibt es nur im statischen Export, nicht hinter der Anmeldung ([#25](https://github.com/JoePhanDro/Chronicle-as-Code/issues/25))
 - Topics lassen sich nur über API und YAML anlegen ([#26](https://github.com/JoePhanDro/Chronicle-as-Code/issues/26))
@@ -232,6 +259,7 @@ Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/is
   - [ADR 0002](docs/adr/0002-topics-and-events.md): Events und Topics (zu bestätigen)
   - [ADR 0003](docs/adr/0003-editing-in-the-ui.md): Bearbeiten in der Oberfläche (zu bestätigen)
   - [ADR 0004](docs/adr/0004-evidence-storage.md): Evidence in der Datenbank, Abweichung von ADR 0001 (zu bestätigen)
+  - [ADR 0005](docs/adr/0005-export-and-backup.md): YAML-Export, Backup und Import mehrerer Topic-Dateien (zu bestätigen)
 - Wie man beiträgt, steht in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Die Beispieldaten in `data/` sind fiktiv. Die PNG-Dateien sind Platzhalter, aus SVG-Vorlagen gerendert, keine echten Screenshots.

@@ -4,3 +4,5 @@ chronicle/static/app.css
 .env
 __pycache__/
 .pytest_cache/
+/export/
+/backup/
