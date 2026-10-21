@@ -18,7 +18,8 @@ from starlette.datastructures import UploadFile  # form uploads are Starlette ob
 from . import repository
 from .auth import Auth, client_ip
 from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, Blob, check_file
-from .report import make_report, report_headers
+from .exporter import ExportError
+from .report import make_dashboard, make_report, report_headers
 from .models import Phase, Status, Topic, TopicKind
 from .event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
 
@@ -324,6 +325,17 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user is None:
             return RedirectResponse("/login", status_code=303)
         return topic_page(request, conn, user, key)
+
+    @router.get("/topics/{key}/dashboard", response_class=HTMLResponse)
+    def topic_dashboard_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        try:
+            return HTMLResponse(make_dashboard(conn, key))
+        except repository.NotFound:
+            return render(request, "not_found.html", user, status_code=404)
+        except ExportError as exc:  # shown inside the frame on the topic page
+            return HTMLResponse(str(exc), status_code=409)
 
     @router.post("/topics/{key}/edit", response_class=HTMLResponse)
     async def edit_topic_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

@@ -29,8 +29,10 @@ def render_dashboard(
     inline_css: str | None = None,
     src_for: Callable[[Evidence], str] | None = None,
     generated_at: str | None = None,
+    snapshot: bool = True,
 ) -> str:
-    """`inline_css` replaces the stylesheet link, `src_for` gives the image URL of each evidence item."""
+    """`inline_css` replaces the stylesheet link, `src_for` gives the image URL of each evidence item.
+    `snapshot` marks the page as a report snapshot; the app's live view turns that off."""
     events = sorted(timeline.events, key=lambda event: event.t0)
     nodes, edges = _build_graph(events)
 
@@ -48,6 +50,7 @@ def render_dashboard(
         payload=payload,
         inline_css=inline_css,
         generated_at=generated_at,
+        snapshot=snapshot,
     )
 
 
