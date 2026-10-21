@@ -56,11 +56,11 @@ def collect_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Path]:
         for item in event.evidence:
             source = (base / item.file).resolve()
             if item.file in RESERVED_OUTPUT_NAMES:
-                problems.append(f"{event.id}: '{item.file}' ist für die Ausgabe reserviert")
+                problems.append(f"{event.key}: '{item.file}' ist für die Ausgabe reserviert")
             elif not source.is_relative_to(base):
-                problems.append(f"{event.id}: '{item.file}' liegt außerhalb des Timeline-Ordners")
+                problems.append(f"{event.key}: '{item.file}' liegt außerhalb des Timeline-Ordners")
             elif not source.is_file():
-                problems.append(f"{event.id}: Datei fehlt: '{item.file}'")
+                problems.append(f"{event.key}: Datei fehlt: '{item.file}'")
             else:
                 found[item.file] = source
 

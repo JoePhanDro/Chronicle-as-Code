@@ -63,14 +63,17 @@ class Evidence(BaseModel):
 class Event(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]+$", description="Optional, generated if missing")
+    key: str = Field(
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+        description="Stable, globally unique key. Re-importing the same key updates the event.",
+    )
     t0: datetime = Field(description="ISO 8601 timestamp with timezone offset")
     phase: Phase
     actor: str = Field(min_length=1)
     system: str | None = None
     action: str = Field(min_length=1)
     status: Status
-    triggered_by: str | None = Field(default=None, description="Event id or actor name that caused this event")
+    triggered_by: str | None = Field(default=None, description="Key of the event that caused this event")
     details: str = Field(default="", description="Markdown body shown in the detail view")
     evidence: list[Evidence] = Field(default_factory=list)
 
@@ -82,28 +85,34 @@ class Event(BaseModel):
         return value.astimezone(UTC)
 
 
-class Timeline(BaseModel):
+TopicKind = Literal["incident", "vulnerability", "project", "special", "other"]
+
+
+class Topic(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
     title: str = Field(min_length=1)
+    kind: TopicKind = "other"
     summary: str = ""
-    events: list[Event] = Field(min_length=1)
+
+
+class Timeline(BaseModel):
+    """One topic file: the topic, the events it defines and references to events defined elsewhere."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    topic: Topic
+    events: list[Event] = Field(default_factory=list)
+    refs: list[str] = Field(default_factory=list, description="Keys of events defined in other topic files")
 
     @model_validator(mode="after")
-    def _assign_ids_and_check_references(self) -> Timeline:
-        for index, event in enumerate(self.events, start=1):
-            if event.id is None:
-                event.id = f"evt-{index:03d}"
-
-        ids = [event.id for event in self.events]
-        duplicates = sorted({event_id for event_id in ids if ids.count(event_id) > 1})
+    def _check_local_keys(self) -> Timeline:
+        keys = [event.key for event in self.events]
+        duplicates = sorted({key for key in keys if keys.count(key) > 1})
         if duplicates:
-            raise ValueError(f"duplicate event ids: {duplicates}")
-
-        known_references = set(ids) | {event.actor for event in self.events}
-        for event in self.events:
-            if event.triggered_by and event.triggered_by not in known_references:
-                raise ValueError(
-                    f"event {event.id!r}: triggered_by {event.triggered_by!r} is neither an event id nor an actor"
-                )
+            raise ValueError(f"duplicate event keys: {duplicates}")
+        overlap = sorted(set(keys) & set(self.refs))
+        if overlap:
+            raise ValueError(f"events defined here cannot also be referenced: {overlap}")
         return self

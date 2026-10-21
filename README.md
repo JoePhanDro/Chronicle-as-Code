@@ -7,11 +7,11 @@ Zeitstrahl (vis-timeline) oben, Details mit Markdown und Evidence sowie ein Enti
 
 ```bash
 cp .env.example .env          # Admin-Benutzer und Passwort setzen (Passwort mind. 12 Zeichen)
-docker compose --profile import run --rm importer   # Timeline einmalig importieren
+docker compose --profile import run --rm importer   # Topic-Datei importieren (beliebig oft, ohne Duplikate)
 docker compose up -d api      # API starten, danach http://localhost:8000/login
 ```
 
-Der Import läuft bewusst nicht bei jedem `up`. Jeder Lauf legt einen neuen Incident an.
+Der Import läuft bewusst nicht bei jedem `up`, auch wenn er idempotent ist.
 Ohne Admin-Eintrag in `.env` legt der Server keinen Admin an. Dann:
 `docker compose run --rm api python -m chronicle.admin_cli --db /db/chronicle.db create --username admin --role admin`.
 
@@ -20,7 +20,7 @@ Der statische Dashboard-Export (ohne Anmeldung, nur als Datei) läuft weiterhin 
 
 ## Server, Anmeldung und Konten (Phase 2)
 
-Incidents liegen in SQLite. Die YAML ist Importformat. Alle Daten-Endpunkte verlangen eine Anmeldung.
+Topics und Events liegen in SQLite. Die YAML ist Importformat. Alle Daten-Endpunkte verlangen eine Anmeldung.
 
 ```bash
 # Ersten Admin anlegen (Passwort wird verdeckt abgefragt)
@@ -39,9 +39,11 @@ Login im Browser: http://localhost:8000/login (mit Docker: siehe oben)
 | POST | `/api/v1/auth/login` | öffentlich | JSON `{username, password}`, setzt Sitzungscookie |
 | POST | `/api/v1/auth/logout` | angemeldet | beendet die Sitzung (Header `X-CSRF-Token`) |
 | GET | `/api/v1/auth/me` | angemeldet | eigenes Konto und CSRF-Token |
-| GET | `/api/v1/incidents` | angemeldet | alle Incidents |
-| GET | `/api/v1/incidents/{id}` | angemeldet | ein Incident |
-| GET | `/api/v1/incidents/{id}/events` | angemeldet | Events mit Evidence |
+| GET | `/api/v1/topics` | angemeldet | alle Topics mit Anzahl der Events |
+| GET | `/api/v1/topics/{key}` | angemeldet | ein Topic |
+| GET | `/api/v1/topics/{key}/events` | angemeldet | Events eines Topics, zeitlich sortiert, mit Evidence |
+| GET | `/api/v1/events` | angemeldet | alle Events |
+| GET | `/api/v1/events/{key}` | angemeldet | ein Event mit Evidence und allen zugehörigen Topics |
 | GET | `/api/v1/users` | admin | Konten |
 | POST | `/api/v1/users` | admin | Konto anlegen |
 | PATCH | `/api/v1/users/{id}` | admin | Rolle, Aktivierung oder Passwort ändern |
@@ -77,25 +79,42 @@ docker-compose.yml
 
 ## Schema (Kurzfassung)
 
+Eine Datei beschreibt ein Topic (Incident, Schwachstelle, Projekt, besonderes Ereignis) und die Events dazu.
+Events haben einen stabilen `key` und können zu mehreren Topics gehören.
+
 ```yaml
-title: "INC-…"            # Pflicht
-summary: "…"              # optional
+topic:
+  key: inc-2026-042                  # eindeutig, Pflicht
+  title: "INC-2026-042: …"           # Pflicht
+  kind: incident                     # incident | vulnerability | project | special | other
+  summary: "…"                       # optional
+
 events:
-  - id: analysis          # optional, sonst evt-001, evt-002, …
-    t0: 2026-10-14T09:30:00+02:00   # Pflicht, mit Zeitzone
-    phase: Analysis       # Identification | Exploit | Analysis | Containment | Mitigation | Recovery | Lessons Learned
-    actor: CSIRT Analyst A
-    system: wp-portal-01  # optional
-    action: "…"           # Pflicht
-    status: in_progress   # open | in_progress | resolved
-    triggered_by: exploit # optional: Event-ID oder Akteur-Name
-    details: |            # optional, Markdown
+  - key: exploit-2026-10-14          # eindeutig über alle Topics, Pflicht
+    t0: 2026-10-14T08:40:00+02:00    # Pflicht, mit Zeitzone
+    phase: Exploit                   # Identification | Exploit | Analysis | Containment | Mitigation | Recovery | Lessons Learned
+    actor: Angreifer (extern)
+    system: wp-portal-01             # optional
+    action: "…"
+    status: in_progress              # open | in_progress | resolved
+    triggered_by: cve-2026-xxxx      # optional: Key eines anderen Events
+    details: |                       # optional, Markdown
       …
-    evidence:             # optional, Pfade relativ zur timeline.yaml
+    evidence:                        # optional, Pfade relativ zur Datei
       - file: evidence/waf-block.svg
-        type: screenshot  # screenshot | log | report | other
+        type: screenshot             # screenshot | log | report | other
         description: "…"
+
+refs:                                # optional: Events, die in einer anderen Datei definiert sind
+  - cve-2026-xxxx
 ```
+
+**Heimat und Verweise:** Jedes Event wird in genau einer Datei definiert. Andere Topics binden es über `refs` ein.
+Ein Event in zwei Dateien zu definieren, ist ein Fehler.
+
+**Import ist idempotent.** Dieselbe Datei beliebig oft importieren ergibt denselben Stand. Events werden über ihren
+Key aktualisiert, nicht neu angelegt. Entfernt man ein Event aus einer Datei, wird es nur von diesem Topic gelöst,
+bleibt aber erhalten. Schlägt eine Prüfung fehl (z. B. unbekanntes `triggered_by`), wird nichts geschrieben.
 
 Farben folgen der `phase`: rot für Identification/Exploit, gelb für Analysis, orange für Containment, grün für Mitigation/Recovery, blau für Lessons Learned.
 

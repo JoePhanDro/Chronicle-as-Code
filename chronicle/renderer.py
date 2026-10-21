@@ -34,24 +34,24 @@ def render_dashboard(timeline: Timeline) -> str:
     phases = [{"name": phase.value, "color": PHASE_COLORS[phase]} for phase in Phase]
 
     return _env.get_template("dashboard.html").render(
-        title=timeline.title,
-        summary=timeline.summary,
+        title=timeline.topic.title,
+        summary=timeline.topic.summary,
         phases=phases,
         payload=payload,
     )
 
 
 def _event_key(event: Event) -> str:
-    return f"event:{event.id}"
+    return f"event:{event.key}"
 
 
 def _evidence_key(event: Event, file: str) -> str:
-    return f"evidence:{event.id}:{file}"
+    return f"evidence:{event.key}:{file}"
 
 
 def _event_payload(event: Event) -> dict:
     return {
-        "id": event.id,
+        "id": event.key,
         "t0": event.t0.isoformat(),
         "phase": event.phase.value,
         "color": PHASE_COLORS[event.phase],
@@ -77,7 +77,7 @@ def _event_payload(event: Event) -> dict:
 def _build_graph(events: list[Event]) -> tuple[list[dict], list[dict]]:
     nodes: dict[str, dict] = {}
     edges: list[dict] = []
-    event_ids = {event.id for event in events}
+    event_keys = {event.key for event in events}
 
     def add_node(key: str, **attributes: object) -> None:
         nodes.setdefault(key, {"id": key, **attributes})
@@ -92,7 +92,7 @@ def _build_graph(events: list[Event]) -> tuple[list[dict], list[dict]]:
             label=f"{event.t0:%H:%M} {_shorten(event.action)}",
             shape="diamond",
             color=PHASE_COLORS[event.phase],
-            event_id=event.id,
+            event_id=event.key,
         )
         for item in event.evidence:
             add_node(
@@ -100,7 +100,7 @@ def _build_graph(events: list[Event]) -> tuple[list[dict], list[dict]]:
                 label=PurePosixPath(item.file).name,
                 shape="box",
                 color=EVIDENCE_COLOR,
-                event_id=event.id,
+                event_id=event.key,
             )
 
     # Pass 2: edges.
@@ -111,12 +111,9 @@ def _build_graph(events: list[Event]) -> tuple[list[dict], list[dict]]:
             edges.append({"from": f"system:{event.system}", "to": key, "label": "betrifft", "dashes": True})
         for item in event.evidence:
             edges.append({"from": key, "to": _evidence_key(event, item.file), "label": "Beleg"})
-        if event.triggered_by:
-            source = (
-                f"event:{event.triggered_by}"
-                if event.triggered_by in event_ids
-                else f"actor:{event.triggered_by}"
-            )
+        # Only draw the link when the cause is part of this view; otherwise the node would be missing.
+        if event.triggered_by in event_keys:
+            source = f"event:{event.triggered_by}"
             edges.append({"from": source, "to": key, "label": "löst aus", "color": {"color": TRIGGER_COLOR}})
 
     return list(nodes.values()), edges
