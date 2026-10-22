@@ -104,3 +104,11 @@ def test_viewer_cannot_post_creation_forms(db_path):
         "csrf_token": csrf, "key": "nope", "title": "Nein", "kind": "project", "summary": "",
     }, follow_redirects=False)
     assert response.status_code == 403
+
+
+def test_header_offers_search_and_settings_on_every_page(db_path):
+    client, _ = login(db_path, "viewer")
+    for path in ["/", "/events", "/topics", "/account/password"]:
+        html = client.get(path).text
+        assert 'role="search"' in html and 'action="/events"' in html, path
+        assert 'id="open-settings"' in html and 'id="settings-dialog"' in html, path
