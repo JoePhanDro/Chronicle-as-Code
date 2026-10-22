@@ -4,7 +4,7 @@
 <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
   <div>
     <h1 class="text-xl font-semibold text-slate-100">Ereignisse</h1>
-    <p class="text-sm text-slate-400">{{ total }} Events{% if filtered %} gefunden{% endif %}{% if topic %} im Topic <span class="text-slate-200">{{ topic.title }}</span>{% endif %}, zeitlich sortiert (UTC)</p>
+    <p class="text-sm text-slate-400">{{ total }} Events{% if filtered %} gefunden{% endif %}{% if topic %} im Topic <span class="text-slate-200">{{ topic.title }}</span>{% endif %}{% if query.system %} im System <span class="text-slate-200">{{ query.system }}</span>{% endif %}, zeitlich sortiert (<span data-zone-label>UTC</span>)</p>
   </div>
   {% if can_write %}
   <a href="/events/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Neues Event</a>
@@ -64,7 +64,7 @@
   <table class="w-full text-left text-sm">
     <thead class="bg-white/[.03] text-xs uppercase tracking-wide text-slate-500">
       <tr>
-        <th class="px-4 py-2 font-medium">Zeit (UTC)</th>
+        <th class="px-4 py-2 font-medium">Zeit (<span data-zone-label>UTC</span>)</th>
         <th class="px-4 py-2 font-medium">Phase</th>
         <th class="px-4 py-2 font-medium">Aktion</th>
         <th class="px-4 py-2 font-medium">Akteur</th>
@@ -74,7 +74,7 @@
     <tbody class="divide-y divide-white/5">
       {% for event in events %}
       <tr class="hover:bg-white/[.02]">
-        <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-slate-400">{{ event.t0[:16].replace('T', ' ') }}</td>
+        <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-slate-400"><time data-utc="{{ event.t0 }}">{{ event.t0[:16].replace('T', ' ') }}</time></td>
         <td class="px-4 py-2 text-xs text-slate-300">{{ event.phase }}</td>
         <td class="px-4 py-2"><a href="/events/{{ event.key }}" class="text-sky-300 hover:underline">{{ event.action }}</a></td>
         <td class="px-4 py-2 text-slate-400">{{ event.actor }}</td>

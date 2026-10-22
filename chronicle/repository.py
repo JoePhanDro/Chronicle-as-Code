@@ -553,6 +553,7 @@ class EventFilter:
     phase: str | None = None
     status: str | None = None
     actor: str | None = None  # part of the actor name, not case-sensitive
+    system: str | None = None  # part of the system name, not case-sensitive
     since: date | None = None  # t0 on or after this day (UTC)
     until: date | None = None  # t0 on or before this day (UTC)
 
@@ -585,6 +586,9 @@ def _filter_sql(flt: EventFilter) -> tuple[str, list]:
     if flt.actor:
         clauses.append("instr(lower(events.actor), lower(?)) > 0")
         params.append(flt.actor)
+    if flt.system:
+        clauses.append("instr(lower(events.system), lower(?)) > 0")
+        params.append(flt.system)
     # t0 is stored in UTC, so the first ten characters are the UTC day.
     if flt.since is not None:
         clauses.append("substr(events.t0, 1, 10) >= ?")
@@ -632,6 +636,25 @@ def get_event(conn: sqlite3.Connection, key: str) -> dict | None:
     event = _with_evidence(conn, rows)[0]
     event["topics"] = _topic_keys_of(conn, rows[0]["pk"])
     return event
+
+
+def search_actors(conn: sqlite3.Connection, text: str, limit: int = 20) -> list[str]:
+    """Actor names that contain `text`, not case-sensitive, alphabetically."""
+    rows = conn.execute(
+        "SELECT DISTINCT actor FROM events WHERE instr(lower(actor), lower(?)) > 0 ORDER BY actor LIMIT ?",
+        (text, limit),
+    ).fetchall()
+    return [row["actor"] for row in rows]
+
+
+def search_systems(conn: sqlite3.Connection, text: str, limit: int = 20) -> list[str]:
+    """System names that contain `text`, not case-sensitive, alphabetically."""
+    rows = conn.execute(
+        "SELECT DISTINCT system FROM events WHERE system IS NOT NULL AND instr(lower(system), lower(?)) > 0 "
+        "ORDER BY system LIMIT ?",
+        (text, limit),
+    ).fetchall()
+    return [row["system"] for row in rows]
 
 
 def list_all_topic_keys(conn: sqlite3.Connection) -> list[str]:

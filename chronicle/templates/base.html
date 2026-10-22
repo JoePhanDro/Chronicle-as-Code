@@ -45,12 +45,13 @@
       {{ menu("menu-admin", "Verwaltung", [("/admin/users", "Benutzer"), ("/admin/grabsteine", "Gelöschte Events"), ("/admin/audit", "Audit-Log")], align_end=true) }}
       {% endif %}
     </nav>
-    <form role="search" method="get" action="/events" class="flex items-center gap-2 text-sm">
-      <label class="sr-only" for="header-search">Ereignisse durchsuchen</label>
-      <input id="header-search" type="search" name="q" placeholder="Ereignisse suchen" class="w-44 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-1.5 text-slate-100 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none">
+    <form role="search" method="get" action="/suche" class="flex items-center gap-2 text-sm">
+      <label class="sr-only" for="header-search">Suchen in Ereignissen, Akteuren und Systemen</label>
+      <input id="header-search" type="search" name="q" placeholder="Suchen (/)" class="w-44 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-1.5 text-slate-100 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none">
       <button type="submit" class="rounded-lg px-2 py-1.5 text-slate-400 hover:bg-white/5 hover:text-white">Suchen</button>
     </form>
     <div class="flex items-center gap-4 text-sm">
+      <a href="/hilfe" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white">Hilfe</a>
       <button type="button" id="open-settings" aria-controls="settings-dialog" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white">Einstellungen</button>
       <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
       {% if not user.guest %}<a href="/account/password" class="text-slate-400 hover:text-white">Passwort</a>{% endif %}
@@ -72,7 +73,30 @@
         <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="density" value="normal" class="accent-sky-400"> normal</label>
         <label class="flex items-center gap-2 text-sm"><input type="radio" name="density" value="compact" class="accent-sky-400"> kompakt</label>
       </fieldset>
-      <p class="mb-6 text-xs text-slate-500">Die Einstellung gilt für diesen Browser und wird beim nächsten Laden angewendet.</p>
+      <fieldset class="mb-6">
+        <legend class="mb-2 text-sm font-medium text-slate-300">Zeitzone</legend>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="zone" value="utc" data-setting="chronicle.zone" class="accent-sky-400"> UTC</label>
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="zone" value="local" data-setting="chronicle.zone" class="accent-sky-400"> lokale Zeit des Browsers</label>
+      </fieldset>
+      <fieldset class="mb-6">
+        <legend class="mb-2 text-sm font-medium text-slate-300">Graph im Topic</legend>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="graph-physics" value="on" data-setting="chronicle.graph.physics" class="accent-sky-400"> Physik beim Laden an</label>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="graph-physics" value="off" data-setting="chronicle.graph.physics" class="accent-sky-400"> Physik beim Laden aus</label>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="graph-labels" value="on" data-setting="chronicle.graph.labels" class="accent-sky-400"> Beschriftung an</label>
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="graph-labels" value="off" data-setting="chronicle.graph.labels" class="accent-sky-400"> Beschriftung aus</label>
+      </fieldset>
+      <fieldset class="mb-6">
+        <legend class="mb-2 text-sm font-medium text-slate-300">Timeline im Topic</legend>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="timeline-zoom" value="all" data-setting="chronicle.timeline.zoom" class="accent-sky-400"> Zoom: alle Ereignisse</label>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="timeline-zoom" value="day" data-setting="chronicle.timeline.zoom" class="accent-sky-400"> Zoom: 1 Tag ab erstem Ereignis</label>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="timeline-zoom" value="hours" data-setting="chronicle.timeline.zoom" class="accent-sky-400"> Zoom: 6 Stunden ab erstem Ereignis</label>
+        <span class="mb-1 mt-3 block text-xs text-slate-400">Gruppierung</span>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="timeline-group" value="actor" data-setting="chronicle.timeline.group" class="accent-sky-400"> Akteur</label>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="timeline-group" value="system" data-setting="chronicle.timeline.group" class="accent-sky-400"> System</label>
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="timeline-group" value="phase" data-setting="chronicle.timeline.group" class="accent-sky-400"> Phase</label>
+      </fieldset>
+      <p class="mb-2 text-xs text-slate-500">Die Einstellungen gelten für diesen Browser. Graph und Timeline greifen beim nächsten Laden des Topics. Tastenkürzel stehen unter <a href="/hilfe" class="text-sky-300 hover:underline">Hilfe</a>.</p>
+      <p class="mb-6 text-xs text-slate-500">Die Dichte der Tabellen gilt ebenfalls für diesen Browser und wird beim nächsten Laden angewendet.</p>
       <div class="flex justify-end">
         <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">Schließen</button>
       </div>
@@ -122,6 +146,70 @@
         applyDensity(radio.value);
       }));
     })();
+  </script>
+  <script>
+    // Settings for this browser. Storage can be blocked; then the defaults apply.
+    window.chronicleSettings = (() => {
+      const defaults = {
+        'chronicle.zone': 'utc',
+        'chronicle.graph.physics': 'on',
+        'chronicle.graph.labels': 'on',
+        'chronicle.timeline.zoom': 'all',
+        'chronicle.timeline.group': 'actor',
+      };
+      const read = key => {
+        try { return localStorage.getItem(key) ?? defaults[key]; } catch (error) { return defaults[key]; }
+      };
+      const write = (key, value) => {
+        try { localStorage.setItem(key, value); } catch (error) { /* not saved, applied for this page only */ }
+      };
+      return { read, write };
+    })();
+
+    // Server-rendered times carry their UTC value in data-utc; the zone setting decides how they are shown.
+    (() => {
+      const pad = number => String(number).padStart(2, '0');
+      const zoneText = () => (window.chronicleSettings.read('chronicle.zone') === 'local' ? 'lokal' : 'UTC');
+      const formatLocal = iso => {
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return iso.slice(0, 16).replace('T', ' ');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      };
+      const apply = () => {
+        const local = zoneText() === 'lokal';
+        document.querySelectorAll('time[data-utc]').forEach(time => {
+          const utc = time.dataset.utc;
+          time.textContent = local ? formatLocal(utc) : utc.slice(0, 16).replace('T', ' ');
+        });
+        document.querySelectorAll('[data-zone-label]').forEach(label => { label.textContent = zoneText(); });
+      };
+      window.chronicleApplyZone = apply;
+      apply();
+    })();
+
+    // Settings dialog: radio groups with data-setting store their value directly.
+    (() => {
+      document.querySelectorAll('input[type=radio][data-setting]').forEach(radio => {
+        const key = radio.dataset.setting;
+        radio.checked = radio.value === window.chronicleSettings.read(key);
+        radio.addEventListener('change', () => {
+          window.chronicleSettings.write(key, radio.value);
+          if (key === 'chronicle.zone') window.chronicleApplyZone();
+        });
+      });
+    })();
+
+    // "/" opens the header search, unless the user is already typing somewhere.
+    document.addEventListener('keydown', event => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      if (target.closest && target.closest('input, textarea, select, [contenteditable]')) return;
+      if (document.querySelector('dialog[open]')) return;
+      const search = document.getElementById('header-search');
+      if (!search) return;
+      event.preventDefault();
+      search.focus();
+    });
   </script>
   <script>
     // Disclosure menus: one open at a time. Escape closes the open menu and returns focus to its button.
