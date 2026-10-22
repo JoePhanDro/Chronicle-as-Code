@@ -39,6 +39,7 @@ TOPIC_KINDS = list(get_args(TopicKind))
 HOURS = [f"{hour:02d}" for hour in range(24)]
 MINUTES = [f"{minute:02d}" for minute in range(60)]
 EVENTS_PAGE_SIZE = 50
+SEARCH_EVENT_LIMIT = 20
 
 
 def _text_param(params, name: str) -> str | None:
@@ -172,11 +173,12 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         flt = repository.EventFilter(
             topic=topic_key, query=_text_param(params, "q"), phase=_choice_param(params, "phase", Phase),
             status=_choice_param(params, "status", Status), actor=_text_param(params, "actor"),
-            since=_day_param(params, "since"), until=_day_param(params, "until"),
+            system=_text_param(params, "system"), since=_day_param(params, "since"), until=_day_param(params, "until"),
         )
         # Filters go into every page link; empty ones are left out of the URL.
         query = {
             "topic": topic_key, "q": flt.query, "phase": flt.phase, "status": flt.status, "actor": flt.actor,
+            "system": flt.system,
             "since": flt.since.isoformat() if flt.since else None,
             "until": flt.until.isoformat() if flt.until else None,
         }
@@ -189,6 +191,25 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
                       page_url=lambda number: "/events?" + urlencode({**query, "page": number}),
                       query=query, filtered=bool(query), phases=list(Phase), statuses=list(Status),
                       topic=topic, topics=repository.list_topics(conn))
+
+    @router.get("/suche", response_class=HTMLResponse)
+    def search_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        text = _text_param(request.query_params, "q")
+        if text is None:
+            return render(request, "search.html", user, text="", events=[], total=0, actors=[], systems=[])
+        flt = repository.EventFilter(query=text)
+        return render(request, "search.html", user, text=text,
+                      events=repository.find_events(conn, flt, limit=SEARCH_EVENT_LIMIT),
+                      total=repository.count_events(conn, flt),
+                      actors=repository.search_actors(conn, text), systems=repository.search_systems(conn, text))
+
+    @router.get("/hilfe", response_class=HTMLResponse)
+    def help_page(request: Request, user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        return render(request, "help.html", user)
 
     @router.get("/events/new", response_class=HTMLResponse)
     def new_event_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
