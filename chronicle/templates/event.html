@@ -54,7 +54,7 @@
   {% if event.details %}
   <section class="mb-8 rounded-xl border border-white/10 bg-white/[.02] p-5">
     <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Details</h2>
-    <pre class="whitespace-pre-wrap font-sans text-sm text-slate-300">{{ event.details }}</pre>
+    <div class="prose prose-invert max-w-none text-sm prose-a:text-sky-400">{{ event.details | markdown }}</div>
   </section>
   {% endif %}
 

@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
+from .markdown import render_markdown
 from .models import PHASE_COLORS, Evidence, Event, Phase, Timeline
 
 ACTOR_COLOR = "#38bdf8"
@@ -79,6 +80,7 @@ def _event_payload(event: Event, src_for: Callable[[Evidence], str]) -> dict:
         "status": event.status.value,
         "triggered_by": event.triggered_by,
         "details": event.details,
+        "details_html": render_markdown(event.details),
         "evidence": [
             {
                 "src": src_for(item),

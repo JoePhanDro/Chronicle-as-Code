@@ -19,11 +19,13 @@ from . import repository
 from .auth import Auth, client_ip
 from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, Blob, check_file
 from .exporter import ExportError
+from .markdown import markdown_filter
 from .report import make_dashboard, make_report, report_headers
 from .models import Phase, Status, Topic, TopicKind
 from .event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+TEMPLATES.env.filters["markdown"] = markdown_filter
 WRITER_ROLES = ("admin", "analyst")
 TOPIC_KINDS = list(get_args(TopicKind))
 HOURS = [f"{hour:02d}" for hour in range(24)]
