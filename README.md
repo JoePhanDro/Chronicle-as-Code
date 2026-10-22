@@ -4,9 +4,9 @@ Chronicle organisiert Sicherheitswissen: **Events** (Ereignisse mit Zeitpunkt, A
 
 ![Dashboard: Timeline oben, Entitäten-Graph unten, Phasen farblich markiert](docs/screenshots/dashboard.png)
 
-*Dashboard-Ansicht des Beispiels `data/`. Fiktive Demo-Daten.*
+*Dashboard eines Topics aus dem Beispiel `data/`, so wie es auf der Topic-Seite eingebettet ist. Fiktive Demo-Daten.*
 
-> **Status:** Entwicklungsstand. Anmeldung, Rollen, Benutzerverwaltung über API und CLI, Event-Pflege in der Oberfläche und der API-Server laufen. Timeline und Graph in der Oberfläche (Phase 3) sind noch nicht umgesetzt. Offene Punkte stehen in den [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
+> **Status:** Entwicklungsstand. Anmeldung, Rollen, Benutzerverwaltung, Event- und Topic-Pflege in der Oberfläche, Evidence, Berichte, API und CLI laufen. Timeline, Graph und Detailansicht sind in der Oberfläche auf der Topic-Seite eingebettet. Offene Punkte stehen in den [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
 
 ## Inhalt
 
@@ -178,7 +178,8 @@ Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ers
 | `/events` | angemeldet | alle Events, zeitlich sortiert. Mit `?topic=<key>` nur die Events eines Topics (Heimat und verknüpft) |
 | `/topics` | angemeldet | alle Topics mit Anzahl der Events |
 | `/topics/new` | analyst, admin | Topic anlegen (Key, Titel, Art, Zusammenfassung) |
-| `/topics/{key}` | angemeldet | Topic und seine Events; bearbeiten, löschen, Events verknüpfen und lösen für analyst und admin |
+| `/topics/{key}` | angemeldet | Topic und seine Events; bearbeiten, löschen, Events verknüpfen und lösen für analyst und admin. Enthält das Dashboard als eingebettete Ansicht |
+| `/topics/{key}/dashboard` | angemeldet | Dashboard des Topics: Timeline, Entitäten-Graph und Details (die Ansicht auf `/topics/{key}` lädt sie als Frame) |
 | `/events/new` | analyst, admin | Event anlegen |
 | `/events/{key}` | angemeldet | Details, Evidence mit Vorschau, Topics; bearbeiten, Evidence hochladen und löschen für analyst und admin |
 | `/reports` | admin | Topics mit Download des HTML-Berichts |
@@ -285,7 +286,6 @@ Die CI läuft bei jeder Pull-Request: Tests, Render-Lauf des Dashboards aus den 
 Die wichtigsten offenen Punkte, mit Issue-Nummern:
 
 - Ein Bericht liefert ein Topic ohne Anmeldung, sobald man die Datei hat. Er ist ein Snapshot und kein Live-Stand ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24))
-- Timeline und Graph gibt es nur im statischen Export, nicht hinter der Anmeldung ([#25](https://github.com/JoePhanDro/Chronicle-as-Code/issues/25))
 - Keine Suche und keine Paginierung ([#30](https://github.com/JoePhanDro/Chronicle-as-Code/issues/30))
 
 Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
@@ -301,4 +301,4 @@ Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/is
   - [ADR 0006](docs/adr/0006-reports-from-the-app.md): Berichte aus der Datenbank, nur für Admins (zu bestätigen)
 - Wie man beiträgt, steht in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Die Beispieldaten in `data/` sind fiktiv. Die PNG-Dateien sind Platzhalter, aus SVG-Vorlagen gerendert, keine echten Screenshots.
+Die Beispieldaten in `data/` sind fiktiv. Die Evidence-PNGs in `data/evidence/` sind Platzhalter, aus SVG-Vorlagen gerendert, keine echten Screenshots. `docs/screenshots/dashboard.png` zeigt das Dashboard mit diesen Demo-Daten.
