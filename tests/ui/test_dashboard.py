@@ -132,3 +132,85 @@ def test_mermaid_block_is_drawn_as_a_diagram(new_page, dashboard_url):
 
     # Mermaid is loaded from the CDN when the block is shown, which can take a while.
     expect(page.locator("#details .mermaid-diagram svg")).to_be_visible(timeout=60_000)
+
+
+TOTAL_EVENTS = len(load_timeline(DATA_DIR / "timeline.yaml").events)
+
+
+def test_phase_filter_applies_to_every_view(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+    filters = page.locator("#filters")
+
+    filters.get_by_label("Phase").select_option("Identification")
+
+    expect(filters).to_contain_text(f"2 von {TOTAL_EVENTS} Events")
+    expect(page.locator(".vis-item.vis-box")).to_have_count(2)
+    expect(page.locator("#panel-events tbody tr:not([hidden])")).to_have_count(2)
+    # Only the siem-alert evidence belongs to an identification event.
+    expect(page.locator("#panel-evidence button:not([hidden])")).to_have_count(1)
+
+
+def test_filters_combine_and_reset(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+    filters = page.locator("#filters")
+
+    filters.get_by_label("Akteur").select_option("CSIRT Analyst A")
+    filters.get_by_label("Status").select_option("resolved")
+
+    expect(filters).to_contain_text(f"1 von {TOTAL_EVENTS} Events")
+    expect(page.locator("#panel-events tbody tr:not([hidden])")).to_have_count(1)
+    expect(page.locator(".vis-item.vis-box")).to_have_count(1)
+
+    filters.get_by_role("button", name="Filter zurücksetzen").click()
+
+    expect(filters).to_contain_text(f"{TOTAL_EVENTS} Events")
+    expect(filters.get_by_label("Akteur")).to_have_value("")
+    expect(page.locator("#panel-events tbody tr:not([hidden])")).to_have_count(TOTAL_EVENTS)
+
+
+def test_system_filter_limits_the_timeline(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+
+    page.locator("#filters").get_by_label("System").select_option("OSINT")
+
+    expect(page.locator(".vis-item.vis-box")).to_have_count(1)
+    expect(page.locator(".vis-item.vis-box")).to_contain_text("CVE")
+
+
+def test_graph_node_kinds_can_be_hidden(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+    page.get_by_role("tab", name="Graph").click()
+    wait_for_graph_layout(page)
+
+    page.locator("#panel-graph input[data-kind=actor]").uncheck()
+
+    shown = page.evaluate("graphNodes.get().filter(node => !node.hidden).map(node => node.id.split(':')[0])")
+    assert "actor" not in shown
+    assert shown.count("event") == TOTAL_EVENTS
+    assert "system" in shown
+
+
+def test_filtered_out_event_stays_in_the_details(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(f"{dashboard_url}#/timeline/siem-alert")
+    expect(page.locator("#details")).to_contain_text(EVENT_TITLE)
+
+    page.locator("#filters").get_by_label("Phase").select_option("Exploit")
+
+    expect(page.locator("#filters")).to_contain_text(f"1 von {TOTAL_EVENTS} Events")
+    expect(page.locator("#details")).to_contain_text(EVENT_TITLE)
+    expect(page.locator(".vis-item.vis-box")).to_have_count(1)
+
+
+def test_evidence_gallery_says_when_nothing_matches(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+
+    page.locator("#filters").get_by_label("Phase").select_option("Exploit")
+
+    expect(page.locator("#panel-evidence")).to_contain_text("Keine Evidence passt zu den Filtern.")
+    expect(page.locator("#panel-evidence button:not([hidden])")).to_have_count(0)
