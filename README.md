@@ -140,6 +140,15 @@ Die Regeln stehen in [docs/notation.md](docs/notation.md). Der Import prüft die
 
 Editoren mit YAML-Unterstützung (z. B. VS Code mit der Erweiterung „YAML“) prüfen und ergänzen die Felder anhand des JSON Schemas. Exportierte Dateien und der Beispieldatensatz enthalten den Verweis bereits. `python -m chronicle schema` gibt das Schema aus, die Kopie im Repo liegt unter [schema/timeline.schema.json](schema/timeline.schema.json).
 
+### Statische Seiten
+
+`chronicle build` schreibt pro Topic eine eigenständige HTML-Seite und eine `index.html` in einen Ordner. Die Seiten enthalten Stylesheet und Anhänge selbst, sie brauchen also keinen Server. Sie sind wie der Bericht aus der Datenbank als Snapshot gekennzeichnet und enthalten vertrauliche Inhalte. Die Ausgabe ist reproduzierbar: Derselbe Ordner ergibt dieselben Dateien.
+
+```bash
+npm run build:css                                # einmal, erzeugt das Stylesheet
+python -m chronicle build data --out site
+```
+
 ## Datenhaltung und Bearbeitung
 
 Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
