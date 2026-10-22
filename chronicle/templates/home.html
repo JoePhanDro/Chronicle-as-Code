@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Start{% endblock %}
 {% block content %}
+{% if errors %}
+<p role="alert" class="mb-6 rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{{ errors }}</p>
+{% endif %}
 <h1 class="text-xl font-semibold text-slate-100">Chronicle</h1>
 <p class="mt-1 text-sm text-slate-400">Ereignisse und Topics festhalten, Belege zuordnen und Berichte erstellen.</p>
 

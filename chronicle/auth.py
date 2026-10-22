@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict
 
-from . import accounts, security
+from . import accounts, reading_lock, security
 
 SESSION_COOKIE = "chronicle_session"
 LOGIN_CSRF_COOKIE = "chronicle_login_csrf"
@@ -184,10 +184,13 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
             path="/",
         )
 
-    def render_login(request: Request, error: str | None, status_code: int) -> HTMLResponse:
+    def render_login(request: Request, error: str | None, status_code: int, lock_enabled: bool = False) -> HTMLResponse:
         login_csrf = secrets.token_urlsafe(32)
         response = TEMPLATES.TemplateResponse(
-            request, "login.html", {"csrf_token": login_csrf, "error": error}, status_code=status_code
+            request,
+            "login.html",
+            {"csrf_token": login_csrf, "error": error, "lock_enabled": lock_enabled},
+            status_code=status_code,
         )
         response.set_cookie(
             LOGIN_CSRF_COOKIE,
@@ -267,7 +270,7 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
     def login_page(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
         if accounts.count_users(conn) == 0:
             return RedirectResponse("/setup", status_code=303)
-        return render_login(request, error=None, status_code=200)
+        return render_login(request, error=None, status_code=200, lock_enabled=accounts.reading_lock_enabled(conn))
 
     @router.post("/login", response_class=HTMLResponse)
     def login_form(
@@ -283,7 +286,29 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
         try:
             _, token = authenticate(conn, username, password, client_ip(request))
         except HTTPException as exc:
-            return render_login(request, error=str(exc.detail), status_code=exc.status_code)
+            return render_login(request, error=str(exc.detail), status_code=exc.status_code,
+                                lock_enabled=accounts.reading_lock_enabled(conn))
+
+        response = RedirectResponse("/", status_code=303)
+        set_session_cookie(response, token)
+        response.delete_cookie(LOGIN_CSRF_COOKIE, path="/login")
+        return response
+
+    # Under /login, so that the login CSRF cookie (path /login) is sent with it.
+    @router.post("/login/entsperren", response_class=HTMLResponse)
+    def unlock_form(
+        request: Request,
+        password: str = Form(...),
+        csrf_token: str = Form(...),
+        conn: sqlite3.Connection = Depends(get_conn),
+    ) -> Response:
+        expected = request.cookies.get(LOGIN_CSRF_COOKIE, "")
+        if not expected or not secrets.compare_digest(csrf_token, expected):
+            raise HTTPException(status_code=403, detail="Ungültiges Formular. Bitte Seite neu laden.")
+        try:
+            token = reading_lock.unlock(conn, password, client_ip(request))
+        except reading_lock.Refused as exc:
+            return render_login(request, error=exc.message, status_code=exc.status_code, lock_enabled=True)
 
         response = RedirectResponse("/", status_code=303)
         set_session_cookie(response, token)

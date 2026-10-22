@@ -44,6 +44,14 @@ events:
     details: |
       Angreifer hat Code als Webserver-User ausgeführt.
 
+      Ablauf:
+
+      ```mermaid
+      flowchart LR
+        A[Angreifer] --> B[Upload-Modul]
+        B --> C[Webshell]
+      ```
+
   - key: analysis
     t0: 2026-10-14T09:30:00+02:00
     phase: Analysis

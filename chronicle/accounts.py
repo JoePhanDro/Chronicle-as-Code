@@ -16,6 +16,13 @@ SESSION_TTL_SECONDS = 8 * 60 * 60
 MAX_FAILED_LOGINS = 5
 MAX_FAILED_LOGINS_PER_IP = 20
 FAILURE_WINDOW_SECONDS = 15 * 60
+# The reading lock (issue #13): without an account, a visitor reads the data after entering the lock password.
+# That session belongs to this account. Its password hash matches no password, so it cannot log in directly.
+GUEST_USERNAME = "lesezugriff"
+UNUSABLE_HASH = "!"
+LOCK_SETTING = "reading_lock_hash"
+# Failed unlocks are counted like failed logins. The parentheses keep the key apart from any account name.
+LOCK_FAILURE_KEY = "(sperre)"
 
 
 def now() -> int:
@@ -140,7 +147,42 @@ def find_session(conn: sqlite3.Connection, token: str) -> dict | None:
         """,
         (hash_token(token), now()),
     ).fetchone()
-    return dict(row) if row else None
+    if row is None:
+        return None
+    session = dict(row)
+    session["guest"] = session["username"] == GUEST_USERNAME
+    session["reading_lock"] = reading_lock_enabled(conn)
+    return session
+
+
+def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    with conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+
+def delete_setting(conn: sqlite3.Connection, key: str) -> None:
+    with conn:
+        conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+
+
+def reading_lock_enabled(conn: sqlite3.Connection) -> bool:
+    return get_setting(conn, LOCK_SETTING) is not None
+
+
+def ensure_guest(conn: sqlite3.Connection) -> int:
+    """The account behind unlocked reading sessions. Created on first use, switched on and off with the lock."""
+    row = get_user_by_name(conn, GUEST_USERNAME)
+    if row is None:
+        return create_user(conn, GUEST_USERNAME, UNUSABLE_HASH, "viewer")
+    return row["id"]
 
 
 def delete_session(conn: sqlite3.Connection, token: str) -> None:

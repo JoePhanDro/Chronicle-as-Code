@@ -4,24 +4,60 @@
 <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
   <div>
     <h1 class="text-xl font-semibold text-slate-100">Ereignisse</h1>
-    <p class="text-sm text-slate-400">{{ events|length }} Events{% if topic %} im Topic <span class="text-slate-200">{{ topic.title }}</span>{% endif %}, zeitlich sortiert (UTC)</p>
+    <p class="text-sm text-slate-400">{{ total }} Events{% if filtered %} gefunden{% endif %}{% if topic %} im Topic <span class="text-slate-200">{{ topic.title }}</span>{% endif %}, zeitlich sortiert (UTC)</p>
   </div>
-  <div class="flex flex-wrap items-end gap-3">
-    <form method="get" action="/events" class="flex items-end gap-2">
-      <label class="block">
-        <span class="mb-1 block text-xs font-medium text-slate-400">Topic</span>
-        <select name="topic" class="rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
-          <option value="">alle</option>
-          {% for item in topics %}<option value="{{ item.key }}" {{ 'selected' if topic and topic.key == item.key }}>{{ item.title }}</option>{% endfor %}
-        </select>
-      </label>
-      <button type="submit" class="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Filtern</button>
-    </form>
-    {% if can_write %}
-    <a href="/events/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Neues Event</a>
-    {% endif %}
-  </div>
+  {% if can_write %}
+  <a href="/events/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Neues Event</a>
+  {% endif %}
 </div>
+
+<form method="get" action="/events" class="mb-6 grid gap-3 rounded-xl border border-white/10 p-4 sm:grid-cols-2 lg:grid-cols-4">
+  <label class="block sm:col-span-2">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Suche in Aktion, Details und Akteur</span>
+    <input type="search" name="q" value="{{ query.get('q', '') }}" placeholder="z. B. Webshell"
+           class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Topic</span>
+    <select name="topic" class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+      <option value="">alle</option>
+      {% for item in topics %}<option value="{{ item.key }}" {{ 'selected' if topic and topic.key == item.key }}>{{ item.title }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Phase</span>
+    <select name="phase" class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+      <option value="">alle</option>
+      {% for item in phases %}<option value="{{ item.value }}" {{ 'selected' if query.get('phase') == item.value }}>{{ item.value }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Status</span>
+    <select name="status" class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+      <option value="">alle</option>
+      {% for item in statuses %}<option value="{{ item.value }}" {{ 'selected' if query.get('status') == item.value }}>{{ item.value.replace('_', ' ') }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Akteur</span>
+    <input type="text" name="actor" value="{{ query.get('actor', '') }}"
+           class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Von (UTC)</span>
+    <input type="date" name="since" value="{{ query.get('since', '') }}"
+           class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Bis (UTC)</span>
+    <input type="date" name="until" value="{{ query.get('until', '') }}"
+           class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+  </label>
+  <div class="flex items-center gap-3 sm:col-span-2 lg:col-span-4">
+    <button type="submit" class="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Filtern</button>
+    {% if filtered %}<a href="/events" class="text-sm text-slate-400 hover:text-slate-200 hover:underline">Filter zurücksetzen</a>{% endif %}
+  </div>
+</form>
 
 {% if events %}
 <div class="overflow-x-auto rounded-xl border border-white/10">
@@ -48,7 +84,19 @@
     </tbody>
   </table>
 </div>
+
+{% if pages > 1 %}
+<nav aria-label="Seiten" class="mt-4 flex items-center justify-between text-sm text-slate-400">
+  {% if page > 1 %}
+  <a href="{{ page_url(page - 1) }}" class="rounded-lg border border-white/10 px-3 py-2 text-slate-200 hover:bg-white/5">Zurück</a>
+  {% else %}<span></span>{% endif %}
+  <span>Seite {{ page }} von {{ pages }}</span>
+  {% if page < pages %}
+  <a href="{{ page_url(page + 1) }}" class="rounded-lg border border-white/10 px-3 py-2 text-slate-200 hover:bg-white/5">Weiter</a>
+  {% else %}<span></span>{% endif %}
+</nav>
+{% endif %}
 {% else %}
-<p class="rounded-xl border border-dashed border-white/10 px-6 py-12 text-center text-sm text-slate-500">{{ 'Keine Events in diesem Topic.' if topic else 'Noch keine Events.' }}</p>
+<p class="rounded-xl border border-dashed border-white/10 px-6 py-12 text-center text-sm text-slate-500">{% if filtered %}Keine Events passen zu den Filtern.{% elif topic %}Keine Events in diesem Topic.{% else %}Noch keine Events.{% endif %}</p>
 {% endif %}
 {% endblock %}
