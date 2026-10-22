@@ -123,7 +123,7 @@ def test_unknown_ref_is_rejected(conn):
 def test_trigger_may_point_to_an_event_from_another_topic(conn):
     import_timeline(conn, topic_file("a", [event("ursache")]))
     import_timeline(conn, topic_file("b", [event("folge", triggered_by="ursache")]))
-    assert repository.get_event(conn, "folge")["triggered_by"] == "ursache"
+    assert repository.get_event(conn, "folge")["triggered_by"] == ["ursache"]
 
 
 LEGACY_SCHEMA = """
@@ -158,7 +158,7 @@ def test_legacy_incidents_migrate_to_topics_once(tmp_path):
     assert topic["kind"] == "incident"
 
     second = repository.get_event(conn, "legacy-1-second")
-    assert second["triggered_by"] == "legacy-1-first"
+    assert second["triggered_by"] == ["legacy-1-first"]
     assert second["topics"] == ["legacy-1"]
     assert [(item["file"], item["type"], item["description"]) for item in second["evidence"]] == [
         ("shot.png", "screenshot", "Beleg")

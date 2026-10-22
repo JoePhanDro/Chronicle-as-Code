@@ -2,9 +2,9 @@
 
 - **Status:** Entwurf zu [ADR 0008](adr/0008-files-as-source-of-truth.md), Punkt 9
 - **Stand:** Code vom 2026-10-22 (`chronicle/models.py`, `chronicle/repository.py`, `chronicle/evidence.py`, `chronicle/loader.py`)
-- **Entschieden, noch nicht umgesetzt:** `triggered_by` ist eine Liste mit 0 bis n Einträgen (#87). Auslösungen bilden keinen Zyklus (#85). Evidence-Pfade sind relativ zum Datenordner (siehe 2, #85).
+- **Umgesetzt:** `triggered_by` ist eine Liste mit 0 bis n Einträgen (#87). Auslösungen bilden keinen Zyklus (Prüfung in Dateien und in der Datenbank). Evidence-Pfade sind relativ zum Datenordner (siehe 2).
 
-Abschnitte, die mit **Vorschlag** gekennzeichnet sind, sind nicht umgesetzt. Abschnitte mit „Ziel-Stand“ beschreiben die getroffene Entscheidung, die der Code noch nicht hat. Alles andere beschreibt das heutige Verhalten.
+Abschnitte, die mit **Vorschlag** gekennzeichnet sind, sind nicht umgesetzt. Alles andere beschreibt das heutige Verhalten.
 
 ## 1. Grundidee
 
@@ -52,7 +52,7 @@ Unbekannte Felder sind ein Fehler. Ein Tippfehler im Schlüssel wird also nicht 
 | `system` | nein | Text |
 | `action` | ja | nicht leer |
 | `status` | ja | `open`, `in_progress` oder `resolved` |
-| `triggered_by` | nein | Liste von Event-Keys mit 0 bis n Einträgen. Ziel-Stand, heute ein einzelner Key (#87). Siehe 5 |
+| `triggered_by` | nein | Liste von Event-Keys mit 0 bis n Einträgen. Siehe 5 |
 | `details` | nein | Markdown |
 | `evidence` | nein | Liste von Evidence-Einträgen (siehe 6) |
 
@@ -80,9 +80,9 @@ Es gibt drei Arten von Verknüpfungen.
 - `refs:` verweist nur auf Events, die irgendwo definiert sind.
 - Ein Event kann in beliebig vielen Topics per `refs:` stehen.
 
-**b) Auslösung.** `triggered_by` nennt die Keys der Events, die dieses Event ausgelöst haben. Es ist eine Liste mit 0 bis n Einträgen. Die Ziele können in anderen Dateien stehen, müssen aber existieren. Ein Event kann sich nicht selbst auslösen. Heute ist nur ein einzelner Key erlaubt, die Umstellung auf eine Liste ist in #87 erfasst.
+**b) Auslösung.** `triggered_by` nennt die Keys der Events, die dieses Event ausgelöst haben. Es ist eine Liste mit 0 bis n Einträgen; sie wird sortiert und ohne Dubletten gespeichert. Die Ziele können in anderen Dateien stehen, müssen aber existieren. Ein Event kann sich nicht selbst auslösen. Eine einzelne Zeichenkette aus älteren Dateien gilt als Liste mit einem Eintrag.
 
-**c) Zyklen.** Auslösungen dürfen keinen Kreis bilden. Eine Auslösekette darf nicht zu ihrem Ausgangs-Event zurückführen. Der Code prüft das heute nicht, die Prüfung ist in #85 erfasst.
+**c) Zyklen.** Auslösungen dürfen keinen Kreis bilden. Eine Auslösekette darf nicht zu ihrem Ausgangs-Event zurückführen. Die Prüfung läuft über alle Ursachen eines Events, in Dateien ebenso wie beim Anlegen und Ändern in der Oberfläche.
 
 ## 6. Evidence
 
@@ -102,7 +102,7 @@ Die Prüfung (Import heute, Prüfmodus nach Issue #85) verlangt:
 2. Event-Keys sind eindeutig über alle Dateien. Innerhalb einer Datei prüft das `models.py`, über Dateien hinweg `import_timelines` in `repository.py`.
 3. Ein Key steht nicht zugleich unter `events:` und `refs:` derselben Datei.
 4. `refs:` und `triggered_by` verweisen auf existierende Events.
-5. Ein Event löst nicht sich selbst aus, und Auslösungen bilden keinen Zyklus (#85).
+5. Ein Event löst nicht sich selbst aus, und Auslösungen bilden keinen Zyklus.
 6. Evidence-Dateien existieren, liegen innerhalb des Datenordners und sind zulässig.
 
 **Lücke (#85):** Topic-Keys werden über Dateien hinweg **nicht** geprüft. Zwei Dateien mit demselben Topic-Key überschreiben sich still. Der Import führt ein Upsert auf den Key aus (`_write_topic`), Titel, Art und Zusammenfassung der zweiten Datei gewinnen, und die Events landen im selben Topic. Die Regel 2 gilt für Event-Keys. Die Prüfung soll für Topic-Keys entsprechend gelten.
@@ -169,4 +169,4 @@ Konten, Rollen, Sitzungen, Login-Sperren und das Audit-Log gehören zum Betrieb 
 ## 11. Offene Punkte
 
 - **Topic-Keys über Dateien hinweg:** Die Prüfung fehlt (siehe 7). Sie ist in #85 erfasst.
-- **Übergang von der Zeichenkette zur Liste:** Liest der Import `triggered_by: <key>` weiter als Liste mit einem Eintrag, oder bricht er ab? Vorschlag in #87 ist der Übergang bis zur nächsten Notationsversion.
+- **Ende des Übergangs:** Die Zeichenkette aus älteren Dateien wird weiter gelesen. Ob und wann das Lesen endet, entscheidet die nächste Notationsversion.

@@ -77,7 +77,7 @@ def _payload_from_form(form, topic_home: str | None = None) -> dict:
         "system": (form.get("system") or "").strip() or None,
         "action": (form.get("action") or "").strip(),
         "status": form.get("status") or "",
-        "triggered_by": (form.get("triggered_by") or "").strip() or None,
+        "triggered_by": [key.strip() for key in form.getlist("triggered_by") if key.strip()],
         "details": form.get("details") or "",
         "topic": topic_home or form.get("topic") or "",
         "topics": topics,
@@ -94,9 +94,10 @@ def _topic_values(form) -> dict:
 
 
 def _form_dict(form) -> dict:
-    """Plain dict of a submitted form, with the checkbox list kept as a list."""
+    """Plain dict of a submitted form, with the multi-value fields kept as lists."""
     values = {name: form.get(name) for name in form.keys()}
     values["topics"] = form.getlist("topics")
+    values["triggered_by"] = form.getlist("triggered_by")
     return values
 
 
@@ -104,7 +105,7 @@ def edit_form(event: dict) -> dict:
     """A stored event as the edit form shows it. The timestamp is shown in the default zone."""
     return {
         "key": event["key"], "phase": event["phase"], "actor": event["actor"], "system": event["system"] or "",
-        "action": event["action"], "status": event["status"], "triggered_by": event["triggered_by"] or "",
+        "action": event["action"], "status": event["status"], "triggered_by": event["triggered_by"],
         "details": event["details"] or "", "topics": event["topics"], "topic": event["home_topic"],
         "version": event["version"], **t0_parts(event["t0"]),
     }

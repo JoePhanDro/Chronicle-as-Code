@@ -22,7 +22,9 @@ def event(key, triggered_by=None, evidence=None):
         f"    action: Schritt {key}",
         "    status: open",
     ]
-    if triggered_by:
+    if isinstance(triggered_by, list):
+        lines += ["    triggered_by:"] + [f"      - {cause}" for cause in triggered_by]
+    elif triggered_by:
         lines.append(f"    triggered_by: {triggered_by}")
     if evidence:
         lines += ["    evidence:", f"      - file: {evidence}", "        type: screenshot"]
@@ -86,6 +88,18 @@ def test_cycle_across_files_is_reported(tmp_path):
     write_topic(tmp_path, "b.yaml", "b", events=[event("b-1", triggered_by="a-1")], refs=["a-1"])
     (problem,) = check_folder(tmp_path)
     assert "Kreis" in problem and "a-1" in problem and "b-1" in problem
+
+
+def test_several_causes_without_a_cycle_pass(tmp_path):
+    write_topic(tmp_path, "a.yaml", "a", events=[event("a-1"), event("a-2")])
+    write_topic(tmp_path, "b.yaml", "b", events=[event("b-1", triggered_by=["a-1", "a-2"])], refs=["a-1", "a-2"])
+    assert check_folder(tmp_path) == []
+
+
+def test_a_cycle_through_the_second_cause_is_reported(tmp_path):
+    write_topic(tmp_path, "a.yaml", "a", events=[event("a-1", triggered_by=["b-1"])], refs=["b-1"])
+    write_topic(tmp_path, "b.yaml", "b", events=[event("b-1", triggered_by=["a-9", "a-1"])], refs=["a-1"])
+    assert any("Kreis" in problem for problem in check_folder(tmp_path))
 
 
 def test_cycle_problems_finds_each_cycle_once():

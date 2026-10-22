@@ -256,6 +256,16 @@ def _ensure_search_index(conn: sqlite3.Connection) -> None:
             conn.execute("INSERT INTO events_fts (events_fts) VALUES ('rebuild')")
 
 
+def _migrate_triggers(conn: sqlite3.Connection) -> None:
+    """A single trigger key becomes a JSON list of keys (issue #87). Idempotent: lists start with '[', keys never do."""
+    conn.execute(
+        "UPDATE events SET triggered_by = json_array(triggered_by) "
+        "WHERE triggered_by IS NOT NULL AND triggered_by NOT LIKE '[%'"
+    )
+    # The UPDATE opens an implicit transaction. Close it here, or the next explicit BEGIN fails.
+    conn.commit()
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
     """Open the database, enable foreign keys, migrate old data and make sure the schema exists."""
     # One connection per request, never shared between threads; async form handlers may hop threads.
@@ -272,5 +282,6 @@ def connect(path: str | Path) -> sqlite3.Connection:
     _ensure_column(conn, "evidence", "content", "BLOB")
     _ensure_column(conn, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "deleted_events", "snapshot", "TEXT")
+    _migrate_triggers(conn)
     _ensure_search_index(conn)
     return conn

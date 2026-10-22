@@ -75,7 +75,10 @@ class Event(BaseModel):
     system: str | None = None
     action: str = Field(min_length=1)
     status: Status
-    triggered_by: str | None = Field(default=None, description="Key of the event that caused this event")
+    triggered_by: list[str] = Field(
+        default_factory=list,
+        description="Keys of the events that caused this event. Any number, including none (issue #87)",
+    )
     details: str = Field(default="", description="Markdown body shown in the detail view")
     evidence: list[Evidence] = Field(default_factory=list)
 
@@ -85,6 +88,24 @@ class Event(BaseModel):
         if value.tzinfo is None:
             raise ValueError("t0 needs a timezone offset, e.g. 2026-10-14T08:12:00+02:00")
         return value.astimezone(UTC)
+
+    @field_validator("triggered_by", mode="before")
+    @classmethod
+    def _one_key_or_list(cls, value: object) -> object:
+        # Files written before issue #87 hold a single key, or nothing. Forms send "" for nothing.
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
+
+    @field_validator("triggered_by")
+    @classmethod
+    def _as_set(cls, value: list[str]) -> list[str]:
+        # The causes form a set: order and repeats carry no meaning, so they are stored sorted and unique.
+        if any(not key for key in value):
+            raise ValueError("triggered_by enthält einen leeren Key")
+        return sorted(set(value))
 
 
 TopicKind = Literal["incident", "vulnerability", "project", "special", "other"]

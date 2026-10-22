@@ -98,7 +98,7 @@ def test_roundtrip_keeps_cross_topic_links_and_evidence(source_db, tmp_path):
 
     conn = connect(fresh)
     assert sorted(repository.get_event(conn, "manuell-1")["topics"]) == ["inc-2026-042", "projekt-x"]
-    assert repository.get_event(conn, "proj-1")["triggered_by"] == "exploit"
+    assert repository.get_event(conn, "proj-1")["triggered_by"] == ["exploit"]
     assert "projekt-x" in repository.get_event(conn, "mitigation")["topics"]
     evidence = repository.get_event(conn, "exploit")["evidence"]
     assert [(item["file"], item["mime"]) for item in evidence] == [("evidence/exploit/probe.png", "image/png")]
@@ -168,7 +168,7 @@ def test_topic_files_may_refer_to_each_other_without_a_cycle(tmp_path):
 
     assert sorted(report.topic for report in reports) == ["a", "b"]
     conn = connect(db)
-    assert repository.get_event(conn, "b1")["triggered_by"] == "a1"
+    assert repository.get_event(conn, "b1")["triggered_by"] == ["a1"]
     conn.close()
 
 

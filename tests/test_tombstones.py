@@ -105,7 +105,7 @@ def test_restore_leaves_out_topics_and_triggers_that_are_gone(db):
 
     event, dropped = repository.restore_event(conn, "e4", anna, IP)
 
-    assert event["triggered_by"] is None
+    assert event["triggered_by"] == []
     assert event["topics"] == ["a"]
     assert dropped == ["Topic b", "Auslöser e2"]
     conn.close()

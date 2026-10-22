@@ -44,17 +44,12 @@
           "$ref": "#/$defs/Status"
         },
         "triggered_by": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Key of the event that caused this event",
-          "title": "Triggered By"
+          "description": "Keys of the events that caused this event. Any number, including none (issue #87)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Triggered By",
+          "type": "array"
         },
         "details": {
           "default": "",

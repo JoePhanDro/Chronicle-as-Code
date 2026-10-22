@@ -84,11 +84,10 @@
   <h2 class="{{ heading_class }}">Verknüpfungen</h2>
   <div class="space-y-5">
     <label class="block">
-      <span class="{{ label_class }}">Ausgelöst durch</span>
-      <select name="triggered_by" class="{{ input_class }}">
-        <option value="">Kein auslösendes Ereignis</option>
+      <span class="{{ label_class }}">Ausgelöst durch (beliebig viele, mit Strg bzw. Cmd)</span>
+      <select name="triggered_by" multiple size="5" class="{{ input_class }}">
         {% for choice in event_choices if choice.key != f.key %}
-        <option value="{{ choice.key }}" {{ 'selected' if f.triggered_by == choice.key }}>{{ choice.t0[:16].replace('T', ' ') }} · {{ choice.action }} ({{ choice.key }})</option>
+        <option value="{{ choice.key }}" {{ 'selected' if choice.key in (f.triggered_by or []) }}>{{ choice.t0[:16].replace('T', ' ') }} · {{ choice.action }} ({{ choice.key }})</option>
         {% endfor %}
       </select>
     </label>

@@ -46,6 +46,24 @@ class ImportReport:
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (key, reason)
 
 
+def _triggers_from_db(stored: str | None) -> list[str]:
+    """The stored form of triggered_by is a JSON list of keys, or NULL for none (issue #87)."""
+    return json.loads(stored) if stored else []
+
+
+def _triggers_to_db(keys: Sequence[str]) -> str | None:
+    return json.dumps(list(keys)) if keys else None
+
+
+def _cause_keys(value: object) -> list[str]:
+    """Causes as a tombstone snapshot holds them. Snapshots from before issue #87 hold one key, or nothing."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    return list(value)
+
+
 def _event_values(event: Event) -> tuple:
     return (
         event.t0.isoformat(),
@@ -54,7 +72,7 @@ def _event_values(event: Event) -> tuple:
         event.system,
         event.action,
         event.status.value,
-        event.triggered_by,
+        _triggers_to_db(event.triggered_by),
         event.details,
     )
 
@@ -88,13 +106,32 @@ def _mark_manual(conn: sqlite3.Connection, event_pk: int) -> None:
     )
 
 
-def _check_trigger(conn: sqlite3.Connection, triggered_by: str | None, own_key: str | None = None) -> None:
-    if triggered_by is None:
-        return
-    if triggered_by == own_key:
-        raise Invalid("Ein Event kann sich nicht selbst auslösen")
-    if _event_pk(conn, triggered_by) is None:
-        raise Invalid(f"triggered_by {triggered_by!r} ist kein bekannter Event-Key")
+def _check_triggers(conn: sqlite3.Connection, triggered_by: Sequence[str], own_key: str | None = None) -> None:
+    """Every cause must exist and must not be the event itself. With own_key, cycles are refused too (docs/notation.md, 5c)."""
+    for cause in triggered_by:
+        if cause == own_key:
+            raise Invalid("Ein Event kann sich nicht selbst auslösen")
+        if _event_pk(conn, cause) is None:
+            raise Invalid(f"triggered_by {cause!r} ist kein bekannter Event-Key")
+    if own_key is not None and _closes_cycle(conn, own_key, triggered_by):
+        raise Invalid(f"Auslösungen dürfen keinen Kreis bilden (über {own_key!r})")
+
+
+def _closes_cycle(conn: sqlite3.Connection, key: str, causes: Sequence[str]) -> bool:
+    """True if following the triggers from `causes` leads back to `key`. Walks the stored triggers."""
+    pending = list(causes)
+    seen: set[str] = set()
+    while pending:
+        node = pending.pop()
+        if node == key:
+            return True
+        if node in seen:
+            continue
+        seen.add(node)
+        row = conn.execute("SELECT triggered_by FROM events WHERE key = ?", (node,)).fetchone()
+        if row is not None:
+            pending.extend(_triggers_from_db(row["triggered_by"]))
+    return False
 
 
 def _topic_pk(conn: sqlite3.Connection, key: str) -> int:
@@ -147,7 +184,7 @@ def import_timelines(
 
         for timeline, _ in items:
             for event in timeline.events:
-                _check_trigger(conn, event.triggered_by, own_key=event.key)
+                _check_triggers(conn, event.triggered_by, own_key=event.key)
             for key in timeline.refs:
                 if _event_pk(conn, key) is None:
                     raise ValueError(f"refs: Event {key!r} existiert nicht (in keiner Datei definiert)")
@@ -238,7 +275,7 @@ def create_event(conn: sqlite3.Connection, event: Event, topic_keys: list[str], 
             _topic_pk(conn, key)
         if _event_pk(conn, event.key) is not None:
             raise Conflict(f"Event-Key {event.key!r} ist bereits vergeben")
-        _check_trigger(conn, event.triggered_by, own_key=event.key)
+        _check_triggers(conn, event.triggered_by, own_key=event.key)
 
         conn.execute("DELETE FROM deleted_events WHERE key = ?", (event.key,))
         cursor = conn.execute(
@@ -273,7 +310,7 @@ def update_event(
         raise Conflict(f"Das Event wurde inzwischen geändert (aktuelle Version {row['version']}). Bitte neu laden.")
     if row["home_topic"] not in topic_keys:
         raise Invalid(f"Das Heimat-Topic {row['home_topic']!r} muss verknüpft bleiben")
-    _check_trigger(conn, event.triggered_by, own_key=key)
+    _check_triggers(conn, event.triggered_by, own_key=key)
 
     old = get_event(conn, key)
     old_topics = _topic_keys_of(conn, row["pk"])
@@ -354,7 +391,8 @@ def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) -> 
     if row is None:
         raise NotFound(f"Event {key!r} nicht gefunden")
     dependents = [item["key"] for item in conn.execute(
-        "SELECT key FROM events WHERE triggered_by = ? ORDER BY key", (key,)
+        "SELECT events.key FROM events, json_each(events.triggered_by) WHERE json_each.value = ? ORDER BY events.key",
+        (key,),
     ).fetchall()]
     if dependents:
         raise Conflict(f"Event wird von {', '.join(dependents)} ausgelöst. Zuerst dort den Verweis entfernen.")
@@ -387,6 +425,7 @@ def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) -> 
 def _snapshot(conn: sqlite3.Connection, event_pk: int) -> str:
     row = conn.execute(EVENT_SELECT + " WHERE events.pk = ?", (event_pk,)).fetchone()
     event = {name: row[name] for name in row.keys() if name != "pk"}
+    event["triggered_by"] = _triggers_from_db(event["triggered_by"])
     event["topics"] = _topic_keys_of(conn, event_pk)
     return json.dumps(event, ensure_ascii=False)
 
@@ -439,10 +478,12 @@ def restore_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) ->
             topic_keys.append(topic_key)
         else:
             dropped.append(f"Topic {topic_key}")
-    triggered_by = last["triggered_by"]
-    if triggered_by is not None and _event_pk(conn, triggered_by) is None:
-        dropped.append(f"Auslöser {triggered_by}")
-        triggered_by = None
+    causes: list[str] = []
+    for cause in _cause_keys(last["triggered_by"]):
+        if _event_pk(conn, cause) is None:
+            dropped.append(f"Auslöser {cause}")
+        else:
+            causes.append(cause)
 
     evidence = conn.execute(
         "SELECT file, type, description, mime, size, sha256, content FROM deleted_evidence WHERE event_key = ? ORDER BY pk",
@@ -457,7 +498,7 @@ def restore_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) ->
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             """,
             (key, last["t0"], last["phase"], last["actor"], last["system"], last["action"], last["status"],
-             triggered_by, last["details"], home, last["source"], last["version"] + 1),
+             _triggers_to_db(causes), last["details"], home, last["source"], last["version"] + 1),
         )
         _set_links(conn, cursor.lastrowid, topic_keys)
         conn.executemany(
@@ -521,6 +562,7 @@ def _with_evidence(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[di
     events = []
     for row in rows:
         event = {key: row[key] for key in row.keys() if key != "pk"}
+        event["triggered_by"] = _triggers_from_db(event["triggered_by"])
         event["evidence"] = evidence_of[row["pk"]]
         events.append(event)
     return events

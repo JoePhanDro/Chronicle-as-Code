@@ -26,7 +26,8 @@ events:
     system: wp-portal-01
     action: "Ungewöhnliche Requests auf /api/upload"
     status: in_progress
-    triggered_by: feed-cve
+    triggered_by:
+      - feed-cve
     details: |
       Mehrere `POST`-Requests mit verdächtigem Content-Type innerhalb von 4 Minuten.
     evidence:
@@ -41,7 +42,8 @@ events:
     system: wp-portal-01
     action: "Remote Code Execution erfolgreich"
     status: in_progress
-    triggered_by: feed-cve
+    triggered_by:
+      - feed-cve
     details: |
       Angreifer hat Code als Webserver-User ausgeführt.
 
@@ -60,7 +62,8 @@ events:
     system: wp-portal-01
     action: "Webshell im Upload-Verzeichnis gefunden"
     status: in_progress
-    triggered_by: exploit
+    triggered_by:
+      - exploit
     details: |
       Dateiname `img_resize.php` im Verzeichnis `/uploads/cache/`.
 
@@ -80,7 +83,8 @@ events:
     system: wp-portal-01
     action: "Host isoliert, WAF-Regel aktiviert"
     status: resolved
-    triggered_by: analysis
+    triggered_by:
+      - analysis
 
   - key: mitigation
     t0: 2026-10-14T11:20:00+02:00
@@ -89,7 +93,8 @@ events:
     system: wp-portal-01
     action: "Patch eingespielt, Webshell entfernt"
     status: resolved
-    triggered_by: containment
+    triggered_by:
+      - containment
 
   - key: lessons
     t0: 2026-10-16T10:00:00+02:00
@@ -97,7 +102,8 @@ events:
     actor: CSIRT Lead
     action: "Post-Mortem abgeschlossen"
     status: resolved
-    triggered_by: mitigation
+    triggered_by:
+      - mitigation
     details: |
       - Patch-Prozess für Internet-exponierte Systeme beschleunigen
       - Upload-Verzeichnisse ohne Ausführungsrechte betreiben

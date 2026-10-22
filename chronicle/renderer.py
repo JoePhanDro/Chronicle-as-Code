@@ -136,9 +136,9 @@ def _build_graph(events: list[Event]) -> tuple[list[dict], list[dict]]:
         for item in event.evidence:
             edges.append({"from": key, "to": _evidence_key(event, item.file), "label": "Beleg"})
         # Only draw the link when the cause is part of this view; otherwise the node would be missing.
-        if event.triggered_by in event_keys:
-            source = f"event:{event.triggered_by}"
-            edges.append({"from": source, "to": key, "label": "löst aus", "color": {"color": TRIGGER_COLOR}})
+        for cause in event.triggered_by:
+            if cause in event_keys:
+                edges.append({"from": f"event:{cause}", "to": key, "label": "löst aus", "color": {"color": TRIGGER_COLOR}})
 
     return list(nodes.values()), edges
 
