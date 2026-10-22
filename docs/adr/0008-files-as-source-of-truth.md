@@ -31,7 +31,7 @@ Gewollt ist das Gegenteil. Die YAML-Dateien beschreiben den Stand vollständig, 
 
    Die Prüfung nutzt dieselben Regeln wie der Importer, ohne etwas zu schreiben. Sie ist nötig, weil zwei Arbeitskopien Doppelungen erst beim Zusammenführen sichtbar machen. Zwei neue Dateien mit demselben Event-Key erzeugen keinen Git-Konflikt. Die Doppelprüfung besteht bereits: innerhalb einer Datei in `models.py`, über Dateien hinweg in `import_timelines`. Der Prüfmodus fehlt noch (Issue #85).
 
-6. **Anhänge liegen lokal.** Binärdateien (Screenshots, PDFs, Logs) liegen im Ordner `evidence/` neben den Topic-Dateien. Sie sind nicht in Git. Sie werden außerhalb von Git synchronisiert, zum Beispiel über OneDrive. Die YAML beschreibt jede Datei mit Pfad, Typ, Beschreibung und `sha256`. Fehlt eine Datei oder stimmt die Prüfsumme nicht, zeigt der Server das an. Die Regeln aus ADR 0004 gelten weiter: Endung und Inhalt müssen zusammenpassen, SVG und HTML sind verboten.
+6. **Anhänge liegen lokal.** Binärdateien (Screenshots, PDFs, Logs) liegen im Ordner `evidence/` im Datenordner, neben allen Topic-Dateien. Die Pfade sind relativ zum Datenordner (siehe `docs/notation.md`). Sie sind nicht in Git. Sie werden außerhalb von Git synchronisiert, zum Beispiel über OneDrive. Die YAML beschreibt jede Datei mit Pfad, Typ, Beschreibung und `sha256`. Fehlt eine Datei oder stimmt die Prüfsumme nicht, zeigt der Server das an. Die Regeln aus ADR 0004 gelten weiter: Endung und Inhalt müssen zusammenpassen, SVG und HTML sind verboten.
 
 7. **Ein Nutzer am Anfang.** Konten und Rollen (ADR 0001) gelten pro Instanz. Mehrere Personen arbeiten mit je einer eigenen Instanz. Schreibrechte auf den gemeinsamen Stand regelt dann der Git-Remote.
 

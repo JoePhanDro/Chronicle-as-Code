@@ -2,7 +2,7 @@
 
 - **Status:** Entwurf zu [ADR 0008](adr/0008-files-as-source-of-truth.md), Punkt 9
 - **Stand:** Code vom 2026-10-22 (`chronicle/models.py`, `chronicle/repository.py`, `chronicle/evidence.py`, `chronicle/loader.py`)
-- **Entschieden, noch nicht umgesetzt:** `triggered_by` ist eine Liste mit 0 bis n Einträgen (#87). Auslösungen bilden keinen Zyklus (#85).
+- **Entschieden, noch nicht umgesetzt:** `triggered_by` ist eine Liste mit 0 bis n Einträgen (#87). Auslösungen bilden keinen Zyklus (#85). Evidence-Pfade sind relativ zum Datenordner (siehe 2, #85).
 
 Abschnitte, die mit **Vorschlag** gekennzeichnet sind, sind nicht umgesetzt. Abschnitte mit „Ziel-Stand“ beschreiben die getroffene Entscheidung, die der Code noch nicht hat. Alles andere beschreibt das heutige Verhalten.
 
@@ -14,7 +14,7 @@ Ein Chronicle-Stand ist ein Ordner mit YAML-Dateien. Jede Datei beschreibt genau
 
 - Jede Datei mit der Endung `.yaml` oder `.yml` ist eine Topic-Datei. Unterordner werden durchsucht.
 - Ein Topic steht in genau einer Datei.
-- Der Pfad einer Evidence-Datei ist relativ zum Ordner der Topic-Datei. Er darf kein `..` enthalten und keine Symlinks nach außen. Evidence liegt also im Ordner der Datei oder darunter. Empfohlen ist `evidence/<event-key>/<dateiname>` neben der Topic-Datei.
+- Der Pfad einer Evidence-Datei ist relativ zum Datenordner, also dem Ordner, den der Import liest. Er darf kein `..` enthalten und keine Symlinks nach außen. Empfohlen ist `evidence/<event-key>/<dateiname>` direkt im Datenordner. Der Ordner `evidence/` ist damit ein einziger Ort für alle Anhänge, unabhängig von der Anordnung der Topic-Dateien. Das ist die Voraussetzung für die Synchronisation außerhalb von Git (ADR 0008, Punkt 6).
 - Die Namen `index.html` und `index.html.tmp` sind als Evidence-Pfad reserviert.
 
 ## 3. Aufbau einer Datei
@@ -86,7 +86,7 @@ Es gibt drei Arten von Verknüpfungen.
 
 ## 6. Evidence
 
-- Die Datei muss existieren und innerhalb des Ordners der Topic-Datei liegen.
+- Die Datei muss existieren und innerhalb des Datenordners liegen.
 - Erlaubt sind PNG, JPEG, GIF, WebP, PDF und UTF-8-Text (`.txt`, `.log`). Endung und Inhalt müssen zusammenpassen.
 - SVG und HTML sind verboten, weil Browser darin Skripte ausführen (ADR 0004).
 - Höchstens 10 MiB je Datei.
@@ -103,13 +103,13 @@ Die Prüfung (Import heute, Prüfmodus nach Issue #85) verlangt:
 3. Ein Key steht nicht zugleich unter `events:` und `refs:` derselben Datei.
 4. `refs:` und `triggered_by` verweisen auf existierende Events.
 5. Ein Event löst nicht sich selbst aus, und Auslösungen bilden keinen Zyklus (#85).
-6. Evidence-Dateien existieren, liegen innerhalb des Ordners und sind zulässig.
+6. Evidence-Dateien existieren, liegen innerhalb des Datenordners und sind zulässig.
 
 **Lücke (#85):** Topic-Keys werden über Dateien hinweg **nicht** geprüft. Zwei Dateien mit demselben Topic-Key überschreiben sich still. Der Import führt ein Upsert auf den Key aus (`_write_topic`), Titel, Art und Zusammenfassung der zweiten Datei gewinnen, und die Events landen im selben Topic. Die Regel 2 gilt für Event-Keys. Die Prüfung soll für Topic-Keys entsprechend gelten.
 
 ## 8. Beispiel
 
-Beide Dateien liegen im selben Ordner, daher zeigt der Evidence-Pfad auf `evidence/` daneben.
+Beide Dateien liegen im Datenordner. Der Evidence-Pfad ist relativ zu diesem Ordner.
 
 `inc-2026-042.yaml`:
 
@@ -170,4 +170,3 @@ Konten, Rollen, Sitzungen, Login-Sperren und das Audit-Log gehören zum Betrieb 
 
 - **Topic-Keys über Dateien hinweg:** Die Prüfung fehlt (siehe 7). Sie ist in #85 erfasst.
 - **Übergang von der Zeichenkette zur Liste:** Liest der Import `triggered_by: <key>` weiter als Liste mit einem Eintrag, oder bricht er ab? Vorschlag in #87 ist der Übergang bis zur nächsten Notationsversion.
-- **Evidence-Pfade relativ zur Topic-Datei:** So ist es heute umgesetzt. Ist das so gewollt, oder soll der Pfad relativ zum Datenordner sein?
