@@ -34,6 +34,9 @@ jobs:
           node-version: "24"
           cache: npm
 
+      - name: Hold the run open (throwaway)
+        run: sleep 240
+
       - name: Build stylesheet
         run: npm ci --no-audit --no-fund && npm run build:css
 
