@@ -108,35 +108,21 @@
       white-space: normal;
     }
 
-    /* Timeline and graph are separate views. Each collapses to its header bar, the other one takes the space. */
-    .view { display: flex; flex-direction: column; min-height: 0; border-bottom: 1px solid var(--line); }
-    .view-body { position: relative; min-height: 0; }
-    .view.is-collapsed .view-body { display: none; }
-    @media (min-width: 1024px) {
-      .view { flex: 1 1 0; }
-      .view-timeline { flex-grow: 2; }
-      .view-graph { flex-grow: 3; }
-      .view.is-collapsed { flex: 0 0 auto; }
-      .view-body { flex: 1 1 auto; }
-    }
-    .view-toggle {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-      padding: 8px 16px;
-      background: rgba(15, 23, 42, .5);
-      color: var(--text);
-      font-size: 11px;
+    /* Views are tabs. Each tab has the full height of the right column. */
+    .view-tab {
+      padding: 10px 12px;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      color: var(--muted);
+      font-size: 12px;
       font-weight: 600;
-      letter-spacing: .18em;
-      text-align: left;
-      text-transform: uppercase;
     }
-    .view-toggle:hover { color: #fff; }
-    .view-hint { font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); }
-    .view-toggle .chevron { margin-left: auto; transition: transform .2s ease; }
-    .view.is-collapsed .chevron { transform: rotate(-90deg); }
+    .view-tab:hover { color: #fff; }
+    .view-tab[aria-selected="true"] { color: var(--text); border-bottom-color: #38bdf8; }
+    .view-tab:focus-visible { outline: 2px solid #38bdf8; outline-offset: -2px; }
+    @media (min-width: 1024px) {
+      .view-panel { flex: 1 1 0; min-height: 0; }
+    }
 
     /* Markdown in details */
     .prose-invert code { background: rgba(15, 23, 42, .9); padding: 1px 5px; border-radius: 5px; }
@@ -173,39 +159,37 @@
     <article id="details" class="glass p-5 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto" style="border-width: 0 1px 0 0"></article>
 
     <div class="flex min-w-0 flex-col lg:col-span-3 lg:min-h-0">
-      <section class="view view-timeline" id="timeline-view">
-        <button type="button" class="view-toggle" aria-expanded="true" aria-controls="timeline-body">
-          <span>Timeline</span><span class="view-hint">Zeitlicher Ablauf</span>
-          <span class="chevron" aria-hidden="true">▾</span>
-        </button>
-        <div id="timeline-body" class="view-body h-[40vh] min-h-[280px] px-2 py-2 lg:h-auto">
-          <div id="timeline" class="h-full"></div>
+      <div role="tablist" aria-label="Ansichten" class="flex flex-wrap gap-1 border-b border-white/10 px-3">
+        <button type="button" role="tab" id="tab-timeline" data-view="timeline" aria-controls="panel-timeline" class="view-tab">Timeline</button>
+        <button type="button" role="tab" id="tab-graph" data-view="graph" aria-controls="panel-graph" class="view-tab">Graph</button>
+        <button type="button" role="tab" id="tab-events" data-view="events" aria-controls="panel-events" class="view-tab">Ereignisse</button>
+        <button type="button" role="tab" id="tab-evidence" data-view="evidence" aria-controls="panel-evidence" class="view-tab">Evidence</button>
+      </div>
+
+      <section role="tabpanel" id="panel-timeline" aria-labelledby="tab-timeline" class="view-panel h-[45vh] min-h-[280px] px-2 py-2 lg:h-auto lg:min-h-0">
+        <div id="timeline" class="h-full"></div>
+      </section>
+
+      <section role="tabpanel" id="panel-graph" aria-labelledby="tab-graph" hidden class="view-panel dot-grid relative h-[60vh] lg:h-auto lg:min-h-0">
+        <div id="graph" class="absolute inset-0"></div>
+
+        <div class="absolute right-4 top-4 z-10 flex gap-2">
+          <button id="btn-fit" class="btn">Zentrieren</button>
+          <button id="btn-physics" class="btn">Physik an/aus</button>
+          <button id="btn-reset" class="btn">Auswahl lösen</button>
+        </div>
+
+        <div class="glass absolute bottom-4 left-4 z-10 flex flex-wrap gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-slate-300">
+          <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-sky-400"></span>Akteur</span>
+          <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-violet-400"></span>System</span>
+          <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-rose-400"></span>Event (Phase-Farbe)</span>
+          <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-slate-400"></span>Evidence</span>
+          <span class="inline-flex items-center gap-1.5"><span class="h-px w-4 bg-orange-400"></span>löst aus</span>
         </div>
       </section>
 
-      <section class="view view-graph" id="graph-view">
-        <button type="button" class="view-toggle" aria-expanded="true" aria-controls="graph-body">
-          <span>Graph</span><span class="view-hint">Beziehungen</span>
-          <span class="chevron" aria-hidden="true">▾</span>
-        </button>
-        <div id="graph-body" class="view-body dot-grid h-[60vh] lg:h-auto">
-          <div id="graph" class="absolute inset-0"></div>
-
-          <div class="absolute right-4 top-4 z-10 flex gap-2">
-            <button id="btn-fit" class="btn">Zentrieren</button>
-            <button id="btn-physics" class="btn">Physik an/aus</button>
-            <button id="btn-reset" class="btn">Auswahl lösen</button>
-          </div>
-
-          <div class="glass absolute bottom-4 left-4 z-10 flex flex-wrap gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-slate-300">
-            <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-sky-400"></span>Akteur</span>
-            <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-violet-400"></span>System</span>
-            <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-rose-400"></span>Event (Phase-Farbe)</span>
-            <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-slate-400"></span>Evidence</span>
-            <span class="inline-flex items-center gap-1.5"><span class="h-px w-4 bg-orange-400"></span>löst aus</span>
-          </div>
-        </div>
-      </section>
+      <section role="tabpanel" id="panel-events" aria-labelledby="tab-events" hidden class="view-panel h-[60vh] overflow-y-auto p-4 lg:h-auto lg:min-h-0"></section>
+      <section role="tabpanel" id="panel-evidence" aria-labelledby="tab-evidence" hidden class="view-panel h-[60vh] overflow-y-auto p-4 lg:h-auto lg:min-h-0"></section>
     </div>
   </main>
 
@@ -222,6 +206,8 @@
     const detailsEl = document.getElementById('details');
     const graphEl = document.getElementById('graph');
     let currentId = null;
+    let currentView = 'timeline';
+    const VIEWS = ['timeline', 'graph', 'events', 'evidence'];
 
     // Icon glyphs (24x24 grid) per node kind. Event icons are tinted with their phase color.
     const KIND = {
@@ -383,8 +369,9 @@
       timeline.setSelection(id);
       network.selectNodes([`event:${id}`]);
       highlightNeighborhood(`event:${id}`);
-      if (focusGraph && graphEl.clientWidth) network.focus(`event:${id}`, { scale: 1.1, animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
-      history.replaceState(null, '', `#${encodeURIComponent(id)}`);
+      if (focusGraph && currentView === 'graph' && graphEl.clientWidth) network.focus(`event:${id}`, { scale: 1.1, animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+      markSelected(id);
+      updateHash();
     }
 
     function clearSelection() {
@@ -394,7 +381,13 @@
       network.unselectAll();
       resetHighlight();
       renderEmpty();
-      history.replaceState(null, '', location.pathname + location.search);
+      markSelected(null);
+      updateHash();
+    }
+
+    // Marks the selected event in the event table.
+    function markSelected(id) {
+      rowsById.forEach((row, key) => row.classList.toggle('bg-sky-400/10', key === id));
     }
 
     // KPI chips in the header
@@ -544,17 +537,103 @@
     network.on('hoverNode', () => { graphEl.style.cursor = 'pointer'; });
     network.on('blurNode', () => { graphEl.style.cursor = 'default'; });
 
-    // Views: collapse to the header bar. Timeline re-lays out when it is shown again or its size changes.
-    document.querySelectorAll('.view-toggle').forEach(button => {
-      button.addEventListener('click', () => {
-        const collapsed = button.closest('.view').classList.toggle('is-collapsed');
-        button.setAttribute('aria-expanded', String(!collapsed));
-      });
+    // Views are tabs. The URL keeps the view and the selected event: #/graph/exploit.
+    const tablist = document.querySelector('[role=tablist]');
+    const tabs = [...tablist.querySelectorAll('[role=tab]')];
+    function showView(view, { focusTab = false } = {}) {
+      if (!VIEWS.includes(view)) view = 'timeline';
+      currentView = view;
+      for (const tab of tabs) {
+        const selected = tab.dataset.view === view;
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+        document.getElementById(`panel-${tab.dataset.view}`).hidden = !selected;
+        if (selected && focusTab) tab.focus();
+      }
+      if (view === 'graph' && currentId) {
+        // The graph was hidden, so its focus on the selected event has to wait until it is visible.
+        setTimeout(() => network.focus(`event:${currentId}`, { scale: 1.1, animation: { duration: 400, easingFunction: 'easeInOutQuad' } }), 200);
+      }
+      updateHash();
+    }
+    tabs.forEach(tab => tab.addEventListener('click', () => showView(tab.dataset.view)));
+    tablist.addEventListener('keydown', event => {
+      const index = tabs.indexOf(event.target);
+      if (index < 0) return;
+      const next = { ArrowRight: (index + 1) % tabs.length, ArrowLeft: (index - 1 + tabs.length) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      showView(tabs[next].dataset.view, { focusTab: true });
     });
+
+    function updateHash() {
+      const parts = [currentView, currentId].filter(Boolean).map(encodeURIComponent);
+      history.replaceState(null, '', `#/${parts.join('/')}`);
+    }
+
+    // Reads #/view/event and the older #event form (opens the timeline).
+    function parseHash() {
+      const parts = decodeURIComponent(location.hash.slice(1)).split('/').filter(Boolean);
+      if (VIEWS.includes(parts[0])) return { view: parts[0], id: parts[1] ?? null };
+      if (parts.length === 1 && eventsById.has(parts[0])) return { view: 'timeline', id: parts[0] };
+      return { view: 'timeline', id: null };
+    }
+
     const timelineEl = document.getElementById('timeline');
     new ResizeObserver(() => {
       if (timelineEl.clientWidth) timeline.redraw();
     }).observe(timelineEl);
+
+    // Event table: one row per event, a click selects it and keeps the current view.
+    const rowsById = new Map();
+    function renderEventTable() {
+      const rows = DATA.events.map(ev => {
+        const action = el('button', 'text-left text-sky-300 hover:underline', ev.action);
+        action.addEventListener('click', () => selectEvent(ev.id));
+        const row = el('tr', 'hover:bg-white/[.03]', [
+          el('td', 'whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-400', formatTime(ev.t0)),
+          el('td', 'px-3 py-2 text-xs text-slate-300', ev.phase),
+          el('td', 'px-3 py-2', [action]),
+          el('td', 'px-3 py-2 text-slate-400', ev.actor),
+          el('td', 'px-3 py-2 text-xs text-slate-400', ev.status.replace('_', ' ')),
+        ]);
+        rowsById.set(ev.id, row);
+        return row;
+      });
+      const head = el('tr', '', ['Zeit (UTC)', 'Phase', 'Aktion', 'Akteur', 'Status'].map(text => el('th', 'px-3 py-2 font-medium', text)));
+      document.getElementById('panel-events').replaceChildren(el('table', 'w-full text-left text-sm', [
+        el('thead', 'text-xs uppercase tracking-wide text-slate-500', [head]),
+        el('tbody', 'divide-y divide-white/5', rows),
+      ]));
+    }
+
+    // Evidence gallery: every evidence item, a click selects its event.
+    function renderEvidenceGallery() {
+      const cards = DATA.events.flatMap(ev => ev.evidence.map(item => {
+        let preview;
+        if (IMAGE_EXT.test(item.file)) {
+          preview = el('img', 'h-36 w-full bg-slate-950 object-contain p-2');
+          preview.src = item.src;
+          preview.alt = item.description || item.file;
+          preview.loading = 'lazy';
+        } else {
+          preview = el('div', 'grid h-36 place-items-center bg-slate-950 text-xs text-slate-500', item.type);
+        }
+        const card = el('button', 'glass overflow-hidden rounded-xl text-left hover:border-sky-400/50', [
+          preview,
+          el('span', 'block px-3 py-2', [
+            el('span', 'block text-sm font-medium text-slate-100', item.description || item.file),
+            el('span', 'block truncate text-xs text-slate-500', ev.action),
+          ]),
+        ]);
+        card.addEventListener('click', () => selectEvent(ev.id));
+        return card;
+      }));
+      const content = cards.length
+        ? el('div', 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3', cards)
+        : el('p', 'text-sm text-slate-500', 'Keine Evidence vorhanden.');
+      document.getElementById('panel-evidence').replaceChildren(content);
+    }
 
     // Toolbar
     document.getElementById('btn-fit').addEventListener('click', () => network.fit({ animation: { duration: 500 } }));
@@ -565,10 +644,13 @@
       network.setOptions({ physics: { enabled: physicsOn } });
     });
 
-    // Initial state: deep link (#evt-003) or empty state.
+    // Initial state: the view and event from the URL, or the empty state.
+    renderEventTable();
+    renderEvidenceGallery();
     renderEmpty();
-    const initial = decodeURIComponent(location.hash.slice(1));
-    if (eventsById.has(initial)) selectEvent(initial, { focusGraph: true });
+    const { view, id } = parseHash();
+    showView(view);
+    if (id && eventsById.has(id)) selectEvent(id, { focusGraph: true });
   </script>
 </body>
 </html>

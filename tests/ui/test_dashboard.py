@@ -27,11 +27,14 @@ def dashboard_url(tmp_path_factory):
 
 
 def wait_for_graph_layout(page):
-    """Waits until the graph positions stop changing, so that node coordinates are final."""
-    previous = None
+    """Waits until positions, scale and view stop changing, so that node coordinates are final."""
+    previous, stable = None, 0
     for _ in range(100):
-        current = page.evaluate("JSON.stringify(network.getPositions())")
-        if current == previous:
+        current = page.evaluate(
+            "JSON.stringify([network.getPositions(), network.getScale(), network.getViewPosition()])"
+        )
+        stable = stable + 1 if current == previous else 0
+        if stable >= 5:  # five equal samples in a row, about half a second
             return
         previous = current
         page.wait_for_timeout(100)
@@ -57,6 +60,7 @@ def test_clicking_a_timeline_item_shows_its_details(new_page, dashboard_url):
 def test_hovering_a_graph_node_shows_its_type_and_name(new_page, dashboard_url):
     page = new_page(width=1280, height=900)
     page.goto(dashboard_url)
+    page.get_by_role("tab", name="Graph").click()
     wait_for_graph_layout(page)
 
     canvas = page.locator("#graph canvas").first.bounding_box()
@@ -71,16 +75,55 @@ def test_hovering_a_graph_node_shows_its_type_and_name(new_page, dashboard_url):
     expect(tooltip).to_contain_text(EVENT_TITLE)
 
 
-def test_collapsing_the_graph_gives_the_timeline_the_space(new_page, dashboard_url):
+def test_tabs_switch_views_and_keep_the_selection(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(f"{dashboard_url}#/timeline/siem-alert")
+    expect(page.get_by_role("tab", name="Timeline")).to_have_attribute("aria-selected", "true")
+
+    page.get_by_role("tab", name="Graph").click()
+
+    expect(page.get_by_role("tab", name="Graph")).to_have_attribute("aria-selected", "true")
+    expect(page.locator("#panel-timeline")).to_be_hidden()
+    expect(page.locator("#panel-graph")).to_be_visible()
+    expect(page).to_have_url(re.compile(r"#/graph/siem-alert$"))
+    expect(page.locator("#details")).to_contain_text(EVENT_TITLE)
+
+
+def test_arrow_keys_move_between_tabs(new_page, dashboard_url):
     page = new_page(width=1280, height=900)
     page.goto(dashboard_url)
+    page.get_by_role("tab", name="Timeline").focus()
 
-    page.locator("#graph-view .view-toggle").click()
+    page.keyboard.press("ArrowRight")
+    expect(page.get_by_role("tab", name="Graph")).to_be_focused()
+    expect(page.locator("#panel-graph")).to_be_visible()
 
-    expect(page.locator("#graph-view")).to_have_class(re.compile(r"\bis-collapsed\b"))
-    expect(page.locator("#graph-view .view-toggle")).to_have_attribute("aria-expanded", "false")
-    timeline_height = page.evaluate("document.getElementById('timeline-body').clientHeight")
-    assert timeline_height > 500
+    page.keyboard.press("End")
+    expect(page.get_by_role("tab", name="Evidence")).to_be_focused()
+    expect(page.locator("#panel-evidence")).to_be_visible()
+
+
+def test_event_table_selects_the_event_and_keeps_the_view(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+    page.get_by_role("tab", name="Ereignisse").click()
+
+    page.locator("#panel-events").get_by_role("button", name="Remote Code Execution erfolgreich").click()
+
+    expect(page.locator("#details")).to_contain_text("Remote Code Execution erfolgreich")
+    expect(page.get_by_role("tab", name="Ereignisse")).to_have_attribute("aria-selected", "true")
+    expect(page).to_have_url(re.compile(r"#/events/exploit$"))
+
+
+def test_evidence_gallery_lists_the_evidence(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+    page.get_by_role("tab", name="Evidence").click()
+
+    expect(page.locator("#panel-evidence button").first).to_be_visible()
+    page.locator("#panel-evidence button").first.click()
+
+    expect(page.locator("#details")).to_contain_text("SIEM-Korrelationsregel")
 
 
 def test_mermaid_block_is_drawn_as_a_diagram(new_page, dashboard_url):
