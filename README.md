@@ -140,6 +140,16 @@ Die Regeln stehen in [docs/notation.md](docs/notation.md). Der Import prüft die
 
 Editoren mit YAML-Unterstützung (z. B. VS Code mit der Erweiterung „YAML“) prüfen und ergänzen die Felder anhand des JSON Schemas. Exportierte Dateien und der Beispieldatensatz enthalten den Verweis bereits. `python -m chronicle schema` gibt das Schema aus, die Kopie im Repo liegt unter [schema/timeline.schema.json](schema/timeline.schema.json).
 
+### Index schreiben
+
+`chronicle apply` schreibt den Stand aus den Dateien in die Datenbank, die die Anwendung liest. Es ist wiederholbar: Ein zweiter Lauf ohne Änderung schreibt nichts und zählt keine Versionen hoch. Prüfung und Schreiben laufen in einer Transaktion, bei einem Fehler bleibt die Datenbank unverändert.
+
+```bash
+python -m chronicle apply data --db chronicle.db
+```
+
+Die Messung für Index und Topic-Seiten steht in [scripts/measure_index.py](scripts/measure_index.py).
+
 ### Statische Seiten
 
 `chronicle build` schreibt pro Topic eine eigenständige HTML-Seite und eine `index.html` in einen Ordner. Die Seiten enthalten Stylesheet und Anhänge selbst, sie brauchen also keinen Server. Sie sind wie der Bericht aus der Datenbank als Snapshot gekennzeichnet und enthalten vertrauliche Inhalte. Die Ausgabe ist reproduzierbar: Derselbe Ordner ergibt dieselben Dateien.

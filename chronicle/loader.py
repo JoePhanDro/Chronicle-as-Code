@@ -39,9 +39,13 @@ def find_topic_files(data_dir: Path) -> list[Path]:
     return files
 
 
+# The C loader (libyaml) reads the same safe subset about eight times faster than the pure-Python one (issue #96).
+_YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
 def load_timeline(path: Path) -> Timeline:
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = yaml.load(path.read_text(encoding="utf-8"), Loader=_YAML_LOADER)
     except yaml.YAMLError as exc:
         raise TimelineError(f"YAML-Syntaxfehler in {path}: {exc}") from exc
 

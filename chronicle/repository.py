@@ -82,8 +82,15 @@ def _event_pk(conn: sqlite3.Connection, key: str) -> int | None:
     return row["pk"] if row else None
 
 
-def _replace_import_evidence(conn: sqlite3.Connection, event_pk: int, event: Event, blobs: Mapping[str, Blob]) -> None:
-    """Replace the evidence of an imported event. Each file must have been read and checked by the caller."""
+def _replace_import_evidence(conn: sqlite3.Connection, event_pk: int, event: Event, blobs: Mapping[str, Blob]) -> bool:
+    """Replace the evidence of an imported event. Each file must have been read and checked by the caller.
+
+    Returns True if the evidence differs from what the database held, so that an unchanged re-import changes nothing.
+    """
+    before = sorted(
+        (row["file"], row["type"], row["description"], row["sha256"])
+        for row in conn.execute("SELECT file, type, description, sha256 FROM evidence WHERE event_pk = ?", (event_pk,))
+    )
     conn.execute("DELETE FROM evidence WHERE event_pk = ?", (event_pk,))
     for item in event.evidence:
         blob = blobs.get(item.file)
@@ -96,6 +103,8 @@ def _replace_import_evidence(conn: sqlite3.Connection, event_pk: int, event: Eve
             """,
             (event_pk, item.file, item.type, item.description, blob.mime, blob.size, blob.sha256, blob.content),
         )
+    after = sorted((item.file, item.type, item.description, blobs[item.file].sha256) for item in event.evidence)
+    return before != after
 
 
 def _mark_manual(conn: sqlite3.Connection, event_pk: int) -> None:
@@ -229,7 +238,9 @@ def _write_topic(conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[st
         if event.key in skipped:
             continue
         existed = _event_pk(conn, event.key) is not None
-        conn.execute(
+        # An existing event is only touched when a field differs, so an unchanged re-import keeps the version
+        # (a bump would make an open editor fail with 409).
+        cursor = conn.execute(
             """
             INSERT INTO events
                 (key, t0, phase, actor, system, action, status, triggered_by, details,
@@ -246,11 +257,29 @@ def _write_topic(conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[st
                 details = excluded.details,
                 version = events.version + 1,
                 updated_at = excluded.updated_at
+            WHERE events.t0 IS NOT excluded.t0
+               OR events.phase IS NOT excluded.phase
+               OR events.actor IS NOT excluded.actor
+               OR events.system IS NOT excluded.system
+               OR events.action IS NOT excluded.action
+               OR events.status IS NOT excluded.status
+               OR events.triggered_by IS NOT excluded.triggered_by
+               OR events.details IS NOT excluded.details
             """,
             (event.key, *_event_values(event), topic.key),
         )
-        _replace_import_evidence(conn, _event_pk(conn, event.key), event, blobs)
-        (report.updated if existed else report.created).append(event.key)
+        event_pk = _event_pk(conn, event.key)
+        evidence_changed = _replace_import_evidence(conn, event_pk, event, blobs)
+        if existed and evidence_changed and cursor.rowcount == 0:
+            # Evidence counts as an edit of the event (README, uploads), so it bumps the version too.
+            conn.execute(
+                "UPDATE events SET version = version + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE pk = ?",
+                (event_pk,),
+            )
+        if not existed:
+            report.created.append(event.key)
+        elif cursor.rowcount or evidence_changed:
+            report.updated.append(event.key)
     return report
 
 
