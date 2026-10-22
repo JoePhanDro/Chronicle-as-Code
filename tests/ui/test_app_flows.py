@@ -83,12 +83,12 @@ def test_event_page_draws_its_mermaid_diagram(login, app_url):
 def test_header_search_finds_events(login):
     page = login("viewer")
 
-    page.get_by_label("Ereignisse durchsuchen").fill("Ungewöhnliche")
+    page.get_by_label("Suchen in Ereignissen, Akteuren und Systemen").fill("Ungewöhnliche")
     page.get_by_role("button", name="Suchen").click()
 
-    expect(page).to_have_url(re.compile(r"/events\?q=Ungew"))
-    expect(page.locator("tbody tr")).to_have_count(1)
-    expect(page.locator("tbody")).to_contain_text("Ungewöhnliche Requests auf /api/upload")
+    expect(page).to_have_url(re.compile(r"/suche\?q=Ungew"))
+    expect(page.locator("#hits-events + ul > li")).to_have_count(1)
+    expect(page.locator("main")).to_contain_text("Ungewöhnliche Requests auf /api/upload")
 
 
 def test_settings_dialog_closes_with_escape_and_returns_focus(login):
