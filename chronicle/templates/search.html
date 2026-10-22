@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Suche{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-xl font-semibold text-slate-100">Suche</h1>
+  <form method="get" action="/suche" class="mt-3 flex flex-wrap gap-2">
+    <label class="sr-only" for="search-text">Suchbegriff</label>
+    <input id="search-text" type="search" name="q" value="{{ text }}" placeholder="Ereignisse, Akteure oder Systeme suchen"
+           class="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none">
+    <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Suchen</button>
+  </form>
+</div>
+
+{% if not text %}
+<p class="text-sm text-slate-400">Gib einen Suchbegriff ein. Gesucht wird in Aktion, Details, Akteur und System der Events sowie in den Namen der Akteure und Systeme.</p>
+{% else %}
+<section class="mb-8" aria-labelledby="hits-events">
+  <h2 id="hits-events" class="mb-2 text-sm font-medium text-slate-300">Ereignisse <span class="font-mono text-slate-500">{{ total }}</span></h2>
+  {% if events %}
+  <ul class="divide-y divide-white/10 rounded-xl border border-white/10">
+    {% for event in events %}
+    <li>
+      <a href="/events/{{ event.key }}" class="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5 hover:bg-white/[.03]">
+        <span class="min-w-0 text-sm text-slate-100">{{ event.action }}</span>
+        <time data-utc="{{ event.t0 }}" class="font-mono text-xs text-slate-400">{{ event.t0[:16].replace('T', ' ') }}</time>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if total > events|length %}
+  <p class="mt-2 text-sm"><a href="/events?{{ {'q': text}|urlencode }}" class="text-sky-300 hover:underline">Alle {{ total }} Treffer anzeigen</a></p>
+  {% endif %}
+  {% else %}
+  <p class="text-sm text-slate-500">Keine Ereignisse gefunden.</p>
+  {% endif %}
+</section>
+
+<section class="mb-8" aria-labelledby="hits-actors">
+  <h2 id="hits-actors" class="mb-2 text-sm font-medium text-slate-300">Akteure <span class="font-mono text-slate-500">{{ actors|length }}</span></h2>
+  {% if actors %}
+  <ul class="flex flex-wrap gap-2">
+    {% for actor in actors %}
+    <li><a href="/events?{{ {'actor': actor}|urlencode }}" class="inline-block rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:border-sky-400/50 hover:text-white">{{ actor }}</a></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-sm text-slate-500">Kein Akteur passt.</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="hits-systems">
+  <h2 id="hits-systems" class="mb-2 text-sm font-medium text-slate-300">Systeme <span class="font-mono text-slate-500">{{ systems|length }}</span></h2>
+  {% if systems %}
+  <ul class="flex flex-wrap gap-2">
+    {% for system in systems %}
+    <li><a href="/events?{{ {'system': system}|urlencode }}" class="inline-block rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:border-sky-400/50 hover:text-white">{{ system }}</a></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-sm text-slate-500">Kein System passt.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

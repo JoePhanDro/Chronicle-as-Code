@@ -175,7 +175,9 @@ Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ers
 | `/login` | alle | Anmeldung mit Benutzername und Passwort |
 | `/account/password` | angemeldet | eigenes Passwort ändern. Wer ein Passwort ändern muss, landet hier |
 | `/` | angemeldet | Startseite |
-| `/events` | angemeldet | alle Events, zeitlich sortiert. Mit `?topic=<key>` nur die Events eines Topics (Heimat und verknüpft) |
+| `/events` | angemeldet | alle Events, zeitlich sortiert. Mit `?topic=<key>` nur die Events eines Topics (Heimat und verknüpft), mit `?system=<name>` nur die eines Systems |
+| `/suche` | angemeldet | Suche in Ereignissen, Akteuren und Systemen, als getrennte Treffer. Aufruf aus der Kopfzeile oder mit `/` |
+| `/hilfe` | angemeldet | Tastenkürzel und Erklärung der Einstellungen |
 | `/topics` | angemeldet | alle Topics mit Anzahl der Events |
 | `/topics/new` | analyst, admin | Topic anlegen (Key, Titel, Art, Zusammenfassung) |
 | `/topics/{key}` | angemeldet | Topic und seine Events; bearbeiten, löschen, Events verknüpfen und lösen für analyst und admin. Enthält das Dashboard als eingebettete Ansicht |
