@@ -105,10 +105,10 @@ jobs:
       - name: Build stylesheet
         run: npm ci --no-audit --no-fund && npm run build:css
 
-      - name: Install dependencies and Chromium
-        run: |
-          pip install -r requirements.txt -r requirements-dev.txt
-          python -m playwright install --with-deps chromium
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Browser tests
+        env:
+          CHRONICLE_BROWSER_CHANNEL: chrome
         run: pytest -m browser -q

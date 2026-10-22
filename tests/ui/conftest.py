@@ -1,5 +1,6 @@
 """Browser tests: the app runs on a local port and Chromium drives it. Run with `pytest -m browser`."""
 
+import os
 import socket
 import threading
 import time
@@ -57,7 +58,9 @@ def app_url(tmp_path_factory):
 @pytest.fixture(scope="session")
 def browser():
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        # CHRONICLE_BROWSER_CHANNEL=chrome uses an installed Google Chrome (the CI runner ships one).
+        # Without it, Playwright's own Chromium is used (`python -m playwright install chromium`).
+        browser = playwright.chromium.launch(channel=os.environ.get("CHRONICLE_BROWSER_CHANNEL") or None)
         yield browser
         browser.close()
 

@@ -37,7 +37,7 @@ Danke, dass du mitmachen möchtest. Dieses Dokument beschreibt, wie wir arbeiten
 
 - Jede Verhaltensänderung braucht einen Test. Fehlerpfade gehören dazu (falsche Rolle, fehlende CSRF, Konflikt, ungültige Eingabe).
 - Tests laufen ohne Netzwerk und ohne Docker.
-- Browser-Tests (`tests/ui/`) laufen nur mit `pytest -m browser`. Einmalig `python -m playwright install chromium` ausführen. Das Dashboard lädt seine Bibliotheken per CDN, deshalb braucht der Dashboard-Test Netzwerk.
+- Browser-Tests (`tests/ui/`) laufen nur mit `pytest -m browser`. Einmalig `python -m playwright install chromium` ausführen (oder mit `CHRONICLE_BROWSER_CHANNEL=chrome` eine installierte Google Chrome nutzen). Das Dashboard lädt seine Bibliotheken per CDN, deshalb braucht der Dashboard-Test Netzwerk.
 - Tests nutzen temporäre Datenbanken (`tmp_path`), nie `./chronicle.db`.
 
 ## Sicherheit
