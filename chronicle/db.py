@@ -73,6 +73,12 @@ CREATE TABLE IF NOT EXISTS evidence (
     content      BLOB
 );
 
+-- Server-wide settings, e.g. the reading lock (issue 13).
+CREATE TABLE IF NOT EXISTS settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_t0 ON events (t0);
 CREATE INDEX IF NOT EXISTS idx_topic_events_event ON topic_events (event_pk);
 CREATE INDEX IF NOT EXISTS idx_evidence_event ON evidence (event_pk);

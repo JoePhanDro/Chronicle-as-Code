@@ -14,7 +14,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from . import accounts, administration, repository
+from . import accounts, administration, reading_lock, repository
 from .auth import Auth, client_ip
 from .pages import TEMPLATES
 
@@ -24,6 +24,10 @@ AUDIT_LIMIT = 200
 
 def _forbidden(request: Request, user: dict) -> Response:
     return TEMPLATES.TemplateResponse(request, "forbidden.html", {"user": user}, status_code=403)
+
+
+def _render_home(request: Request, user: dict, status_code: int = 200, errors: str | None = None) -> Response:
+    return TEMPLATES.TemplateResponse(request, "home.html", {"user": user, "errors": errors}, status_code=status_code)
 
 
 def _render_users(request: Request, conn: sqlite3.Connection, user: dict, status_code: int = 200,
@@ -138,6 +142,32 @@ def make_admin_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth
         except repository.RepositoryError as exc:
             return _render_users(request, conn, user, status_code=_error_status(exc), errors=str(exc))
         return RedirectResponse("/admin/users", status_code=303)
+
+    # The reading lock is set in the Einstellungen dialog, so these forms answer with the home page.
+    @router.post("/admin/sperre", response_class=HTMLResponse)
+    async def set_lock_page(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        user = auth.page_session(request, conn)
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] != "admin" or not ok_csrf(user, form.get("csrf_token")):
+            return _forbidden(request, user)
+        try:
+            reading_lock.set_lock(conn, form.get("password") or "", user["id"], client_ip(request))
+        except repository.RepositoryError as exc:
+            return _render_home(request, user, status_code=_error_status(exc), errors=str(exc))
+        return RedirectResponse("/", status_code=303)
+
+    @router.post("/admin/sperre/aufheben", response_class=HTMLResponse)
+    async def clear_lock_page(request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        user = auth.page_session(request, conn)
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] != "admin" or not ok_csrf(user, form.get("csrf_token")):
+            return _forbidden(request, user)
+        reading_lock.clear_lock(conn, user["id"], client_ip(request))
+        return RedirectResponse("/", status_code=303)
 
     @router.get("/admin/grabsteine", response_class=HTMLResponse)
     def tombstones_page(request: Request, notice: str = "", conn: sqlite3.Connection = Depends(get_conn)) -> Response:

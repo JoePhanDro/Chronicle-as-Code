@@ -120,3 +120,34 @@ def test_density_setting_is_saved_and_applied_after_reload(login, app_url):
     expect(page.locator("html")).to_have_attribute("data-density", "compact")
     page.get_by_role("button", name="Einstellungen").click()
     expect(dialog.get_by_label("kompakt")).to_be_checked()
+
+
+LOCK_PASSWORD = "sperr-passwort-ui-123"
+
+
+def test_reading_lock_hides_the_data_until_unlocked(login, new_page, app_url):
+    chef = login("chef")
+    dialog = chef.locator("#settings-dialog")
+    chef.get_by_role("button", name="Einstellungen").click()
+    dialog.get_by_label("Sperr-Passwort (mind. 12 Zeichen)").fill(LOCK_PASSWORD)
+    dialog.get_by_role("button", name="Sperre einschalten").click()
+    expect(chef).to_have_url(f"{app_url}/")
+
+    try:
+        visitor = new_page(width=1280, height=900)
+        visitor.goto(f"{app_url}/events")
+        expect(visitor.get_by_role("heading", name="Anmelden")).to_be_visible()
+        expect(visitor.get_by_text("Ansicht entsperren")).to_be_visible()
+        expect(visitor.locator("body")).not_to_contain_text("Ungewöhnliche Requests")
+
+        visitor.get_by_label("Sperr-Passwort").fill(LOCK_PASSWORD)
+        visitor.get_by_role("button", name="Entsperren").click()
+        expect(visitor).to_have_url(f"{app_url}/")
+        visitor.goto(f"{app_url}/events")
+
+        expect(visitor.locator("tbody")).to_contain_text("Ungewöhnliche Requests auf /api/upload")
+        expect(visitor.get_by_role("link", name="Passwort")).to_have_count(0)
+    finally:
+        chef.get_by_role("button", name="Einstellungen").click()
+        dialog.get_by_role("button", name="Sperre aufheben").click()
+        expect(chef).to_have_url(f"{app_url}/")
