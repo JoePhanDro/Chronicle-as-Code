@@ -428,7 +428,7 @@ def get_topic(conn: sqlite3.Connection, key: str) -> dict | None:
     return dict(row) if row else None
 
 
-def list_topic_events(conn: sqlite3.Connection, key: str) -> list[dict]:
+def list_topic_events(conn: sqlite3.Connection, key: str, *, limit: int | None = None, offset: int = 0) -> list[dict]:
     rows = conn.execute(
         EVENT_SELECT
         + """
@@ -436,17 +436,23 @@ def list_topic_events(conn: sqlite3.Connection, key: str) -> list[dict]:
         JOIN topics ON topics.pk = topic_events.topic_pk
         WHERE topics.key = ?
         ORDER BY events.t0, events.pk
+        LIMIT ? OFFSET ?
         """,
-        (key,),
+        (key, *_page(limit, offset)),
     ).fetchall()
     return _with_evidence(conn, rows)
 
 
-def list_events(conn: sqlite3.Connection, topic: str | None = None) -> list[dict]:
-    """All events, or only those linked to `topic` (home and referenced events alike)."""
+def _page(limit: int | None, offset: int) -> tuple[int, int]:
+    # SQLite reads LIMIT -1 as "no limit", and OFFSET needs a LIMIT clause.
+    return (-1 if limit is None else limit), offset
+
+
+def list_events(conn: sqlite3.Connection, topic: str | None = None, *, limit: int | None = None, offset: int = 0) -> list[dict]:
+    """All events, or only those linked to `topic` (home and referenced events alike). `limit` and `offset` page the result."""
     if topic is not None:
-        return list_topic_events(conn, topic)
-    rows = conn.execute(EVENT_SELECT + " ORDER BY events.t0, events.pk").fetchall()
+        return list_topic_events(conn, topic, limit=limit, offset=offset)
+    rows = conn.execute(EVENT_SELECT + " ORDER BY events.t0, events.pk LIMIT ? OFFSET ?", _page(limit, offset)).fetchall()
     return _with_evidence(conn, rows)
 
 
