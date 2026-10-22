@@ -4,4 +4,4 @@ PyYAML==6.0.3
 fastapi==0.148.0
 uvicorn==0.54.0
 argon2-cffi==25.1.0
-python-multipart==0.0.31
+python-multipart==0.0.32
