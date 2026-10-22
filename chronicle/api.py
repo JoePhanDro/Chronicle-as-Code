@@ -8,6 +8,7 @@ import sys
 from contextlib import asynccontextmanager
 from collections.abc import Iterator
 from contextlib import closing
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -21,7 +22,7 @@ from .admin_pages import make_admin_pages
 from .auth import PasswordChangeRequired, SetupState, client_ip, make_auth, parse_trusted_proxies
 from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
-from .models import Topic
+from .models import Phase, Status, Topic
 from .pages import make_pages
 from .report import make_report, report_headers
 from .event_input import EventCreate, EventUpdate, event_of, new_event_key, topic_list
@@ -114,6 +115,12 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
     @app.get("/api/v1/events")
     def events(
         topic: str | None = None,
+        q: str | None = Query(None, description="Words to find in action, details and actor"),
+        phase: Phase | None = None,
+        status: Status | None = None,
+        actor: str | None = Query(None, description="Part of the actor name"),
+        since: date | None = Query(None, description="t0 on or after this UTC day"),
+        until: date | None = Query(None, description="t0 on or before this UTC day"),
         limit: int | None = Query(None, ge=1, le=500, description="Without a limit, all events are returned"),
         offset: int = Query(0, ge=0),
         conn: sqlite3.Connection = Depends(get_conn),
@@ -121,7 +128,9 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
     ) -> list[dict]:
         if topic is not None and repository.get_topic(conn, topic) is None:
             raise HTTPException(status_code=404, detail="Topic nicht gefunden")
-        return repository.list_events(conn, topic, limit=limit, offset=offset)
+        flt = repository.EventFilter(topic=topic, query=q, phase=phase, status=status, actor=actor,
+                                     since=since, until=until)
+        return repository.find_events(conn, flt, limit=limit, offset=offset)
 
     @app.get("/api/v1/events/{key}")
     def event(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> dict:

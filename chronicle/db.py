@@ -195,6 +195,46 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
+# Full-text index over the searchable fields of events (issue #30). The triggers keep it in step with every
+# write. Each statement runs on its own, because the trigger bodies contain ';'.
+SEARCH_INDEX = (
+    """
+    CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+        action, details, actor,
+        content='events', content_rowid='pk', tokenize='unicode61 remove_diacritics 2'
+    )
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS events_fts_insert AFTER INSERT ON events BEGIN
+        INSERT INTO events_fts (rowid, action, details, actor) VALUES (new.pk, new.action, new.details, new.actor);
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS events_fts_delete AFTER DELETE ON events BEGIN
+        INSERT INTO events_fts (events_fts, rowid, action, details, actor)
+        VALUES ('delete', old.pk, old.action, old.details, old.actor);
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS events_fts_update AFTER UPDATE ON events BEGIN
+        INSERT INTO events_fts (events_fts, rowid, action, details, actor)
+        VALUES ('delete', old.pk, old.action, old.details, old.actor);
+        INSERT INTO events_fts (rowid, action, details, actor) VALUES (new.pk, new.action, new.details, new.actor);
+    END
+    """,
+)
+
+
+def _ensure_search_index(conn: sqlite3.Connection) -> None:
+    """Create the search index. A database that had none gets it filled from the events it already holds."""
+    existed = _has_table(conn, "events_fts")
+    for statement in SEARCH_INDEX:
+        conn.execute(statement)
+    if not existed:
+        with conn:
+            conn.execute("INSERT INTO events_fts (events_fts) VALUES ('rebuild')")
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
     """Open the database, enable foreign keys, migrate old data and make sure the schema exists."""
     # One connection per request, never shared between threads; async form handlers may hop threads.
@@ -210,4 +250,5 @@ def connect(path: str | Path) -> sqlite3.Connection:
     _ensure_column(conn, "evidence", "sha256", "TEXT")
     _ensure_column(conn, "evidence", "content", "BLOB")
     _ensure_column(conn, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_search_index(conn)
     return conn

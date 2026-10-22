@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import secrets
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import get_args
 from collections.abc import Callable, Iterator
 from pathlib import Path, PurePosixPath
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -37,6 +38,31 @@ WRITER_ROLES = ("admin", "analyst")
 TOPIC_KINDS = list(get_args(TopicKind))
 HOURS = [f"{hour:02d}" for hour in range(24)]
 MINUTES = [f"{minute:02d}" for minute in range(60)]
+EVENTS_PAGE_SIZE = 50
+
+
+def _text_param(params, name: str) -> str | None:
+    return (params.get(name) or "").strip() or None
+
+
+def _choice_param(params, name: str, options) -> str | None:
+    value = _text_param(params, name)
+    return value if value in {str(option) for option in options} else None
+
+
+def _day_param(params, name: str) -> date | None:
+    value = _text_param(params, name)
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
+
+
+def _page_param(params) -> int:
+    try:
+        return max(1, int(params.get("page") or 1))
+    except ValueError:
+        return 1
 
 
 def _payload_from_form(form, topic_home: str | None = None) -> dict:
@@ -136,13 +162,32 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
     def events_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
         if user is None:
             return RedirectResponse("/login", status_code=303)
-        topic_key = (request.query_params.get("topic") or "").strip() or None
+        params = request.query_params
+        topic_key = _text_param(params, "topic")
         topic = None
         if topic_key is not None:
             topic = repository.get_topic(conn, topic_key)
             if topic is None:
                 return render(request, "not_found.html", user, status_code=404)
-        return render(request, "events.html", user, events=repository.list_events(conn, topic_key),
+        flt = repository.EventFilter(
+            topic=topic_key, query=_text_param(params, "q"), phase=_choice_param(params, "phase", Phase),
+            status=_choice_param(params, "status", Status), actor=_text_param(params, "actor"),
+            since=_day_param(params, "since"), until=_day_param(params, "until"),
+        )
+        # Filters go into every page link; empty ones are left out of the URL.
+        query = {
+            "topic": topic_key, "q": flt.query, "phase": flt.phase, "status": flt.status, "actor": flt.actor,
+            "since": flt.since.isoformat() if flt.since else None,
+            "until": flt.until.isoformat() if flt.until else None,
+        }
+        query = {name: value for name, value in query.items() if value}
+        total = repository.count_events(conn, flt)
+        pages = max(1, -(-total // EVENTS_PAGE_SIZE))
+        page = min(_page_param(params), pages)
+        events = repository.find_events(conn, flt, limit=EVENTS_PAGE_SIZE, offset=(page - 1) * EVENTS_PAGE_SIZE)
+        return render(request, "events.html", user, events=events, total=total, page=page, pages=pages,
+                      page_url=lambda number: "/events?" + urlencode({**query, "page": number}),
+                      query=query, filtered=bool(query), phases=list(Phase), statuses=list(Status),
                       topic=topic, topics=repository.list_topics(conn))
 
     @router.get("/events/new", response_class=HTMLResponse)
