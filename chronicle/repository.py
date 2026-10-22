@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 
 from . import accounts
 from .evidence import EVIDENCE_TYPES, MAX_DESCRIPTION_LENGTH, Blob
@@ -428,19 +430,56 @@ def get_topic(conn: sqlite3.Connection, key: str) -> dict | None:
     return dict(row) if row else None
 
 
-def list_topic_events(conn: sqlite3.Connection, key: str, *, limit: int | None = None, offset: int = 0) -> list[dict]:
-    rows = conn.execute(
-        EVENT_SELECT
-        + """
-        JOIN topic_events ON topic_events.event_pk = events.pk
-        JOIN topics ON topics.pk = topic_events.topic_pk
-        WHERE topics.key = ?
-        ORDER BY events.t0, events.pk
-        LIMIT ? OFFSET ?
-        """,
-        (key, *_page(limit, offset)),
-    ).fetchall()
-    return _with_evidence(conn, rows)
+@dataclass(frozen=True)
+class EventFilter:
+    """Conditions for the event list. None or an empty value means no condition."""
+
+    topic: str | None = None  # events linked to this topic, home and referenced events alike
+    query: str | None = None  # words to find in action, details and actor; each word matches as a prefix
+    phase: str | None = None
+    status: str | None = None
+    actor: str | None = None  # part of the actor name, not case-sensitive
+    since: date | None = None  # t0 on or after this day (UTC)
+    until: date | None = None  # t0 on or before this day (UTC)
+
+
+def _match_expression(text: str) -> str | None:
+    # Every word becomes a quoted prefix term, so characters with a meaning in FTS5 syntax cannot break the query.
+    words = re.findall(r"\w+", text)
+    return " ".join(f'"{word}"*' for word in words) or None
+
+
+def _filter_sql(flt: EventFilter) -> tuple[str, list]:
+    clauses: list[str] = []
+    params: list = []
+    if flt.topic is not None:
+        clauses.append(
+            "events.pk IN (SELECT topic_events.event_pk FROM topic_events "
+            "JOIN topics ON topics.pk = topic_events.topic_pk WHERE topics.key = ?)"
+        )
+        params.append(flt.topic)
+    expression = _match_expression(flt.query or "")
+    if expression is not None:
+        clauses.append("events.pk IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)")
+        params.append(expression)
+    if flt.phase:
+        clauses.append("events.phase = ?")
+        params.append(flt.phase)
+    if flt.status:
+        clauses.append("events.status = ?")
+        params.append(flt.status)
+    if flt.actor:
+        clauses.append("instr(lower(events.actor), lower(?)) > 0")
+        params.append(flt.actor)
+    # t0 is stored in UTC, so the first ten characters are the UTC day.
+    if flt.since is not None:
+        clauses.append("substr(events.t0, 1, 10) >= ?")
+        params.append(flt.since.isoformat())
+    if flt.until is not None:
+        clauses.append("substr(events.t0, 1, 10) <= ?")
+        params.append(flt.until.isoformat())
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    return where, params
 
 
 def _page(limit: int | None, offset: int) -> tuple[int, int]:
@@ -448,12 +487,28 @@ def _page(limit: int | None, offset: int) -> tuple[int, int]:
     return (-1 if limit is None else limit), offset
 
 
+def find_events(conn: sqlite3.Connection, flt: EventFilter, *, limit: int | None = None, offset: int = 0) -> list[dict]:
+    """Events that match `flt`, in time order. `limit` and `offset` page the result."""
+    where, params = _filter_sql(flt)
+    rows = conn.execute(
+        EVENT_SELECT + where + " ORDER BY events.t0, events.pk LIMIT ? OFFSET ?",
+        (*params, *_page(limit, offset)),
+    ).fetchall()
+    return _with_evidence(conn, rows)
+
+
+def count_events(conn: sqlite3.Connection, flt: EventFilter) -> int:
+    where, params = _filter_sql(flt)
+    return conn.execute(f"SELECT COUNT(*) FROM events{where}", params).fetchone()[0]
+
+
+def list_topic_events(conn: sqlite3.Connection, key: str, *, limit: int | None = None, offset: int = 0) -> list[dict]:
+    return find_events(conn, EventFilter(topic=key), limit=limit, offset=offset)
+
+
 def list_events(conn: sqlite3.Connection, topic: str | None = None, *, limit: int | None = None, offset: int = 0) -> list[dict]:
     """All events, or only those linked to `topic` (home and referenced events alike). `limit` and `offset` page the result."""
-    if topic is not None:
-        return list_topic_events(conn, topic, limit=limit, offset=offset)
-    rows = conn.execute(EVENT_SELECT + " ORDER BY events.t0, events.pk LIMIT ? OFFSET ?", _page(limit, offset)).fetchall()
-    return _with_evidence(conn, rows)
+    return find_events(conn, EventFilter(topic=topic), limit=limit, offset=offset)
 
 
 def get_event(conn: sqlite3.Connection, key: str) -> dict | None:
