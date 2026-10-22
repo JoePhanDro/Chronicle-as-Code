@@ -32,7 +32,7 @@
       </div>
     </section>
     <div class="flex gap-3">
-      <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Anlegen</button>
+      <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Anlegen</button>
       <a href="/events" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-300 hover:text-white">Abbrechen</a>
     </div>
   </form>
@@ -129,7 +129,7 @@
       <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
       <input type="hidden" name="version" value="{{ event.version }}">
       {% include "_event_fields.html" %}
-      <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:brightness-110">Speichern</button>
+      <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Speichern</button>
     </form>
   </section>
   {% endif %}

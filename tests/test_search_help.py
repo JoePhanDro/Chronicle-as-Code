@@ -132,3 +132,18 @@ def test_event_times_carry_their_utc_value_for_the_zone_setting(db_path):
 
     assert 'data-utc="2026-10-14T06:40:00+00:00"' in html
     assert "data-zone-label" in html
+
+
+def test_header_has_a_theme_toggle_and_the_settings_offer_system_light_dark(db_path):
+    html = login(db_path, "viewer").get("/events").text
+
+    assert 'id="theme-toggle"' in html
+    for value in ["system", "light", "dark"]:
+        assert f'data-setting="chronicle.theme" class="accent-sky-400"' in html and f'value="{value}"' in html, value
+
+
+def test_dashboard_has_light_and_system_theme_variables(db_path):
+    html = login(db_path, "viewer").get("/topics/inc-suche/dashboard").text
+
+    assert ':root[data-theme="light"]' in html
+    assert "prefers-color-scheme: light" in html

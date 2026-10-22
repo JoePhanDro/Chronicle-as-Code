@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
+  <script>
+    try {
+      const theme = localStorage.getItem('chronicle.theme');
+      if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+    } catch (error) { /* a saved report has no app storage; the system setting applies */ }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -15,12 +21,57 @@
   <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"
           integrity="sha384-yxKDWWf0wwdUj/gPeuL11czrnKFQROnLgY8ll7En9NYoXibgg3C6NK/UDHNtUgWJ" crossorigin="anonymous"></script>
   <style>
-    :root {
+    /* Dark is the default. Light applies by choice, or with no choice when the system prefers light. */
+    :root,
+    :root[data-theme="dark"] {
       --bg: #030712;
       --panel: rgba(15, 23, 42, .5);
       --line: rgba(148, 163, 184, .12);
       --text: #e2e8f0;
       --muted: #94a3b8;
+      --strong: #fff;
+      --accent: #38bdf8;
+      --surface: rgba(15, 23, 42, .6);
+      --card: rgba(15, 23, 42, .96);
+      --card-soft: rgba(15, 23, 42, .72);
+      --dot: rgba(148, 163, 184, .13);
+      --code: rgba(15, 23, 42, .9);
+      --pre: rgba(2, 6, 23, .8);
+      --shadow: rgba(0, 0, 0, .8);
+    }
+    :root[data-theme="light"] {
+      --bg: #f1f5f9;
+      --panel: rgba(255, 255, 255, .6);
+      --line: rgba(15, 23, 42, .12);
+      --text: #0f172a;
+      --muted: #475569;
+      --strong: #0f172a;
+      --accent: #0284c7;
+      --surface: rgba(255, 255, 255, .7);
+      --card: rgba(255, 255, 255, .97);
+      --card-soft: rgba(255, 255, 255, .8);
+      --dot: rgba(100, 116, 139, .2);
+      --code: rgba(226, 232, 240, .9);
+      --pre: rgba(241, 245, 249, .9);
+      --shadow: rgba(15, 23, 42, .25);
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg: #f1f5f9;
+        --panel: rgba(255, 255, 255, .6);
+        --line: rgba(15, 23, 42, .12);
+        --text: #0f172a;
+        --muted: #475569;
+        --strong: #0f172a;
+        --accent: #0284c7;
+        --surface: rgba(255, 255, 255, .7);
+        --card: rgba(255, 255, 255, .97);
+        --card-soft: rgba(255, 255, 255, .8);
+        --dot: rgba(100, 116, 139, .2);
+        --code: rgba(226, 232, 240, .9);
+        --pre: rgba(241, 245, 249, .9);
+        --shadow: rgba(15, 23, 42, .25);
+      }
     }
     html, body { height: 100%; }
     body {
@@ -37,20 +88,20 @@
       border: 1px solid var(--line);
     }
     .dot-grid {
-      background-image: radial-gradient(rgba(148, 163, 184, .13) 1px, transparent 1px);
+      background-image: radial-gradient(var(--dot) 1px, transparent 1px);
       background-size: 22px 22px;
     }
     .edge-line { border-color: var(--line); }
     .btn {
       border: 1px solid var(--line);
-      background: rgba(15, 23, 42, .6);
+      background: var(--surface);
       color: var(--muted);
       border-radius: 8px;
       padding: 6px 10px;
       font-size: 12px;
       transition: all .15s ease;
     }
-    .btn:hover { color: #fff; border-color: rgba(56, 189, 248, .5); box-shadow: 0 0 18px -6px rgba(56, 189, 248, .6); }
+    .btn:hover { color: var(--strong); border-color: rgba(56, 189, 248, .5); box-shadow: 0 0 18px -6px rgba(56, 189, 248, .6); }
 
     /* Status indicator (open / in_progress / resolved) */
     .st { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; margin-right: 6px; vertical-align: middle; background: #64748b; flex: none; }
@@ -73,7 +124,7 @@
     .vis-labelset .vis-label { color: var(--muted); }
     .vis-foreground .vis-group { border-color: rgba(148, 163, 184, .06); }
     .vis-item.ch-item {
-      background: linear-gradient(135deg, rgba(15, 23, 42, .96), rgba(15, 23, 42, .72));
+      background: linear-gradient(135deg, var(--card), var(--card-soft));
       border: 1px solid var(--line);
       border-left: 3px solid var(--c);
       border-radius: 10px;
@@ -96,10 +147,10 @@
 
     /* Hover tooltip on graph nodes (vis-network's default is a light box with black text) */
     #graph .vis-tooltip {
-      background: rgba(15, 23, 42, .96);
+      background: var(--card);
       border: 1px solid var(--line);
       border-radius: 10px;
-      box-shadow: 0 10px 28px -14px rgba(0, 0, 0, .8);
+      box-shadow: 0 10px 28px -14px var(--shadow);
       color: var(--text);
       font-family: Inter, system-ui, sans-serif;
       font-size: 12px;
@@ -117,17 +168,17 @@
       font-size: 12px;
       font-weight: 600;
     }
-    .view-tab:hover { color: #fff; }
-    .view-tab[aria-selected="true"] { color: var(--text); border-bottom-color: #38bdf8; }
-    .view-tab:focus-visible { outline: 2px solid #38bdf8; outline-offset: -2px; }
+    .view-tab:hover { color: var(--strong); }
+    .view-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+    .view-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
     @media (min-width: 1024px) {
       .view-panel { flex: 1 1 0; min-height: 0; }
     }
 
     /* Markdown in details */
-    .prose-invert code { background: rgba(15, 23, 42, .9); padding: 1px 5px; border-radius: 5px; }
+    .prose-invert code { background: var(--code); padding: 1px 5px; border-radius: 5px; }
     .prose-invert code::before, .prose-invert code::after { content: none; }
-    .prose-invert pre { background: rgba(2, 6, 23, .8); border: 1px solid var(--line); }
+    .prose-invert pre { background: var(--pre); border: 1px solid var(--line); }
   </style>
 </head>
 <body class="flex min-h-screen flex-col font-sans lg:h-screen lg:overflow-hidden">
@@ -135,7 +186,7 @@
   <header class="glass flex flex-wrap items-center justify-between gap-4 border-x-0 border-t-0 px-5 py-3">
     <div class="flex min-w-0 items-center gap-3">
       <div class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-violet-500 shadow-lg shadow-sky-500/20">
-        <svg viewBox="0 0 24 24" class="h-5 w-5 text-slate-950" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+        <svg viewBox="0 0 24 24" class="h-5 w-5 text-ink" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
       </div>
       <div class="min-w-0">
         <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300/80">Chronicle · {{ 'Bericht' if snapshot else 'Ansicht' }}</div>
@@ -212,6 +263,11 @@
     const physicsStart = setting('chronicle.graph.physics') !== 'off';
     const labelsOn = setting('chronicle.graph.labels') !== 'off';
 
+    // Label colors for the graph, read from the theme variables. The label stroke is the page background.
+    const themeValue = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const nodeFont = () => ({ color: themeValue('--text'), size: 12, face: 'Inter', strokeWidth: 4, strokeColor: themeValue('--bg') });
+    const edgeFont = () => ({ color: themeValue('--muted'), size: 10, strokeWidth: 4, strokeColor: themeValue('--bg'), align: 'middle' });
+
     const eventsById = new Map(DATA.events.map(ev => [ev.id, ev]));
     const lanes = [...new Set(DATA.events.map(ev => ev.actor))];
     const detailsEl = document.getElementById('details');
@@ -273,7 +329,7 @@
     }
 
     function phaseBadge(ev) {
-      const badge = el('span', 'rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-slate-950', ev.phase);
+      const badge = el('span', 'rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-ink', ev.phase);
       badge.style.background = ev.color;
       badge.style.boxShadow = `0 0 18px -4px ${ev.color}`;
       return badge;
@@ -514,7 +570,7 @@
         shape: 'image',
         image: iconUri(color, KIND[kind].glyph),
         size: kind === 'event' ? 30 : 24,
-        font: { color: '#e2e8f0', size: 12, face: 'Inter', strokeWidth: 4, strokeColor: '#030712' },
+        font: nodeFont(),
       };
     }));
 
@@ -529,7 +585,7 @@
         color: { color: base, highlight: '#e2e8f0' },
         arrows: { to: { enabled: true, scaleFactor: 0.55 } },
         smooth: { type: 'continuous' },
-        font: { color: '#94a3b8', size: 10, strokeWidth: 4, strokeColor: '#030712', align: 'middle' },
+        font: edgeFont(),
       };
     }));
 
@@ -792,6 +848,15 @@
         else shownKinds.delete(box.dataset.kind);
         applyFilters();
       });
+    });
+
+    // The app stores the theme in this origin's storage. The dashboard runs in the same origin, so it hears the change.
+    window.addEventListener('storage', event => {
+      if (event.key !== 'chronicle.theme') return;
+      if (event.newValue === 'light' || event.newValue === 'dark') document.documentElement.dataset.theme = event.newValue;
+      else delete document.documentElement.dataset.theme;
+      graphNodes.update(graphNodes.getIds().map(id => ({ id, font: nodeFont() })));
+      graphEdges.update(graphEdges.getIds().map(id => ({ id, font: edgeFont() })));
     });
 
     // Initial state: the view and event from the URL, or the empty state.

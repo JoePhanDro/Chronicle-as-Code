@@ -29,6 +29,11 @@
       const density = localStorage.getItem('chronicle.density');
       if (density === 'compact') document.documentElement.dataset.density = density;
     } catch (error) { /* storage can be blocked; the default layout stays */ }
+    // Theme: "light" or "dark" when chosen, otherwise the operating system decides (see app.css).
+    try {
+      const theme = localStorage.getItem('chronicle.theme');
+      if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+    } catch (error) { /* same as above */ }
   </script>
   {% block head %}{% endblock %}
 </head>
@@ -52,6 +57,10 @@
     </form>
     <div class="flex items-center gap-4 text-sm">
       <a href="/hilfe" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white">Hilfe</a>
+      <button type="button" id="theme-toggle" class="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Helles Design aktivieren">
+        <svg id="theme-icon-sun" hidden aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        <svg id="theme-icon-moon" hidden aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
       <button type="button" id="open-settings" aria-controls="settings-dialog" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white">Einstellungen</button>
       <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
       {% if not user.guest %}<a href="/account/password" class="text-slate-400 hover:text-white">Passwort</a>{% endif %}
@@ -72,6 +81,12 @@
         <legend class="mb-2 text-sm font-medium text-slate-300">Dichte der Tabellen</legend>
         <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="density" value="normal" class="accent-sky-400"> normal</label>
         <label class="flex items-center gap-2 text-sm"><input type="radio" name="density" value="compact" class="accent-sky-400"> kompakt</label>
+      </fieldset>
+      <fieldset class="mb-6">
+        <legend class="mb-2 text-sm font-medium text-slate-300">Design</legend>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="theme" value="system" data-setting="chronicle.theme" class="accent-sky-400"> wie das Betriebssystem</label>
+        <label class="mb-2 flex items-center gap-2 text-sm"><input type="radio" name="theme" value="light" data-setting="chronicle.theme" class="accent-sky-400"> hell</label>
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="theme" value="dark" data-setting="chronicle.theme" class="accent-sky-400"> dunkel</label>
       </fieldset>
       <fieldset class="mb-6">
         <legend class="mb-2 text-sm font-medium text-slate-300">Zeitzone</legend>
@@ -151,6 +166,7 @@
     // Settings for this browser. Storage can be blocked; then the defaults apply.
     window.chronicleSettings = (() => {
       const defaults = {
+        'chronicle.theme': 'system',
         'chronicle.zone': 'utc',
         'chronicle.graph.physics': 'on',
         'chronicle.graph.labels': 'on',
@@ -195,8 +211,41 @@
         radio.addEventListener('change', () => {
           window.chronicleSettings.write(key, radio.value);
           if (key === 'chronicle.zone') window.chronicleApplyZone();
+          if (key === 'chronicle.theme') window.chronicleApplyTheme(radio.value);
         });
       });
+    })();
+
+    // Theme: the header button flips the theme in view; the settings dialog can also return to the system setting.
+    (() => {
+      const systemLight = window.matchMedia('(prefers-color-scheme: light)');
+      const current = () => document.documentElement.dataset.theme || (systemLight.matches ? 'light' : 'dark');
+      const button = document.getElementById('theme-toggle');
+      const sun = document.getElementById('theme-icon-sun');
+      const moon = document.getElementById('theme-icon-moon');
+      const apply = () => {
+        const theme = current();
+        // The icon shows the theme the button switches to.
+        sun.hidden = theme !== 'dark';
+        moon.hidden = theme === 'dark';
+        button.setAttribute('aria-label', theme === 'dark' ? 'Helles Design aktivieren' : 'Dunkles Design aktivieren');
+        button.title = button.getAttribute('aria-label');
+      };
+      const store = value => {
+        window.chronicleSettings.write('chronicle.theme', value);
+        window.chronicleApplyTheme(value);
+        document.querySelectorAll('input[type=radio][data-setting="chronicle.theme"]').forEach(radio => {
+          radio.checked = radio.value === value;
+        });
+      };
+      button.addEventListener('click', () => store(current() === 'dark' ? 'light' : 'dark'));
+      systemLight.addEventListener('change', () => { if (!document.documentElement.dataset.theme) apply(); });
+      window.chronicleApplyTheme = (value = window.chronicleSettings.read('chronicle.theme')) => {
+        if (value === 'light' || value === 'dark') document.documentElement.dataset.theme = value;
+        else delete document.documentElement.dataset.theme;
+        apply();
+      };
+      window.chronicleApplyTheme();
     })();
 
     // "/" opens the header search, unless the user is already typing somewhere.
