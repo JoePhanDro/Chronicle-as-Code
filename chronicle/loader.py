@@ -20,6 +20,14 @@ class TimelineError(Exception):
     """The timeline cannot be found, parsed or validated."""
 
 
+class CheckFailed(TimelineError):
+    """Several problems were found in the topic files. `problems` lists each one, so all of them can be shown at once."""
+
+    def __init__(self, problems: list[str]) -> None:
+        self.problems = problems
+        super().__init__("\n".join(problems))
+
+
 def find_topic_files(data_dir: Path) -> list[Path]:
     """Every YAML file below the folder. Each file is one topic (ADR 0005)."""
     if not data_dir.is_dir():
