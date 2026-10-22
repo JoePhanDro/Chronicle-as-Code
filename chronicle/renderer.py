@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
+from .markdown import render_markdown
 from .models import PHASE_COLORS, Evidence, Event, Phase, Timeline
 
 ACTOR_COLOR = "#38bdf8"
 SYSTEM_COLOR = "#a78bfa"
 EVIDENCE_COLOR = "#64748b"
 TRIGGER_COLOR = "#f97316"
+
+# Renders ```mermaid blocks. Inlined into the dashboard, served as /static/diagrams.js on the event page.
+DIAGRAMS_JS = (Path(__file__).parent / "static" / "diagrams.js").read_text(encoding="utf-8")
 
 _env = Environment(
     loader=PackageLoader("chronicle", "templates"),
@@ -51,6 +55,7 @@ def render_dashboard(
         inline_css=inline_css,
         generated_at=generated_at,
         snapshot=snapshot,
+        diagrams_js=DIAGRAMS_JS,
     )
 
 
@@ -68,6 +73,7 @@ def _relative_src(item: Evidence) -> str:
 
 
 def _event_payload(event: Event, src_for: Callable[[Evidence], str]) -> dict:
+    images = {PurePosixPath(item.file).name: src_for(item) for item in event.evidence}
     return {
         "id": event.key,
         "t0": event.t0.isoformat(),
@@ -79,6 +85,7 @@ def _event_payload(event: Event, src_for: Callable[[Evidence], str]) -> dict:
         "status": event.status.value,
         "triggered_by": event.triggered_by,
         "details": event.details,
+        "details_html": render_markdown(event.details, images),
         "evidence": [
             {
                 "src": src_for(item),

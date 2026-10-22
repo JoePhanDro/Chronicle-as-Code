@@ -81,3 +81,11 @@ def test_collapsing_the_graph_gives_the_timeline_the_space(new_page, dashboard_u
     expect(page.locator("#graph-view .view-toggle")).to_have_attribute("aria-expanded", "false")
     timeline_height = page.evaluate("document.getElementById('timeline-body').clientHeight")
     assert timeline_height > 500
+
+
+def test_mermaid_block_is_drawn_as_a_diagram(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(f"{dashboard_url}#exploit")
+
+    # Mermaid is loaded from the CDN when the block is shown, which can take a while.
+    expect(page.locator("#details .mermaid-diagram svg")).to_be_visible(timeout=60_000)

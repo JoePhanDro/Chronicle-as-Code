@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="/static/app.css">
   <link rel="icon" type="image/png" href="/static/icon.png">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  {% block head %}{% endblock %}
 </head>
 <body class="min-h-screen bg-slate-950 font-sans text-slate-200 antialiased">
   {% set writer = user.role in ['admin', 'analyst'] %}
