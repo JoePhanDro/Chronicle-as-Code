@@ -2,8 +2,9 @@
 
 - **Status:** Entwurf zu [ADR 0008](adr/0008-files-as-source-of-truth.md), Punkt 9
 - **Stand:** Code vom 2026-10-22 (`chronicle/models.py`, `chronicle/repository.py`, `chronicle/evidence.py`, `chronicle/loader.py`)
+- **Entschieden, noch nicht umgesetzt:** `triggered_by` ist eine Liste mit 0 bis n Einträgen (#87). Auslösungen bilden keinen Zyklus (#85).
 
-Abschnitte, die mit **Vorschlag** gekennzeichnet sind, sind nicht umgesetzt. Alles andere beschreibt das heutige Verhalten.
+Abschnitte, die mit **Vorschlag** gekennzeichnet sind, sind nicht umgesetzt. Abschnitte mit „Ziel-Stand“ beschreiben die getroffene Entscheidung, die der Code noch nicht hat. Alles andere beschreibt das heutige Verhalten.
 
 ## 1. Grundidee
 
@@ -51,7 +52,7 @@ Unbekannte Felder sind ein Fehler. Ein Tippfehler im Schlüssel wird also nicht 
 | `system` | nein | Text |
 | `action` | ja | nicht leer |
 | `status` | ja | `open`, `in_progress` oder `resolved` |
-| `triggered_by` | nein | Key eines anderen Events (siehe 5) |
+| `triggered_by` | nein | Liste von Event-Keys mit 0 bis n Einträgen. Ziel-Stand, heute ein einzelner Key (#87). Siehe 5 |
 | `details` | nein | Markdown |
 | `evidence` | nein | Liste von Evidence-Einträgen (siehe 6) |
 
@@ -79,9 +80,9 @@ Es gibt drei Arten von Verknüpfungen.
 - `refs:` verweist nur auf Events, die irgendwo definiert sind.
 - Ein Event kann in beliebig vielen Topics per `refs:` stehen.
 
-**b) Auslösung.** `triggered_by` nennt den Key des Events, das dieses Event ausgelöst hat. Das Ziel kann in einer anderen Datei stehen, muss aber existieren. Ein Event kann sich nicht selbst auslösen. Pro Event gibt es genau einen Auslöser.
+**b) Auslösung.** `triggered_by` nennt die Keys der Events, die dieses Event ausgelöst haben. Es ist eine Liste mit 0 bis n Einträgen. Die Ziele können in anderen Dateien stehen, müssen aber existieren. Ein Event kann sich nicht selbst auslösen. Heute ist nur ein einzelner Key erlaubt, die Umstellung auf eine Liste ist in #87 erfasst.
 
-**c) Zyklen.** Ob sich Auslösungen im Kreis schließen dürfen, prüft der Code heute nicht. Siehe Offene Punkte.
+**c) Zyklen.** Auslösungen dürfen keinen Kreis bilden. Eine Auslösekette darf nicht zu ihrem Ausgangs-Event zurückführen. Der Code prüft das heute nicht, die Prüfung ist in #85 erfasst.
 
 ## 6. Evidence
 
@@ -101,10 +102,10 @@ Die Prüfung (Import heute, Prüfmodus nach Issue #85) verlangt:
 2. Event-Keys sind eindeutig über alle Dateien. Innerhalb einer Datei prüft das `models.py`, über Dateien hinweg `import_timelines` in `repository.py`.
 3. Ein Key steht nicht zugleich unter `events:` und `refs:` derselben Datei.
 4. `refs:` und `triggered_by` verweisen auf existierende Events.
-5. Ein Event löst nicht sich selbst aus.
+5. Ein Event löst nicht sich selbst aus, und Auslösungen bilden keinen Zyklus (#85).
 6. Evidence-Dateien existieren, liegen innerhalb des Ordners und sind zulässig.
 
-**Lücke:** Topic-Keys werden über Dateien hinweg **nicht** geprüft. Zwei Dateien mit demselben Topic-Key überschreiben sich still. Der Import führt ein Upsert auf den Key aus (`_write_topic`), Titel, Art und Zusammenfassung der zweiten Datei gewinnen, und die Events landen im selben Topic. Die Regel 2 gilt für Event-Keys und sollte für Topic-Keys entsprechend gelten.
+**Lücke (#85):** Topic-Keys werden über Dateien hinweg **nicht** geprüft. Zwei Dateien mit demselben Topic-Key überschreiben sich still. Der Import führt ein Upsert auf den Key aus (`_write_topic`), Titel, Art und Zusammenfassung der zweiten Datei gewinnen, und die Events landen im selben Topic. Die Regel 2 gilt für Event-Keys. Die Prüfung soll für Topic-Keys entsprechend gelten.
 
 ## 8. Beispiel
 
@@ -126,7 +127,8 @@ events:
     system: wp-portal-01
     action: "Remote Code Execution erfolgreich"
     status: in_progress
-    triggered_by: cve-2026-xxxx-veroeffentlicht
+    triggered_by:
+      - cve-2026-xxxx-veroeffentlicht
     evidence:
       - file: evidence/exploit-2026-10-14/waf-block.png
         type: screenshot
@@ -166,7 +168,6 @@ Konten, Rollen, Sitzungen, Login-Sperren und das Audit-Log gehören zum Betrieb 
 
 ## 11. Offene Punkte
 
-- **Topic-Keys über Dateien hinweg:** Die Prüfung fehlt (siehe 7). Sie gehört in #85 oder in ein eigenes Issue.
-- **Zyklen bei `triggered_by`:** Erlauben oder verbieten? Die Frage bestimmt, ob die Auslösungen ein Azyklus-Graph sein müssen.
-- **Ein Auslöser pro Event:** Reicht das? Ein Event kann von zwei Ereignissen ausgelöst werden, etwa einer Schwachstelle und einem Hinweis aus einem Ticket.
+- **Topic-Keys über Dateien hinweg:** Die Prüfung fehlt (siehe 7). Sie ist in #85 erfasst.
+- **Übergang von der Zeichenkette zur Liste:** Liest der Import `triggered_by: <key>` weiter als Liste mit einem Eintrag, oder bricht er ab? Vorschlag in #87 ist der Übergang bis zur nächsten Notationsversion.
 - **Evidence-Pfade relativ zur Topic-Datei:** So ist es heute umgesetzt. Ist das so gewollt, oder soll der Pfad relativ zum Datenordner sein?
