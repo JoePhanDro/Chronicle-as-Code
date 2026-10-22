@@ -25,7 +25,7 @@ Events sollen in der Oberfläche angelegt, geändert und gelöscht werden. Bishe
 
 - ADR 0002 wird an einer Stelle geändert: Import entfernt keine Topic-Verknüpfungen mehr. Die Entfernung läuft über die Oberfläche.
 - Die YAML ist danach Startdatei. Wer Änderungen aus der Oberfläche zurück in Git haben will, braucht einen Export. Der ist nicht Teil dieses Schritts.
-- Ein Event, das in der Oberfläche gelöscht wurde, kommt beim Import nicht zurück. Um es wieder aufzunehmen, muss man den Grabstein entfernen (später über die Oberfläche).
+- Ein Event, das in der Oberfläche gelöscht wurde, kommt beim Import nicht zurück. Ein Admin stellt es auf der Seite „Gelöschte Events“ wieder her; sie legt es mit seiner letzten Fassung, den Verknüpfungen und den Belegen neu an (Issue #34). Ein Grabstein lässt sich dort auch endgültig entfernen. Danach nimmt der Import das Event wieder auf, falls es noch in der YAML steht.
 
 ## Offene Punkte
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from collections.abc import Mapping, Sequence
@@ -358,10 +359,123 @@ def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) -> 
     if dependents:
         raise Conflict(f"Event wird von {', '.join(dependents)} ausgelöst. Zuerst dort den Verweis entfernen.")
 
+    # Copied before the event goes, so that the tombstone can bring it back (issue #34).
+    snapshot = _snapshot(conn, row["pk"])
+    evidence = conn.execute(
+        "SELECT file, type, description, mime, size, sha256, content FROM evidence WHERE event_pk = ? ORDER BY pk",
+        (row["pk"],),
+    ).fetchall()
     with conn:
         conn.execute("DELETE FROM events WHERE pk = ?", (row["pk"],))  # links and evidence cascade
-        conn.execute("INSERT OR REPLACE INTO deleted_events (key) VALUES (?)", (key,))
+        conn.execute("DELETE FROM deleted_evidence WHERE event_key = ?", (key,))
+        conn.execute(
+            """
+            INSERT INTO deleted_events (key, snapshot) VALUES (?, ?)
+            ON CONFLICT (key) DO UPDATE SET snapshot = excluded.snapshot,
+                deleted_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            """,
+            (key, snapshot),
+        )
+        conn.executemany(
+            "INSERT INTO deleted_evidence (event_key, file, type, description, mime, size, sha256, content) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(key, *item) for item in evidence],
+        )
     accounts.audit(conn, "event_deleted", user_id=actor_id, target=key, ip=ip)
+
+
+def _snapshot(conn: sqlite3.Connection, event_pk: int) -> str:
+    row = conn.execute(EVENT_SELECT + " WHERE events.pk = ?", (event_pk,)).fetchone()
+    event = {name: row[name] for name in row.keys() if name != "pk"}
+    event["topics"] = _topic_keys_of(conn, event_pk)
+    return json.dumps(event, ensure_ascii=False)
+
+
+# Tombstones (issue #34). A restored event is created again from its last version. Links to topics and
+# triggers that no longer exist are left out; the caller gets them back to show.
+
+def list_tombstones(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT key, deleted_at, snapshot,
+               (SELECT COUNT(*) FROM deleted_evidence WHERE deleted_evidence.event_key = deleted_events.key) AS evidence
+        FROM deleted_events ORDER BY deleted_at DESC, key
+        """
+    ).fetchall()
+    tombstones = []
+    for row in rows:
+        last = json.loads(row["snapshot"]) if row["snapshot"] else {}
+        tombstones.append({
+            "key": row["key"], "deleted_at": row["deleted_at"], "restorable": row["snapshot"] is not None,
+            "action": last.get("action"), "actor": last.get("actor"), "t0": last.get("t0"),
+            "home_topic": last.get("home_topic"), "evidence": row["evidence"],
+        })
+    return tombstones
+
+
+def restore_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) -> tuple[dict, list[str]]:
+    tombstone = conn.execute("SELECT snapshot FROM deleted_events WHERE key = ?", (key,)).fetchone()
+    if tombstone is None:
+        raise NotFound(f"Grabstein für {key!r} nicht gefunden")
+    if tombstone["snapshot"] is None:
+        raise Conflict(
+            "Für diesen Grabstein ist keine letzte Fassung gespeichert. Er lässt sich nur endgültig entfernen; "
+            "der nächste Import nimmt das Event dann wieder auf, wenn es in der YAML steht."
+        )
+    if _event_pk(conn, key) is not None:
+        raise Conflict(f"Event-Key {key!r} ist inzwischen vergeben")
+    last = json.loads(tombstone["snapshot"])
+
+    home = last["home_topic"]
+    if conn.execute("SELECT 1 FROM topics WHERE key = ?", (home,)).fetchone() is None:
+        raise Conflict(f"Das Heimat-Topic {home!r} existiert nicht mehr. Zuerst das Topic wieder anlegen.")
+
+    dropped: list[str] = []
+    topic_keys = [home]
+    for topic_key in last["topics"]:
+        if topic_key == home:
+            continue
+        if conn.execute("SELECT 1 FROM topics WHERE key = ?", (topic_key,)).fetchone():
+            topic_keys.append(topic_key)
+        else:
+            dropped.append(f"Topic {topic_key}")
+    triggered_by = last["triggered_by"]
+    if triggered_by is not None and _event_pk(conn, triggered_by) is None:
+        dropped.append(f"Auslöser {triggered_by}")
+        triggered_by = None
+
+    evidence = conn.execute(
+        "SELECT file, type, description, mime, size, sha256, content FROM deleted_evidence WHERE event_key = ? ORDER BY pk",
+        (key,),
+    ).fetchall()
+    with conn:
+        conn.execute("DELETE FROM deleted_events WHERE key = ?", (key,))  # the evidence copies go with it
+        cursor = conn.execute(
+            """
+            INSERT INTO events (key, t0, phase, actor, system, action, status, triggered_by, details,
+                                home_topic, source, version, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            """,
+            (key, last["t0"], last["phase"], last["actor"], last["system"], last["action"], last["status"],
+             triggered_by, last["details"], home, last["source"], last["version"] + 1),
+        )
+        _set_links(conn, cursor.lastrowid, topic_keys)
+        conn.executemany(
+            "INSERT INTO evidence (event_pk, file, type, description, mime, size, sha256, content) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(cursor.lastrowid, *item) for item in evidence],
+        )
+    accounts.audit(conn, "event_restored", user_id=actor_id, target=key, detail=", ".join(dropped) or None, ip=ip)
+    return get_event(conn, key), dropped
+
+
+def purge_tombstone(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) -> None:
+    """Removes the tombstone for good. The event can be imported again from the YAML, if it is still there."""
+    if conn.execute("SELECT 1 FROM deleted_events WHERE key = ?", (key,)).fetchone() is None:
+        raise NotFound(f"Grabstein für {key!r} nicht gefunden")
+    with conn:
+        conn.execute("DELETE FROM deleted_events WHERE key = ?", (key,))  # evidence copies cascade
+    accounts.audit(conn, "tombstone_purged", user_id=actor_id, target=key, ip=ip)
 
 
 def _set_links(conn: sqlite3.Connection, event_pk: int, topic_keys: list[str]) -> None:

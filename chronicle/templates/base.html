@@ -31,7 +31,7 @@
       {{ menu("menu-new", "Neu", [("/events/new", "Ereignis"), ("/topics/new", "Topic")], align_end=true) }}
       {% endif %}
       {% if user.role == 'admin' %}
-      {{ menu("menu-admin", "Verwaltung", [("/admin/users", "Benutzer"), ("/admin/audit", "Audit-Log")], align_end=true) }}
+      {{ menu("menu-admin", "Verwaltung", [("/admin/users", "Benutzer"), ("/admin/grabsteine", "Gelöschte Events"), ("/admin/audit", "Audit-Log")], align_end=true) }}
       {% endif %}
     </nav>
     <div class="flex items-center gap-4 text-sm">
