@@ -112,3 +112,23 @@ jobs:
         env:
           CHRONICLE_BROWSER_CHANNEL: chrome
         run: pytest -m browser -q
+
+  proxy:
+    name: TLS proxy check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Start the stack behind the proxy and check it
+        env:
+          KEEP: 1
+        run: ./scripts/check_proxy.sh
+
+      - name: Container logs
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.proxy.yml logs || true
+
+      - name: Remove the stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.proxy.yml down -v || true

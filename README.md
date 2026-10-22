@@ -240,7 +240,7 @@ Die Antworten sind JSON. Eine interaktive Beschreibung der API gibt es noch nich
 - Der letzte aktive Admin lässt sich nicht herabstufen oder deaktivieren.
 - Jeder Login, jeder Fehlversuch und jede Änderung an Konten oder Events landet im Audit-Log, ohne Inhalte.
 
-Der Compose-Stack hat noch kein TLS. Für einen Betrieb im Netzwerk braucht es einen Reverse Proxy mit HTTPS ([Issue #35](https://github.com/JoePhanDro/Chronicle-as-Code/issues/35)).
+Der Standard-Stack hat kein TLS und bindet nur auf `127.0.0.1`. Für einen Betrieb im Netzwerk gibt es einen Caddy-Proxy mit HTTPS, beschrieben in [docs/betrieb-tls.md](docs/betrieb-tls.md) ([Issue #35](https://github.com/JoePhanDro/Chronicle-as-Code/issues/35)).
 
 ## Projektstruktur
 
