@@ -51,8 +51,24 @@ def test_hostile_input_keeps_no_active_content(source):
     assert not re.search(r"<[^>]*\son[a-z]+\s*=", html), html
 
 
-def test_images_are_not_rendered():
-    assert "<img" not in render_markdown("![bild](https://evil.example/x.png)")
+def test_images_from_other_sources_show_only_their_alt_text():
+    html = render_markdown("![bild](https://evil.example/x.png) ![pfad](../../etc/passwd.png) ![fremd](file:///tmp/x.png)")
+
+    assert "<img" not in html
+    assert "bild" in html and "pfad" in html and "fremd" in html
+
+
+def test_evidence_images_resolve_to_the_event_files():
+    html = render_markdown("![Screenshot](evidence/siem-alert.png)", {"siem-alert.png": "/api/v1/evidence/7"})
+
+    assert '<img src="/api/v1/evidence/7" alt="Screenshot">' in html
+
+
+def test_mermaid_block_keeps_its_language_class_and_escaped_source():
+    html = render_markdown("```mermaid\nflowchart LR\n  A --> B\n```")
+
+    assert '<pre><code class="language-mermaid">' in html
+    assert "A --&gt; B" in html
 
 
 def test_links_get_noopener():
@@ -125,3 +141,67 @@ def test_dashboard_no_longer_loads_browser_markdown_libraries():
 
     assert "marked" not in html
     assert "dompurify" not in html.lower()
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+
+def test_event_page_shows_its_evidence_image_and_loads_the_diagram_script(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHRONICLE_COOKIE_SECURE", "0")
+    folder = tmp_path / "data"
+    (folder / "evidence").mkdir(parents=True)
+    (folder / "evidence" / "bild.png").write_bytes(PNG)
+    timeline = {
+        "topic": {"key": "bild-test", "title": "Bild-Test", "kind": "incident"},
+        "events": [{
+            "key": "bild-ereignis",
+            "t0": "2026-10-20T10:00:00+02:00",
+            "phase": "Identification",
+            "actor": "Tester",
+            "action": "Bild-Ereignis",
+            "status": "open",
+            "details": "![Beleg](evidence/bild.png)\n\n![fremd](https://evil.example/x.png)",
+            "evidence": [{"file": "evidence/bild.png", "type": "screenshot", "description": "Bild"}],
+        }],
+    }
+    (folder / "timeline.yaml").write_text(yaml.safe_dump(timeline, allow_unicode=True), encoding="utf-8")
+    db = tmp_path / "bild.db"
+    conn = connect(db)
+    accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
+    conn.close()
+    import_folder(db, folder)
+
+    client = TestClient(create_app(db))
+    client.post("/api/v1/auth/login", json={"username": "viewer", "password": PASSWORD})
+    page = client.get("/events/bild-ereignis").text
+    evidence_id = re.search(r'/api/v1/evidence/(\d+)"', page).group(1)
+
+    assert f'<img src="/api/v1/evidence/{evidence_id}" alt="Beleg">' in page
+    assert "https://evil.example" not in page
+    assert '/static/diagrams.js' in page
+    assert client.get("/static/diagrams.js").status_code == 200
+
+
+def test_dashboard_resolves_evidence_images_relative_to_the_report(tmp_path):
+    folder = tmp_path / "data"
+    (folder / "evidence").mkdir(parents=True)
+    (folder / "evidence" / "bild.png").write_bytes(PNG)
+    timeline = {
+        "topic": {"key": "bild-dash", "title": "Bild", "kind": "incident"},
+        "events": [{
+            "key": "bild-dash-ereignis",
+            "t0": "2026-10-20T10:00:00+02:00",
+            "phase": "Identification",
+            "actor": "Tester",
+            "action": "Bild",
+            "status": "open",
+            "details": "![Beleg](evidence/bild.png)",
+            "evidence": [{"file": "evidence/bild.png", "type": "screenshot", "description": "Bild"}],
+        }],
+    }
+    (folder / "timeline.yaml").write_text(yaml.safe_dump(timeline, allow_unicode=True), encoding="utf-8")
+
+    html = render_dashboard(load_timeline(folder / "timeline.yaml"))
+    payload = json.loads(re.search(r'<script id="payload" type="application/json">(.*?)</script>', html, re.S).group(1))
+
+    assert '<img src="evidence/bild.png" alt="Beleg">' in payload["events"][0]["details_html"]

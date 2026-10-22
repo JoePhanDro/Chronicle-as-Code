@@ -7,11 +7,12 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import get_args
 from collections.abc import Callable, Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile  # form uploads are Starlette objects
 
@@ -25,7 +26,13 @@ from .models import Phase, Status, Topic, TopicKind
 from .event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-TEMPLATES.env.filters["markdown"] = markdown_filter
+def _event_details(event: dict) -> Markup:
+    """Details of an event as HTML. Images resolve to the evidence files of this event only."""
+    images = {PurePosixPath(item["file"]).name: f"/api/v1/evidence/{item['id']}" for item in event.get("evidence", [])}
+    return markdown_filter(event.get("details"), images)
+
+
+TEMPLATES.env.filters["event_details"] = _event_details
 WRITER_ROLES = ("admin", "analyst")
 TOPIC_KINDS = list(get_args(TopicKind))
 HOURS = [f"{hour:02d}" for hour in range(24)]

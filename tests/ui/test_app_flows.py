@@ -69,3 +69,10 @@ def test_header_menu_closes_with_escape_and_returns_focus(login):
     page.keyboard.press("Escape")
     expect(page.locator("#menu-admin")).to_be_hidden()
     expect(trigger).to_be_focused()
+
+
+def test_event_page_draws_its_mermaid_diagram(login, app_url):
+    page = login("anna")
+    page.goto(f"{app_url}/events/exploit")
+
+    expect(page.locator(".mermaid-diagram svg")).to_be_visible(timeout=60_000)

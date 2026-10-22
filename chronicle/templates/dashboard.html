@@ -210,6 +210,7 @@
   </main>
 
   <script id="payload" type="application/json">{{ payload | tojson }}</script>
+  <script>{{ diagrams_js | safe }}</script>
   <script>
     const DATA = JSON.parse(document.getElementById('payload').textContent);
     const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg)$/i;
@@ -345,6 +346,7 @@
         const body = el('div', 'prose prose-invert mt-5 max-w-none rounded-2xl bg-slate-950/40 p-5 ring-1 ring-white/5 prose-a:text-sky-400');
         // Rendered and sanitized on the server (chronicle/markdown.py), the same as on the event page.
         body.innerHTML = ev.details_html;
+        window.renderDiagrams(body);
         body.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
         sections.push(body);
       }
