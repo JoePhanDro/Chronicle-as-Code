@@ -1,4 +1,4 @@
-"""Admin pages: accounts, password reset, login unlock and the audit log. Admins only.
+"""Admin pages: accounts, password reset, login unlock, deleted events and the audit log. Admins only.
 
 Every change calls the same functions as the API (chronicle.administration), so both paths follow the same rules.
 """
@@ -9,6 +9,7 @@ import secrets
 import sqlite3
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -31,6 +32,16 @@ def _render_users(request: Request, conn: sqlite3.Connection, user: dict, status
         request,
         "admin_users.html",
         {"user": user, "users": accounts.list_users(conn), "roles": ROLES, "errors": errors},
+        status_code=status_code,
+    )
+
+
+def _render_tombstones(request: Request, conn: sqlite3.Connection, user: dict, status_code: int = 200,
+                       errors: str | None = None, notice: str | None = None) -> Response:
+    return TEMPLATES.TemplateResponse(
+        request,
+        "admin_tombstones.html",
+        {"user": user, "tombstones": repository.list_tombstones(conn), "errors": errors, "notice": notice},
         status_code=status_code,
     )
 
@@ -127,6 +138,46 @@ def make_admin_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth
         except repository.RepositoryError as exc:
             return _render_users(request, conn, user, status_code=_error_status(exc), errors=str(exc))
         return RedirectResponse("/admin/users", status_code=303)
+
+    @router.get("/admin/grabsteine", response_class=HTMLResponse)
+    def tombstones_page(request: Request, notice: str = "", conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        user = auth.page_session(request, conn)
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        if user["role"] != "admin":
+            return _forbidden(request, user)
+        return _render_tombstones(request, conn, user, notice=notice or None)
+
+    @router.post("/admin/grabsteine/{key}/wiederherstellen", response_class=HTMLResponse)
+    async def restore_tombstone_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        user = auth.page_session(request, conn)
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] != "admin" or not ok_csrf(user, form.get("csrf_token")):
+            return _forbidden(request, user)
+        try:
+            _, dropped = repository.restore_event(conn, key, user["id"], client_ip(request))
+        except repository.RepositoryError as exc:
+            return _render_tombstones(request, conn, user, status_code=_error_status(exc), errors=str(exc))
+        notice = f"Event {key} wiederhergestellt."
+        if dropped:
+            notice += f" Nicht übernommen, weil es sie nicht mehr gibt: {', '.join(dropped)}."
+        return RedirectResponse("/admin/grabsteine?" + urlencode({"notice": notice}), status_code=303)
+
+    @router.post("/admin/grabsteine/{key}/entfernen", response_class=HTMLResponse)
+    async def purge_tombstone_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn)) -> Response:
+        user = auth.page_session(request, conn)
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] != "admin" or not ok_csrf(user, form.get("csrf_token")):
+            return _forbidden(request, user)
+        try:
+            repository.purge_tombstone(conn, key, user["id"], client_ip(request))
+        except repository.RepositoryError as exc:
+            return _render_tombstones(request, conn, user, status_code=_error_status(exc), errors=str(exc))
+        return RedirectResponse("/admin/grabsteine?" + urlencode({"notice": f"Grabstein {key} entfernt."}), status_code=303)
 
     @router.get("/admin/audit", response_class=HTMLResponse)
     def audit_page(

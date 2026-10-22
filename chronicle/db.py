@@ -33,9 +33,24 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 -- Tombstones: events deleted in the UI are not re-created by a later import.
+-- snapshot is the last version of the event as JSON (issue 34). It is NULL for tombstones from before that.
 CREATE TABLE IF NOT EXISTS deleted_events (
     key         TEXT PRIMARY KEY,
-    deleted_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    deleted_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    snapshot    TEXT
+);
+
+-- Copies of the evidence of a deleted event, so that restoring the event brings it back with its evidence.
+CREATE TABLE IF NOT EXISTS deleted_evidence (
+    pk           INTEGER PRIMARY KEY,
+    event_key    TEXT NOT NULL REFERENCES deleted_events(key) ON DELETE CASCADE,
+    file         TEXT NOT NULL,
+    type         TEXT NOT NULL,
+    description  TEXT NOT NULL DEFAULT '',
+    mime         TEXT,
+    size         INTEGER,
+    sha256       TEXT,
+    content      BLOB
 );
 
 CREATE TABLE IF NOT EXISTS topic_events (
@@ -250,5 +265,6 @@ def connect(path: str | Path) -> sqlite3.Connection:
     _ensure_column(conn, "evidence", "sha256", "TEXT")
     _ensure_column(conn, "evidence", "content", "BLOB")
     _ensure_column(conn, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "deleted_events", "snapshot", "TEXT")
     _ensure_search_index(conn)
     return conn
