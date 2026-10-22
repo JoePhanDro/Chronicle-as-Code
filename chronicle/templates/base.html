@@ -53,7 +53,7 @@
     <div class="flex items-center gap-4 text-sm">
       <button type="button" id="open-settings" aria-controls="settings-dialog" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white">Einstellungen</button>
       <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
-      <a href="/account/password" class="text-slate-400 hover:text-white">Passwort</a>
+      {% if not user.guest %}<a href="/account/password" class="text-slate-400 hover:text-white">Passwort</a>{% endif %}
       <form method="post" action="/logout">
         <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
         <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-slate-300 hover:border-sky-400/50 hover:text-white">Abmelden</button>
@@ -77,9 +77,32 @@
         <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">Schließen</button>
       </div>
     </form>
+
+    <section class="mt-6 border-t border-white/10 pt-6" aria-labelledby="lock-title">
+      <h3 id="lock-title" class="mb-2 text-sm font-medium text-slate-300">Sperre</h3>
+      <p class="mb-4 text-xs text-slate-500">
+        {% if user.reading_lock %}Die Ansicht ist gesperrt. Ohne Konto liest man sie nur nach Eingabe des Sperr-Passworts. Dieses Passwort gilt für alle.{% else %}Die Ansicht ist nicht gesperrt. Ohne Konto kann man sie nicht lesen.{% endif %}
+      </p>
+      {% if user.role == 'admin' %}
+      <form method="post" action="/admin/sperre" class="mb-3 space-y-2">
+        <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+        <label class="block text-xs text-slate-400">{{ 'Neues Sperr-Passwort (mind. 12 Zeichen)' if user.reading_lock else 'Sperr-Passwort (mind. 12 Zeichen)' }}
+          <input type="password" name="password" minlength="12" required autocomplete="new-password"
+                 class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-1.5 text-sm text-slate-100 outline-none focus:border-sky-400/60">
+        </label>
+        <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">{{ 'Passwort ändern' if user.reading_lock else 'Sperre einschalten' }}</button>
+      </form>
+      {% if user.reading_lock %}
+      <form method="post" action="/admin/sperre/aufheben">
+        <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+        <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-rose-300 hover:bg-white/5">Sperre aufheben</button>
+      </form>
+      {% endif %}
+      {% endif %}
+    </section>
   </dialog>
   <script>
-    // Settings: stored in this browser only. Nothing here affects access rights.
+    // Density is stored in this browser only. The lock in the dialog is a server setting, handled by the forms.
     (() => {
       const dialog = document.getElementById('settings-dialog');
       const radios = [...dialog.querySelectorAll('input[name=density]')];

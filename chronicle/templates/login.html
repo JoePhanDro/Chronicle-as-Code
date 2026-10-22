@@ -40,6 +40,25 @@
           Anmelden
         </button>
       </form>
+
+      {% if lock_enabled %}
+      <div class="mt-8 border-t border-white/10 pt-6">
+        <h2 class="text-sm font-semibold text-slate-200">Ansicht entsperren</h2>
+        <p class="mb-4 mt-1 text-xs text-slate-500">Ohne Konto lesen Sie nach Eingabe des Sperr-Passworts.</p>
+        <form method="post" action="/login/entsperren" class="space-y-4">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label class="block">
+            <span class="mb-1 block text-xs font-medium text-slate-400">Sperr-Passwort</span>
+            <input name="password" type="password" autocomplete="off" required
+                   class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+          </label>
+          <button type="submit"
+                  class="w-full rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/5">
+            Entsperren
+          </button>
+        </form>
+      </div>
+      {% endif %}
     </div>
   </main>
 </body>
