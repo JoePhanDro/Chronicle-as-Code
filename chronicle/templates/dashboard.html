@@ -155,6 +155,8 @@
     {% endfor %}
   </div>
 
+  <div id="filters" class="glass flex flex-wrap items-center gap-x-4 gap-y-2 border-x-0 border-t-0 px-5 py-2 text-xs"></div>
+
   <main class="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-5">
     <article id="details" class="glass p-5 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto" style="border-width: 0 1px 0 0"></article>
 
@@ -180,10 +182,10 @@
         </div>
 
         <div class="glass absolute bottom-4 left-4 z-10 flex flex-wrap gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-slate-300">
-          <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-sky-400"></span>Akteur</span>
-          <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-violet-400"></span>System</span>
-          <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-rose-400"></span>Event (Phase-Farbe)</span>
-          <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-slate-400"></span>Evidence</span>
+          <label class="inline-flex cursor-pointer items-center gap-1.5"><input type="checkbox" data-kind="actor" checked class="accent-sky-400"><span class="h-2 w-2 rounded-full bg-sky-400"></span>Akteur</label>
+          <label class="inline-flex cursor-pointer items-center gap-1.5"><input type="checkbox" data-kind="system" checked class="accent-violet-400"><span class="h-2 w-2 rounded-full bg-violet-400"></span>System</label>
+          <label class="inline-flex cursor-pointer items-center gap-1.5"><input type="checkbox" data-kind="event" checked class="accent-rose-400"><span class="h-2 w-2 rounded-full bg-rose-400"></span>Event (Phase-Farbe)</label>
+          <label class="inline-flex cursor-pointer items-center gap-1.5"><input type="checkbox" data-kind="evidence" checked class="accent-slate-400"><span class="h-2 w-2 rounded-full bg-slate-400"></span>Evidence</label>
           <span class="inline-flex items-center gap-1.5"><span class="h-px w-4 bg-orange-400"></span>löst aus</span>
         </div>
       </section>
@@ -197,6 +199,7 @@
   <script>{{ diagrams_js | safe }}</script>
   <script>
     const DATA = JSON.parse(document.getElementById('payload').textContent);
+    const PHASE_ORDER = {{ phases | map(attribute='name') | list | tojson }};
     const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg)$/i;
     const EDGE_DEFAULT = 'rgba(148, 163, 184, .38)';
     const EDGE_DIM = 'rgba(148, 163, 184, .07)';
@@ -366,7 +369,7 @@
       currentId = id;
       const ev = eventsById.get(id);
       renderDetails(ev);
-      timeline.setSelection(id);
+      timeline.setSelection(timelineItems.get(id) ? id : []); // a filtered-out event has no item
       network.selectNodes([`event:${id}`]);
       highlightNeighborhood(`event:${id}`);
       if (focusGraph && currentView === 'graph' && graphEl.clientWidth) network.focus(`event:${id}`, { scale: 1.1, animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
@@ -407,18 +410,13 @@
       return el('span', 'ch-lane', [name, el('span', 'ch-count', String(count))]);
     }
 
-    const timelineGroups = new vis.DataSet(lanes.map(name => ({
-      id: name,
-      content: laneLabel(name, DATA.events.filter(ev => ev.actor === name).length),
-    })));
-    const timelineItems = new vis.DataSet(DATA.events.map(ev => ({
-      id: ev.id,
-      group: ev.actor,
-      start: ev.t0,
-      content: '',
-      className: 'ch-item',
-      style: `--c: ${ev.color}`,
-    })));
+    function timelineItem(ev) {
+      return { id: ev.id, group: ev.actor, start: ev.t0, content: '', className: 'ch-item', style: `--c: ${ev.color}` };
+    }
+
+    // Filled by applyFilters, which runs once the views exist.
+    const timelineGroups = new vis.DataSet();
+    const timelineItems = new vis.DataSet();
     const timeline = new vis.Timeline(document.getElementById('timeline'), timelineItems, timelineGroups, {
       stack: true,
       height: '100%',
@@ -608,6 +606,8 @@
     }
 
     // Evidence gallery: every evidence item, a click selects its event.
+    const galleryCards = [];
+    const galleryEmpty = el('p', 'text-sm text-slate-500');
     function renderEvidenceGallery() {
       const cards = DATA.events.flatMap(ev => ev.evidence.map(item => {
         let preview;
@@ -627,12 +627,10 @@
           ]),
         ]);
         card.addEventListener('click', () => selectEvent(ev.id));
+        galleryCards.push({ id: ev.id, card });
         return card;
       }));
-      const content = cards.length
-        ? el('div', 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3', cards)
-        : el('p', 'text-sm text-slate-500', 'Keine Evidence vorhanden.');
-      document.getElementById('panel-evidence').replaceChildren(content);
+      document.getElementById('panel-evidence').replaceChildren(el('div', 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3', cards), galleryEmpty);
     }
 
     // Toolbar
@@ -644,9 +642,117 @@
       network.setOptions({ physics: { enabled: physicsOn } });
     });
 
+    // Filters, shared by all views. An empty value means "all". The node kinds only apply to the graph.
+    const FILTERS = { actor: '', system: '', phase: '', status: '' };
+    const NODE_KINDS = ['actor', 'system', 'event', 'evidence'];
+    const shownKinds = new Set(NODE_KINDS);
+    const filtersEl = document.getElementById('filters');
+    const filterCount = el('span', 'text-slate-400');
+
+    function eventVisible(ev) {
+      return (!FILTERS.actor || ev.actor === FILTERS.actor)
+        && (!FILTERS.system || ev.system === FILTERS.system)
+        && (!FILTERS.phase || ev.phase === FILTERS.phase)
+        && (!FILTERS.status || ev.status === FILTERS.status);
+    }
+
+    function filterSelect(field, label, values, format = value => value) {
+      const select = el('select', 'rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1 text-xs text-slate-100');
+      select.append(new Option('alle', ''));
+      for (const value of values) select.append(new Option(format(value), value));
+      select.addEventListener('change', () => {
+        FILTERS[field] = select.value;
+        applyFilters();
+      });
+      return el('label', 'flex items-center gap-2 text-slate-400', [label, select]);
+    }
+
+    function buildFilters() {
+      const fields = [filterSelect('actor', 'Akteur', lanes)];
+      if (systems.size) fields.push(filterSelect('system', 'System', [...systems]));
+      const phases = PHASE_ORDER.filter(name => DATA.events.some(ev => ev.phase === name));
+      fields.push(filterSelect('phase', 'Phase', phases));
+      const statuses = ['open', 'in_progress', 'resolved'].filter(name => DATA.events.some(ev => ev.status === name));
+      fields.push(filterSelect('status', 'Status', statuses, status => status.replace('_', ' ')));
+
+      const reset = el('button', 'btn', 'Filter zurücksetzen');
+      reset.type = 'button';
+      reset.addEventListener('click', () => {
+        for (const field of Object.keys(FILTERS)) FILTERS[field] = '';
+        filtersEl.querySelectorAll('select').forEach(select => { select.value = ''; });
+        shownKinds.clear();
+        NODE_KINDS.forEach(kind => shownKinds.add(kind));
+        document.querySelectorAll('#panel-graph input[data-kind]').forEach(box => { box.checked = true; });
+        applyFilters();
+      });
+      filtersEl.replaceChildren(...fields, filterCount, reset);
+    }
+
+    function applyTimelineFilter(visible) {
+      const shown = DATA.events.filter(ev => visible.has(ev.id));
+      const groups = lanes
+        .map(name => ({ name, count: shown.filter(ev => ev.actor === name).length }))
+        .filter(lane => lane.count > 0)
+        .map(lane => ({ id: lane.name, content: laneLabel(lane.name, lane.count) }));
+      timelineGroups.clear();
+      timelineGroups.add(groups);
+      timelineItems.clear();
+      timelineItems.add(shown.map(timelineItem));
+      if (currentId && visible.has(currentId)) timeline.setSelection(currentId);
+    }
+
+    function applyGraphFilter(visible) {
+      const actors = new Set();
+      const systemsShown = new Set();
+      for (const ev of DATA.events) {
+        if (!visible.has(ev.id)) continue;
+        actors.add(ev.actor);
+        if (ev.system) systemsShown.add(ev.system);
+      }
+      const shown = new Map(DATA.nodes.map(node => {
+        const kind = node.id.split(':')[0];
+        let matches;
+        if (kind === 'event' || kind === 'evidence') matches = visible.has(node.event_id);
+        else if (kind === 'actor') matches = actors.has(node.label);
+        else matches = systemsShown.has(node.label);
+        return [node.id, shownKinds.has(kind) && matches];
+      }));
+      graphNodes.update([...shown].map(([id, ok]) => ({ id, hidden: !ok })));
+      graphEdges.update(graphEdges.getIds().map(id => {
+        const edge = graphEdges.get(id);
+        return { id, hidden: !(shown.get(edge.from) && shown.get(edge.to)) };
+      }));
+      if (graphEl.clientWidth) network.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
+    }
+
+    // Every view applies the same filters. The selected event stays in the details pane, even when filtered out.
+    function applyFilters() {
+      const visible = new Set(DATA.events.filter(eventVisible).map(ev => ev.id));
+      applyTimelineFilter(visible);
+      applyGraphFilter(visible);
+      rowsById.forEach((row, id) => { row.hidden = !visible.has(id); });
+      galleryCards.forEach(({ id, card }) => { card.hidden = !visible.has(id); });
+      const shownCards = galleryCards.filter(({ id }) => visible.has(id)).length;
+      galleryEmpty.textContent = galleryCards.length ? 'Keine Evidence passt zu den Filtern.' : 'Keine Evidence vorhanden.';
+      galleryEmpty.hidden = shownCards > 0;
+      filterCount.textContent = visible.size === DATA.events.length
+        ? `${DATA.events.length} Events`
+        : `${visible.size} von ${DATA.events.length} Events`;
+    }
+
+    document.querySelectorAll('#panel-graph input[data-kind]').forEach(box => {
+      box.addEventListener('change', () => {
+        if (box.checked) shownKinds.add(box.dataset.kind);
+        else shownKinds.delete(box.dataset.kind);
+        applyFilters();
+      });
+    });
+
     // Initial state: the view and event from the URL, or the empty state.
     renderEventTable();
     renderEvidenceGallery();
+    buildFilters();
+    applyFilters();
     renderEmpty();
     const { view, id } = parseHash();
     showView(view);
