@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .check import check_folder
 from .loader import find_topic_files
+from .schema import schema_text
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,10 +26,13 @@ def main(argv: list[str] | None = None) -> int:
         help="do not require the attachments to exist (for CI, where they are not in git)",
     )
 
+    commands.add_parser("schema", help="print the JSON Schema of a topic file")
+
     args = parser.parse_args(argv)
     if args.command == "check":
         return _check(args.data, evidence=not args.ohne_anhaenge)
-    return 2  # unreachable: argparse requires a command
+    print(schema_text(), end="")
+    return 0
 
 
 def _check(data: Path, *, evidence: bool) -> int:

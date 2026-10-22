@@ -19,9 +19,10 @@ import yaml
 from . import repository
 from .db import connect
 from .evidence import display_name
+from .schema import SCHEMA_URL
 
 EVIDENCE_DIR = "evidence"
-HEADER = "# Exportiert aus Chronicle. Evidence liegt daneben unter evidence/.\n"
+HEADER = f"# yaml-language-server: $schema={SCHEMA_URL}\n# Exportiert aus Chronicle. Evidence liegt daneben unter evidence/.\n"
 
 
 class ExportError(Exception):
