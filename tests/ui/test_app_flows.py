@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from playwright.sync_api import expect
 
@@ -76,3 +78,45 @@ def test_event_page_draws_its_mermaid_diagram(login, app_url):
     page.goto(f"{app_url}/events/exploit")
 
     expect(page.locator(".mermaid-diagram svg")).to_be_visible(timeout=60_000)
+
+
+def test_header_search_finds_events(login):
+    page = login("viewer")
+
+    page.get_by_label("Ereignisse durchsuchen").fill("Ungewöhnliche")
+    page.get_by_role("button", name="Suchen").click()
+
+    expect(page).to_have_url(re.compile(r"/events\?q=Ungew"))
+    expect(page.locator("tbody tr")).to_have_count(1)
+    expect(page.locator("tbody")).to_contain_text("Ungewöhnliche Requests auf /api/upload")
+
+
+def test_settings_dialog_closes_with_escape_and_returns_focus(login):
+    page = login("anna")
+    trigger = page.get_by_role("button", name="Einstellungen")
+
+    trigger.click()
+    expect(page.locator("#settings-dialog")).to_be_visible()
+    page.keyboard.press("Escape")
+
+    expect(page.locator("#settings-dialog")).to_be_hidden()
+    expect(trigger).to_be_focused()
+
+
+def test_density_setting_is_saved_and_applied_after_reload(login, app_url):
+    page = login("anna")
+    page.goto(f"{app_url}/events")
+    cell = page.locator("tbody td").first
+    normal_padding = cell.evaluate("el => getComputedStyle(el).paddingTop")
+
+    page.get_by_role("button", name="Einstellungen").click()
+    dialog = page.locator("#settings-dialog")
+    dialog.get_by_label("kompakt").check()
+
+    expect(page.locator("html")).to_have_attribute("data-density", "compact")
+    assert cell.evaluate("el => getComputedStyle(el).paddingTop") != normal_padding
+
+    page.reload()
+    expect(page.locator("html")).to_have_attribute("data-density", "compact")
+    page.get_by_role("button", name="Einstellungen").click()
+    expect(dialog.get_by_label("kompakt")).to_be_checked()
