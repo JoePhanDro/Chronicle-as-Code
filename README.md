@@ -127,6 +127,17 @@ refs:                                # optional: Events, die in einer anderen Da
 - **Evidence** wird beim Import geprüft und in der Datenbank gespeichert. Erlaubt sind PNG, JPEG, GIF, WebP, PDF und UTF-8-Text (`.txt`, `.log`), höchstens 10 MiB je Datei. Endung und Inhalt müssen zusammenpassen. SVG und HTML sind nicht erlaubt, weil Browser darin Skripte ausführen ([ADR 0004](docs/adr/0004-evidence-storage.md)).
 - **Farben** folgen der Phase: rot für Identification und Exploit, gelb für Analysis, orange für Containment, grün für Mitigation und Recovery, blau für Lessons Learned.
 
+### Prüfen ohne Server
+
+`chronicle check` prüft einen Ordner mit Topic-Dateien. Es braucht weder Datenbank noch Server und schreibt nichts. Es meldet alle Probleme auf einmal: Schema, doppelte Topic- und Event-Keys, Verweise, Kreise in `triggered_by` und fehlende Anhänge.
+
+```bash
+python -m chronicle check data                  # alles prüfen, inklusive Anhänge
+python -m chronicle check data --ohne-anhaenge  # ohne Anhänge, z. B. in der CI
+```
+
+Die Regeln stehen in [docs/notation.md](docs/notation.md). Der Import prüft dieselben Regeln, bevor er schreibt.
+
 ## Datenhaltung und Bearbeitung
 
 Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):

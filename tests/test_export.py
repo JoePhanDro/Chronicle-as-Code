@@ -10,6 +10,7 @@ from chronicle.db import connect
 from chronicle.evidence import check_file
 from chronicle.exporter import ExportError, export_database, main as export_main
 from chronicle.importer import import_folder
+from chronicle.loader import CheckFailed
 from chronicle.models import Event
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -143,28 +144,31 @@ def test_export_cli_reports_the_counts(source_db, tmp_path, capsys):
     assert "2 Topics, 9 Events, 3 Evidence-Dateien" in capsys.readouterr().out
 
 
-def test_topic_files_may_refer_to_each_other_in_both_directions(tmp_path):
+def test_topic_files_may_refer_to_each_other_without_a_cycle(tmp_path):
+    # a1 is defined in a.yaml and referenced from b.yaml via refs; b1 is defined in b.yaml and triggered by a1.
+    # Cycles in triggered_by are rejected (docs/notation.md, section 5c), so a1 must not be triggered by b1 here.
     folder = tmp_path / "data"
     folder.mkdir()
     (folder / "a.yaml").write_text(
         yaml.safe_dump({"topic": {"key": "a", "title": "A"},
                         "events": [{"key": "a1", "t0": "2026-10-14T08:00:00+02:00", "phase": "Analysis",
-                                    "actor": "X", "action": "a1", "status": "open", "triggered_by": "b1"}]}),
+                                    "actor": "X", "action": "a1", "status": "open"}]}),
         encoding="utf-8",
     )
     (folder / "b.yaml").write_text(
         yaml.safe_dump({"topic": {"key": "b", "title": "B"},
                         "events": [{"key": "b1", "t0": "2026-10-14T09:00:00+02:00", "phase": "Analysis",
-                                    "actor": "X", "action": "b1", "status": "open", "triggered_by": "a1"}]}),
+                                    "actor": "X", "action": "b1", "status": "open", "triggered_by": "a1"}],
+                        "refs": ["a1"]}),
         encoding="utf-8",
     )
-    db = tmp_path / "cycle.db"
+    db = tmp_path / "links.db"
 
     reports = import_folder(db, folder)
 
     assert sorted(report.topic for report in reports) == ["a", "b"]
     conn = connect(db)
-    assert repository.get_event(conn, "a1")["triggered_by"] == "b1"
+    assert repository.get_event(conn, "b1")["triggered_by"] == "a1"
     conn.close()
 
 
@@ -180,7 +184,7 @@ def test_the_same_event_key_in_two_topic_files_is_rejected(tmp_path):
         )
     db = tmp_path / "dup.db"
 
-    with pytest.raises(ValueError, match="dup"):
+    with pytest.raises(CheckFailed, match="dup"):
         import_folder(db, folder)
     conn = connect(db)
     assert repository.list_topics(conn) == []
