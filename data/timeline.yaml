@@ -1,5 +1,6 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/JoePhanDro/Chronicle-as-Code/main/schema/timeline.schema.json
 # Beispiel-Timeline. Zeitstempel brauchen eine Zeitzonen-Angabe (z.B. +02:00 oder Z).
-# Evidence-Pfade sind relativ zu dieser Datei.
+# Evidence-Pfade sind relativ zum Datenordner.
 topic:
   key: inc-2026-042
   title: "INC-2026-042: Ausnutzung von CVE-2026-XXXX"

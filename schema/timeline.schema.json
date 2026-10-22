@@ -1,0 +1,205 @@
+{
+  "$defs": {
+    "Event": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "Stable, globally unique key. Re-importing the same key updates the event.",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "t0": {
+          "description": "ISO 8601 timestamp with timezone offset",
+          "format": "date-time",
+          "title": "T0",
+          "type": "string"
+        },
+        "phase": {
+          "$ref": "#/$defs/Phase"
+        },
+        "actor": {
+          "minLength": 1,
+          "title": "Actor",
+          "type": "string"
+        },
+        "system": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System"
+        },
+        "action": {
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/Status"
+        },
+        "triggered_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key of the event that caused this event",
+          "title": "Triggered By"
+        },
+        "details": {
+          "default": "",
+          "description": "Markdown body shown in the detail view",
+          "title": "Details",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "t0",
+        "phase",
+        "actor",
+        "action",
+        "status"
+      ],
+      "title": "Event",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "description": "Path relative to the timeline.yaml folder",
+          "minLength": 1,
+          "title": "File",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "screenshot",
+            "log",
+            "report",
+            "other"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "type"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Phase": {
+      "enum": [
+        "Identification",
+        "Exploit",
+        "Analysis",
+        "Containment",
+        "Mitigation",
+        "Recovery",
+        "Lessons Learned",
+        "Activity"
+      ],
+      "title": "Phase",
+      "type": "string"
+    },
+    "Status": {
+      "enum": [
+        "open",
+        "in_progress",
+        "resolved"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "Topic": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "kind": {
+          "default": "other",
+          "enum": [
+            "incident",
+            "vulnerability",
+            "project",
+            "special",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "title"
+      ],
+      "title": "Topic",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One topic file: the topic, the events it defines and references to events defined elsewhere.",
+  "properties": {
+    "topic": {
+      "$ref": "#/$defs/Topic"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/Event"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "refs": {
+      "description": "Keys of events defined in other topic files",
+      "items": {
+        "type": "string"
+      },
+      "title": "Refs",
+      "type": "array"
+    }
+  },
+  "required": [
+    "topic"
+  ],
+  "title": "Timeline",
+  "type": "object"
+}

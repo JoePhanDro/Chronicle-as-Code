@@ -138,6 +138,8 @@ python -m chronicle check data --ohne-anhaenge  # ohne Anhänge, z. B. in der CI
 
 Die Regeln stehen in [docs/notation.md](docs/notation.md). Der Import prüft dieselben Regeln, bevor er schreibt.
 
+Editoren mit YAML-Unterstützung (z. B. VS Code mit der Erweiterung „YAML“) prüfen und ergänzen die Felder anhand des JSON Schemas. Exportierte Dateien und der Beispieldatensatz enthalten den Verweis bereits. `python -m chronicle schema` gibt das Schema aus, die Kopie im Repo liegt unter [schema/timeline.schema.json](schema/timeline.schema.json).
+
 ## Datenhaltung und Bearbeitung
 
 Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
