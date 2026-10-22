@@ -29,8 +29,15 @@ Die Analogie ist Terraform: Die CLI ist die Wahrheit, die Anwendung ist eine Sic
 - Fachlogik lässt sich ohne Server testen.
 - Ein späterer Befehl `chronicle draft` (LLM-Entwürfe) würde Vorschläge erzeugen, die `check` prüft. Er ist nicht Teil dieser Entscheidung.
 
+## Anhänge
+
+Entschieden: Anhänge liegen vorerst außerhalb von Git, im Sync-Ordner (ADR 0008, Punkt 6). Git LFS wird neu bewertet, sobald eine zweite Person mitarbeitet.
+
+Begründung: Git LFS ist kostenlos, der Hoster rechnet aber ab. Bei GitHub sind im Free- und Pro-Tarif 10 GiB Speicher und 10 GiB Bandbreite pro Monat enthalten, danach kostet GiB Speicher 0,07 $ und GiB Bandbreite 0,0875 $ ([GitHub-Dokumentation zur LFS-Abrechnung](https://docs.github.com/en/billing/using-the-new-billing-platform/about-billing-for-git-large-file-storage)). Das Risiko ist die Bandbreite: Jeder frische Klon lädt alle Anhänge. Außerdem bliebe jede Version eines Anhangs dauerhaft in der Historie. Stand: 2026-10-22.
+
+Folge: Die CI kann Evidence-Dateien nicht prüfen, weil sie nicht im Repository liegen. Die Prüfung braucht deshalb eine Option, die Anhänge nicht verlangt. Die CI prüft dann die YAML-Struktur, die Verweise und das Format der Prüfsummen. Ob ein Anhang existiert und zu seiner Prüfsumme passt, prüft die lokale Prüfung.
+
 ## Offen
 
-- **Git LFS für Anhänge oder Sync-Ordner (ADR 0008, Punkt 6).** Git LFS ist kostenlos, der Hoster rechnet ab. Bei GitHub sind im Free- und Pro-Tarif 10 GiB Speicher und 10 GiB Bandbreite pro Monat enthalten, danach kostet GiB Speicher 0,07 $ und GiB Bandbreite 0,0875 $ ([GitHub-Dokumentation zur LFS-Abrechnung](https://docs.github.com/en/billing/using-the-new-billing-platform/about-billing-for-git-large-file-storage)). Das Risiko ist die Bandbreite: Jeder frische Klon lädt alle Anhänge. Die CI lädt keine LFS-Objekte, die Prüfsumme liest sie aus dem Pointer. Stand: 2026-10-22, bitte in der Abrechnung des Accounts prüfen.
 - **Merge-Treiber auf Feldebene:** Welche Felder einzeln zusammengeführt werden.
 - **Oberfläche:** htmx oder das bestehende JavaScript.
