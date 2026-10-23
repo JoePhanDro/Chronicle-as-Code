@@ -452,7 +452,8 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         try:
-            repository.link_event(conn, key, (form.get("event") or "").strip(), user["id"], client_ip(request))
+            repository.link_event(conn, key, (form.get("event") or "").strip(), user["id"], client_ip(request),
+                                  data_dir=request.app.state.data_dir)
         except repository.RepositoryError as exc:
             status = 404 if isinstance(exc, repository.NotFound) else 422
             return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
@@ -466,7 +467,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         try:
-            repository.unlink_event(conn, key, event_key, user["id"], client_ip(request))
+            repository.unlink_event(conn, key, event_key, user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except repository.RepositoryError as exc:
             status = 404 if isinstance(exc, repository.NotFound) else 422
             return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))

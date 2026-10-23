@@ -1177,24 +1177,41 @@ def delete_topic(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, dat
     accounts.audit(conn, "topic_deleted", user_id=actor_id, target=key, ip=ip)
 
 
-def link_event(conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str) -> None:
-    topic_pk = _topic_pk(conn, topic_key)
-    event_pk = _event_pk(conn, event_key)
-    if event_pk is None:
-        raise NotFound(f"Event {event_key!r} nicht gefunden")
-    with conn:
-        conn.execute("INSERT OR IGNORE INTO topic_events (topic_pk, event_pk) VALUES (?, ?)", (topic_pk, event_pk))
+def link_event(
+    conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str, data_dir: Path | None = None
+) -> None:
+    """Link an event to another topic. With data_dir the link is a refs line in that topic's file (ADR 0008)."""
+    if data_dir is not None:
+        with _all_or_nothing(data_dir):
+            if _event_pk(conn, event_key) is None:
+                raise NotFound(f"Event {event_key!r} nicht gefunden")
+            _change_link(conn, event_key, topic_key, present=True, data_dir=data_dir)
+            reindex(conn, data_dir)
+    else:
+        topic_pk = _topic_pk(conn, topic_key)
+        event_pk = _event_pk(conn, event_key)
+        if event_pk is None:
+            raise NotFound(f"Event {event_key!r} nicht gefunden")
+        with conn:
+            conn.execute("INSERT OR IGNORE INTO topic_events (topic_pk, event_pk) VALUES (?, ?)", (topic_pk, event_pk))
     accounts.audit(conn, "topic_linked", user_id=actor_id, target=topic_key, detail=event_key, ip=ip)
 
 
-def unlink_event(conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str) -> None:
-    topic_pk = _topic_pk(conn, topic_key)
+def unlink_event(
+    conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str, data_dir: Path | None = None
+) -> None:
     row = conn.execute("SELECT pk, home_topic FROM events WHERE key = ?", (event_key,)).fetchone()
     if row is None:
         raise NotFound(f"Event {event_key!r} nicht gefunden")
     if row["home_topic"] == topic_key:
         raise Invalid("Das Heimat-Topic eines Events kann nicht entfernt werden")
-    with conn:
-        conn.execute("DELETE FROM topic_events WHERE topic_pk = ? AND event_pk = ?", (topic_pk, row["pk"]))
+    if data_dir is not None:
+        with _all_or_nothing(data_dir):
+            _change_link(conn, event_key, topic_key, present=False, data_dir=data_dir)
+            reindex(conn, data_dir)
+    else:
+        topic_pk = _topic_pk(conn, topic_key)
+        with conn:
+            conn.execute("DELETE FROM topic_events WHERE topic_pk = ? AND event_pk = ?", (topic_pk, row["pk"]))
     accounts.audit(conn, "topic_unlinked", user_id=actor_id, target=topic_key, detail=event_key, ip=ip)
 
