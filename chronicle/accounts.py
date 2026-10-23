@@ -88,6 +88,21 @@ def count_users(conn: sqlite3.Connection) -> int:
     return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
 
 
+# Guessing the first-start code: counted in the same table, under one key, because no account exists yet.
+MAX_SETUP_FAILURES = 10
+SETUP_FAILURE_KEY = "setup"
+
+
+def setup_blocked(conn: sqlite3.Connection) -> bool:
+    return _count_since(conn, SETUP_FAILURE_KEY, now() - FAILURE_WINDOW_SECONDS) >= MAX_SETUP_FAILURES
+
+
+def record_setup_failure(conn: sqlite3.Connection, ip: str) -> None:
+    with conn:
+        conn.execute("INSERT INTO login_failures (key, ts) VALUES (?, ?)", (SETUP_FAILURE_KEY, now()))
+    audit(conn, "setup_failed", ip=ip)
+
+
 def create_first_admin(conn: sqlite3.Connection, username: str, password_hash: str) -> int | None:
     """Create the first account, as admin. Returns None if an account exists; the check and the insert share one transaction."""
     validate_username(username)
