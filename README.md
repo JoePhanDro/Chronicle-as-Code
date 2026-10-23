@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="chronicle/static/icon.png" width="128" alt="Chronicle-Logo">
+</p>
+
 # Chronicle
 
 Chronicle organisiert Sicherheitswissen: **Events** (Ereignisse mit Zeitpunkt, Akteur, System und Belegen) gehören zu **Topics** (Incidents, Schwachstellen, Projekte, besondere Ereignisse). Daraus entstehen Timeline, Entitäten-Graph und Detailansicht.
