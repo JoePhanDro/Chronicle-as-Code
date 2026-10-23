@@ -6,7 +6,8 @@ import hashlib
 import json
 import re
 import sqlite3
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -14,7 +15,7 @@ from pathlib import Path
 from . import accounts
 from .check import load_named_folder
 from .evidence import EVIDENCE_TYPES, MAX_DESCRIPTION_LENGTH, Blob
-from .loader import TimelineError
+from .loader import TOPIC_FILE_PATTERNS, TimelineError
 from .models import Event, Timeline, Topic
 from .store import (
     EventNotInFile,
@@ -26,6 +27,7 @@ from .store import (
     file_version,
     remove_event_from_file,
     remove_evidence_from_file,
+    restore_file,
     set_ref_in_file,
     update_event_in_file,
     update_topic_in_file,
@@ -324,26 +326,27 @@ def _update_in_folder(
     actor_id: int, ip: str, changed: list[str],
 ) -> dict:
     """The event's fields go to its home file, the links to the files of the other topics. Then the index follows."""
-    if [name for name in changed if name != "topics"]:
-        located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
-        if located is None:
-            raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
-        try:
-            update_event_in_file(data_dir / located["path"], key, event,
-                                 expected_version=_recorded_version(conn, located["path"]))
-        except VersionConflict as exc:
-            raise Conflict(
-                f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                f"Die Änderung wurde nicht gespeichert ({exc})."
-            ) from exc
-        except (EventNotInFile, StoreError) as exc:
-            raise Invalid(str(exc)) from exc
-    if "topics" in changed:
-        home = conn.execute("SELECT home_topic FROM events WHERE key = ?", (key,)).fetchone()["home_topic"]
-        linked = set(_linked_elsewhere(conn, key))
-        wanted = set(topic_keys) - {home}
-        _change_links(conn, key, add=wanted - linked, remove=linked - wanted, data_dir=data_dir)
-    reindex(conn, data_dir)
+    with _all_or_nothing(data_dir):
+        if [name for name in changed if name != "topics"]:
+            located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
+            if located is None:
+                raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+            try:
+                update_event_in_file(data_dir / located["path"], key, event,
+                                     expected_version=_recorded_version(conn, located["path"]))
+            except VersionConflict as exc:
+                raise Conflict(
+                    f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                    f"Die Änderung wurde nicht gespeichert ({exc})."
+                ) from exc
+            except (EventNotInFile, StoreError) as exc:
+                raise Invalid(str(exc)) from exc
+        if "topics" in changed:
+            home = conn.execute("SELECT home_topic FROM events WHERE key = ?", (key,)).fetchone()["home_topic"]
+            linked = set(_linked_elsewhere(conn, key))
+            wanted = set(topic_keys) - {home}
+            _change_links(conn, key, add=wanted - linked, remove=linked - wanted, data_dir=data_dir)
+        reindex(conn, data_dir)
     accounts.audit(conn, "event_updated", user_id=actor_id, target=key, detail=",".join(changed), ip=ip)
     return get_event(conn, key)
 
@@ -451,6 +454,40 @@ def _recorded_version(conn: sqlite3.Connection, path: str) -> str:
     return row["sha256"]
 
 
+@contextmanager
+def _all_or_nothing(data_dir: Path) -> Iterator[list[Path]]:
+    """Run a change of the data folder as one step: the files are written, the index follows (ADR 0008).
+
+    If anything fails, the topic files go back to how they were read and the files the block created are removed.
+    The yielded list collects those created files. An index that refuses the folder is reported as Invalid.
+    """
+    before = {path: path.read_bytes() for pattern in TOPIC_FILE_PATTERNS for path in data_dir.rglob(pattern)}
+    created: list[Path] = []
+    try:
+        yield created
+    except StoreError as exc:
+        _restore_folder(data_dir, before, created)
+        raise Invalid(str(exc)) from exc
+    except TimelineError as exc:
+        _restore_folder(data_dir, before, created)
+        raise Invalid(f"Nichts wurde geändert, weil der Datenordner nicht gültig ist:\n{exc}") from exc
+    except BaseException:
+        _restore_folder(data_dir, before, created)
+        raise
+
+
+def _restore_folder(data_dir: Path, before: Mapping[Path, bytes], created: Sequence[Path]) -> None:
+    for path in created:
+        path.unlink(missing_ok=True)
+    for pattern in TOPIC_FILE_PATTERNS:
+        for path in data_dir.rglob(pattern):
+            if path not in before:
+                path.unlink(missing_ok=True)
+    for path, data in before.items():
+        if not path.exists() or path.read_bytes() != data:
+            restore_file(path, data)
+
+
 def _create_in_folder(
     conn: sqlite3.Connection, event: Event, topic_keys: list[str], data_dir: Path, actor_id: int, ip: str
 ) -> dict:
@@ -460,18 +497,18 @@ def _create_in_folder(
     located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (topic_keys[0],)).fetchone()
     if located is None:
         raise NotFound(f"Topic {topic_keys[0]!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
-    try:
-        add_event_to_file(data_dir / located["path"], event,
-                          expected_version=_recorded_version(conn, located["path"]))
-    except VersionConflict as exc:
-        raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                       f"Das Event wurde nicht angelegt ({exc}).") from exc
-    except StoreError as exc:
-        raise Invalid(str(exc)) from exc
-    # The event is in its home file now. Links go into the other topics' files; a failure here leaves the event
-    # in place, and the links can be added by editing it again.
-    _change_links(conn, event.key, add=set(topic_keys[1:]), remove=set(), data_dir=data_dir)
-    reindex(conn, data_dir)
+    # The event and its links are one change: if a link or the index fails, nothing of it stays in the files.
+    with _all_or_nothing(data_dir):
+        try:
+            add_event_to_file(data_dir / located["path"], event,
+                              expected_version=_recorded_version(conn, located["path"]))
+        except VersionConflict as exc:
+            raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                           f"Das Event wurde nicht angelegt ({exc}).") from exc
+        except StoreError as exc:
+            raise Invalid(str(exc)) from exc
+        _change_links(conn, event.key, add=set(topic_keys[1:]), remove=set(), data_dir=data_dir)
+        reindex(conn, data_dir)
     accounts.audit(conn, "event_created", user_id=actor_id, target=event.key, detail=f"topics={','.join(topic_keys)}", ip=ip)
     return get_event(conn, event.key)
 
@@ -480,17 +517,18 @@ def _delete_in_folder(conn: sqlite3.Connection, key: str, data_dir: Path, actor_
     located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
     if located is None:
         raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
-    # The links go first: an event without links is still valid, a link to a missing event is not.
-    _change_links(conn, key, add=set(), remove=set(_linked_elsewhere(conn, key)), data_dir=data_dir)
-    try:
-        remove_event_from_file(data_dir / located["path"], key,
-                               expected_version=_recorded_version(conn, located["path"]))
-    except VersionConflict as exc:
-        raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                       f"Nichts wurde gelöscht ({exc}).") from exc
-    except (EventNotInFile, StoreError) as exc:
-        raise Invalid(str(exc)) from exc
-    reindex(conn, data_dir)
+    with _all_or_nothing(data_dir):
+        # The links go first: an event without links is still valid, a link to a missing event is not.
+        _change_links(conn, key, add=set(), remove=set(_linked_elsewhere(conn, key)), data_dir=data_dir)
+        try:
+            remove_event_from_file(data_dir / located["path"], key,
+                                   expected_version=_recorded_version(conn, located["path"]))
+        except VersionConflict as exc:
+            raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                           f"Nichts wurde gelöscht ({exc}).") from exc
+        except (EventNotInFile, StoreError) as exc:
+            raise Invalid(str(exc)) from exc
+        reindex(conn, data_dir)
     accounts.audit(conn, "event_deleted", user_id=actor_id, target=key, ip=ip)
 
 
@@ -616,22 +654,20 @@ def _add_evidence_in_folder(
 
     # The file goes to disk first and the topic file names it. If the topic file refuses, the file goes again.
     target = data_dir / relative
-    if must_write:
-        write_new_file(target, blob.content)
     item = {"file": relative, "type": evidence_type, "description": description.strip()}
-    try:
-        add_evidence_to_file(data_dir / located["path"], key, item,
-                             expected_version=_recorded_version(conn, located["path"]))
-    except VersionConflict as exc:
+    with _all_or_nothing(data_dir) as created:
         if must_write:
-            target.unlink(missing_ok=True)
-        raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                       f"Der Beleg wurde nicht angehängt ({exc}).") from exc
-    except StoreError as exc:
-        if must_write:
-            target.unlink(missing_ok=True)
-        raise Invalid(str(exc)) from exc
-    reindex(conn, data_dir)
+            write_new_file(target, blob.content)
+            created.append(target)
+        try:
+            add_evidence_to_file(data_dir / located["path"], key, item,
+                                 expected_version=_recorded_version(conn, located["path"]))
+        except VersionConflict as exc:
+            raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                           f"Der Beleg wurde nicht angehängt ({exc}).") from exc
+        except StoreError as exc:
+            raise Invalid(str(exc)) from exc
+        reindex(conn, data_dir)
     accounts.audit(conn, "evidence_added", user_id=actor_id, target=key, detail=relative, ip=ip)
     row = conn.execute(
         "SELECT evidence.pk FROM evidence JOIN events ON events.pk = evidence.event_pk "
@@ -651,16 +687,18 @@ def _delete_evidence_in_folder(conn: sqlite3.Connection, evidence_id: int, data_
     located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (row["key"],)).fetchone()
     if located is None:
         raise Invalid(f"Event {row['key']!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
-    try:
-        remove_evidence_from_file(data_dir / located["path"], row["key"], row["file"],
-                                  expected_version=_recorded_version(conn, located["path"]))
-    except VersionConflict as exc:
-        raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                       f"Der Beleg wurde nicht entfernt ({exc}).") from exc
-    except StoreError as exc:
-        raise Invalid(str(exc)) from exc
+    with _all_or_nothing(data_dir):
+        try:
+            remove_evidence_from_file(data_dir / located["path"], row["key"], row["file"],
+                                      expected_version=_recorded_version(conn, located["path"]))
+        except VersionConflict as exc:
+            raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                           f"Der Beleg wurde nicht entfernt ({exc}).") from exc
+        except StoreError as exc:
+            raise Invalid(str(exc)) from exc
+        reindex(conn, data_dir)
+    # The file goes last: until the index has accepted the removal, the topic file still names it.
     (data_dir / row["file"]).unlink(missing_ok=True)
-    reindex(conn, data_dir)
     accounts.audit(conn, "evidence_deleted", user_id=actor_id, target=row["key"], detail=row["file"], ip=ip)
 
 
@@ -1051,22 +1089,14 @@ TOPIC_FIELDS = ("title", "kind", "summary")
 
 def _create_topic_in_folder(conn: sqlite3.Connection, topic: Topic, data_dir: Path, actor_id: int, ip: str) -> dict:
     # The new file is named after its key. An existing file of that name is refused, nothing is overwritten.
-    path = data_dir / f"{topic.key}.yaml"
-    try:
-        create_topic_file(path, topic)
-    except VersionConflict as exc:
-        raise Conflict(f"{topic.key}.yaml existiert bereits im Datenordner ({exc}).") from exc
-    except StoreError as exc:
-        raise Invalid(str(exc)) from exc
-    try:
+    with _all_or_nothing(data_dir):
+        try:
+            create_topic_file(data_dir / f"{topic.key}.yaml", topic)
+        except VersionConflict as exc:
+            raise Conflict(f"{topic.key}.yaml existiert bereits im Datenordner ({exc}).") from exc
+        except StoreError as exc:
+            raise Invalid(str(exc)) from exc
         reindex(conn, data_dir)
-    except Exception as exc:
-        # The index refused the folder, for this file or for another one. The new file goes, so a retry is not
-        # blocked by a file the user never saw as created.
-        path.unlink(missing_ok=True)
-        if isinstance(exc, TimelineError):
-            raise Invalid(f"Der Datenordner ist nicht gültig, deshalb wurde nichts angelegt:\n{exc}") from exc
-        raise
     accounts.audit(conn, "topic_created", user_id=actor_id, target=topic.key, detail=topic.kind, ip=ip)
     return get_topic(conn, topic.key)
 
@@ -1077,17 +1107,18 @@ def _update_topic_in_folder(
     located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (key,)).fetchone()
     if located is None:
         raise NotFound(f"Topic {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
-    try:
-        update_topic_in_file(data_dir / located["path"], topic,
-                             expected_version=_recorded_version(conn, located["path"]))
-    except VersionConflict as exc:
-        raise Conflict(
-            f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-            f"Die Änderung wurde nicht gespeichert ({exc})."
-        ) from exc
-    except StoreError as exc:
-        raise Invalid(str(exc)) from exc
-    reindex(conn, data_dir)
+    with _all_or_nothing(data_dir):
+        try:
+            update_topic_in_file(data_dir / located["path"], topic,
+                                 expected_version=_recorded_version(conn, located["path"]))
+        except VersionConflict as exc:
+            raise Conflict(
+                f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                f"Die Änderung wurde nicht gespeichert ({exc})."
+            ) from exc
+        except StoreError as exc:
+            raise Invalid(str(exc)) from exc
+        reindex(conn, data_dir)
     if changed:
         accounts.audit(conn, "topic_updated", user_id=actor_id, target=key, detail=",".join(changed), ip=ip)
     return get_topic(conn, key)
@@ -1146,24 +1177,41 @@ def delete_topic(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, dat
     accounts.audit(conn, "topic_deleted", user_id=actor_id, target=key, ip=ip)
 
 
-def link_event(conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str) -> None:
-    topic_pk = _topic_pk(conn, topic_key)
-    event_pk = _event_pk(conn, event_key)
-    if event_pk is None:
-        raise NotFound(f"Event {event_key!r} nicht gefunden")
-    with conn:
-        conn.execute("INSERT OR IGNORE INTO topic_events (topic_pk, event_pk) VALUES (?, ?)", (topic_pk, event_pk))
+def link_event(
+    conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str, data_dir: Path | None = None
+) -> None:
+    """Link an event to another topic. With data_dir the link is a refs line in that topic's file (ADR 0008)."""
+    if data_dir is not None:
+        with _all_or_nothing(data_dir):
+            if _event_pk(conn, event_key) is None:
+                raise NotFound(f"Event {event_key!r} nicht gefunden")
+            _change_link(conn, event_key, topic_key, present=True, data_dir=data_dir)
+            reindex(conn, data_dir)
+    else:
+        topic_pk = _topic_pk(conn, topic_key)
+        event_pk = _event_pk(conn, event_key)
+        if event_pk is None:
+            raise NotFound(f"Event {event_key!r} nicht gefunden")
+        with conn:
+            conn.execute("INSERT OR IGNORE INTO topic_events (topic_pk, event_pk) VALUES (?, ?)", (topic_pk, event_pk))
     accounts.audit(conn, "topic_linked", user_id=actor_id, target=topic_key, detail=event_key, ip=ip)
 
 
-def unlink_event(conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str) -> None:
-    topic_pk = _topic_pk(conn, topic_key)
+def unlink_event(
+    conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str, data_dir: Path | None = None
+) -> None:
     row = conn.execute("SELECT pk, home_topic FROM events WHERE key = ?", (event_key,)).fetchone()
     if row is None:
         raise NotFound(f"Event {event_key!r} nicht gefunden")
     if row["home_topic"] == topic_key:
         raise Invalid("Das Heimat-Topic eines Events kann nicht entfernt werden")
-    with conn:
-        conn.execute("DELETE FROM topic_events WHERE topic_pk = ? AND event_pk = ?", (topic_pk, row["pk"]))
+    if data_dir is not None:
+        with _all_or_nothing(data_dir):
+            _change_link(conn, event_key, topic_key, present=False, data_dir=data_dir)
+            reindex(conn, data_dir)
+    else:
+        topic_pk = _topic_pk(conn, topic_key)
+        with conn:
+            conn.execute("DELETE FROM topic_events WHERE topic_pk = ? AND event_pk = ?", (topic_pk, row["pk"]))
     accounts.audit(conn, "topic_unlinked", user_id=actor_id, target=topic_key, detail=event_key, ip=ip)
 

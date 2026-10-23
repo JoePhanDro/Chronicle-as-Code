@@ -28,12 +28,15 @@ class CheckFailed(TimelineError):
         super().__init__("\n".join(problems))
 
 
+TOPIC_FILE_PATTERNS = ("*.yaml", "*.yml")  # every file the loader reads as one topic
+
+
 def find_topic_files(data_dir: Path) -> list[Path]:
     """Every YAML file below the folder. Each file is one topic (ADR 0005)."""
     if not data_dir.is_dir():
         raise TimelineError(f"Datenordner existiert nicht: {data_dir}")
 
-    files = sorted({path for pattern in ("*.yaml", "*.yml") for path in data_dir.rglob(pattern)})
+    files = sorted({path for pattern in TOPIC_FILE_PATTERNS for path in data_dir.rglob(pattern)})
     if not files:
         raise TimelineError(f"Keine YAML-Datei unterhalb von {data_dir} gefunden")
     return files

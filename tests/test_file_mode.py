@@ -152,3 +152,27 @@ def test_api_topic_create_with_a_broken_folder_answers_422_and_writes_nothing(tm
 
     assert response.status_code == 422, response.text
     assert not (folder / "neu.yaml").exists()
+
+
+def test_api_event_edit_with_a_broken_folder_answers_422_and_changes_no_file(tmp_path, folder):
+    client = api_client(tmp_path, folder)
+    current = client.get("/api/v1/events/analysis").json()
+    (folder / "kaputt.yaml").write_text("topic: [kaputt\n", encoding="utf-8")
+    before = (folder / "timeline.yaml").read_bytes()
+
+    response = client.put("/api/v1/events/analysis", json=body_from(current, action="wird nicht gespeichert"))
+
+    assert response.status_code == 422, response.text
+    assert (folder / "timeline.yaml").read_bytes() == before
+
+
+
+def test_api_link_is_written_into_the_topic_file(tmp_path, folder):
+    client = api_client(tmp_path, folder)
+    created = client.post("/api/v1/topics", json={"key": "b", "title": "B", "kind": "project"})
+    assert created.status_code == 201, created.text
+
+    response = client.post("/api/v1/topics/b/events", json={"event": "lessons"})
+
+    assert response.status_code == 201, response.text
+    assert yaml.safe_load((folder / "b.yaml").read_text(encoding="utf-8"))["refs"] == ["lessons"]

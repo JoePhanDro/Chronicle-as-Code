@@ -185,12 +185,12 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
 
     @app.post("/api/v1/topics/{key}/events", status_code=201)
     def link_event(key: str, body: TopicLink, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
-        _write(lambda: repository.link_event(conn, key, body.event, user["id"], client_ip(request)))
+        _write(lambda: repository.link_event(conn, key, body.event, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
         return {"topic": key, "event": body.event}
 
     @app.delete("/api/v1/topics/{key}/events/{event_key}", status_code=204, response_class=Response)
     def unlink_event(key: str, event_key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> Response:
-        _write(lambda: repository.unlink_event(conn, key, event_key, user["id"], client_ip(request)))
+        _write(lambda: repository.unlink_event(conn, key, event_key, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
         return Response(status_code=204)
 
     @app.post("/api/v1/events/{key}/evidence", status_code=201)

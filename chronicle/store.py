@@ -245,6 +245,11 @@ def remove_evidence_from_file(path: Path, event_key: str, file: str, *, expected
     return file_version(path)
 
 
+def restore_file(path: Path, data: bytes) -> None:
+    """Put back the bytes a file had before a failed operation changed it. Atomic, like every write here."""
+    _atomic_write(path, data)
+
+
 def write_new_file(path: Path, data: bytes) -> None:
     """Write a binary file that must not exist yet (an attachment). Atomic, like the topic files."""
     if path.exists():

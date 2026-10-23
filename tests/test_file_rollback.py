@@ -1,0 +1,129 @@
+"""File mode (ADR 0008): a change that the index refuses leaves the data folder as it was, and the caller gets a 422.
+
+The broken file stands in for any file of the folder that fails the checks, for example one edited by hand.
+"""
+
+import shutil
+from pathlib import Path
+
+import pytest
+
+from chronicle import repository
+from chronicle.db import connect
+from chronicle.evidence import check_file
+from chronicle.importer import import_folder
+from chronicle.store import LOCK_FILE
+from chronicle.models import Event
+from chronicle.repository import Invalid, NotFound
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+BROKEN = "topic: [kaputt\n"
+
+
+@pytest.fixture
+def folder(tmp_path):
+    copy = tmp_path / "data"
+    shutil.copytree(DATA_DIR, copy)
+    (copy / "b.yaml").write_text(
+        "topic:\n  key: b\n  title: B\nevents:\n  - key: b1\n    t0: 2026-10-14T10:00:00+02:00\n"
+        "    phase: Analysis\n    actor: X\n    action: Schritt B\n    status: open\n",
+        encoding="utf-8",
+    )
+    import_folder(tmp_path / "chronicle.db", copy)
+    return copy
+
+
+@pytest.fixture
+def conn(folder):
+    connection = connect(folder.parent / "chronicle.db")
+    yield connection
+    connection.close()
+
+
+def snapshot(folder: Path) -> dict[str, bytes]:
+    return {str(path.relative_to(folder)): path.read_bytes()
+            for path in folder.rglob("*") if path.is_file() and path.name != LOCK_FILE}
+
+
+def break_folder(folder: Path) -> None:
+    (folder / "kaputt.yaml").write_text(BROKEN, encoding="utf-8")
+
+
+def new_event(key="neu-1", **changes):
+    data = {"key": key, "t0": "2026-10-27T10:00:00+02:00", "phase": "Activity", "actor": "Analyst",
+            "action": "Neuer Schritt", "status": "open"}
+    data.update(changes)
+    return Event.model_validate(data)
+
+
+def test_a_refused_event_creation_changes_nothing(folder, conn):
+    break_folder(folder)
+    before = snapshot(folder)
+
+    with pytest.raises(Invalid):
+        repository.create_event(conn, new_event(), ["inc-2026-042"], actor_id=None, ip="test", data_dir=folder)
+
+    assert snapshot(folder) == before
+    assert repository.get_event(conn, "neu-1") is None
+
+
+def test_a_failed_link_takes_the_new_event_back_with_it(folder, conn):
+    before = snapshot(folder)
+
+    with pytest.raises(NotFound):
+        repository.create_event(conn, new_event(), ["inc-2026-042", "gibt-es-nicht"], actor_id=None, ip="test",
+                                data_dir=folder)
+
+    assert snapshot(folder) == before
+    assert repository.get_event(conn, "neu-1") is None
+
+
+def test_a_refused_deletion_keeps_the_event_and_its_links(folder, conn):
+    repository.update_event(conn, "lessons", _event_of(conn, "lessons"), ["inc-2026-042", "b"],
+                            repository.get_event(conn, "lessons")["version"], actor_id=None, ip="test",
+                            data_dir=folder)
+    assert "lessons" in (folder / "b.yaml").read_text(encoding="utf-8")
+    break_folder(folder)
+    before = snapshot(folder)
+
+    with pytest.raises(Invalid):
+        repository.delete_event(conn, "lessons", actor_id=None, ip="test", data_dir=folder)
+
+    assert snapshot(folder) == before
+    assert repository.get_event(conn, "lessons") is not None
+
+
+def test_a_refused_attachment_leaves_no_file_behind(folder, conn):
+    break_folder(folder)
+    before = snapshot(folder)
+
+    with pytest.raises(Invalid):
+        repository.add_evidence(conn, "analysis", check_file("neu.png", _png(9)), "screenshot", "",
+                                actor_id=None, ip="test", data_dir=folder)
+
+    assert snapshot(folder) == before
+
+
+def test_a_refused_attachment_removal_keeps_the_file(folder, conn):
+    evidence_id = conn.execute(
+        "SELECT evidence.pk FROM evidence JOIN events ON events.pk = evidence.event_pk WHERE events.key = 'siem-alert'"
+    ).fetchone()["pk"]
+    break_folder(folder)
+    before = snapshot(folder)
+
+    with pytest.raises(Invalid):
+        repository.delete_evidence(conn, evidence_id, actor_id=None, ip="test", data_dir=folder)
+
+    assert snapshot(folder) == before
+    assert (folder / "evidence" / "siem-alert.png").exists()
+
+
+def _event_of(conn, key):
+    current = repository.get_event(conn, key)
+    data = {field: current[field] for field in ("key", "t0", "phase", "actor", "system", "action", "status",
+                                                "triggered_by", "details")}
+    return Event.model_validate(data)
+
+
+def _png(marker: int) -> bytes:
+    return b"\x89PNG\r\n\x1a\n" + bytes([marker]) * 24
