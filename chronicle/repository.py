@@ -14,6 +14,7 @@ from pathlib import Path
 from . import accounts
 from .check import load_named_folder
 from .evidence import EVIDENCE_TYPES, MAX_DESCRIPTION_LENGTH, Blob
+from .loader import TimelineError
 from .models import Event, Timeline, Topic
 from .store import (
     EventNotInFile,
@@ -1050,13 +1051,22 @@ TOPIC_FIELDS = ("title", "kind", "summary")
 
 def _create_topic_in_folder(conn: sqlite3.Connection, topic: Topic, data_dir: Path, actor_id: int, ip: str) -> dict:
     # The new file is named after its key. An existing file of that name is refused, nothing is overwritten.
+    path = data_dir / f"{topic.key}.yaml"
     try:
-        create_topic_file(data_dir / f"{topic.key}.yaml", topic)
+        create_topic_file(path, topic)
     except VersionConflict as exc:
         raise Conflict(f"{topic.key}.yaml existiert bereits im Datenordner ({exc}).") from exc
     except StoreError as exc:
         raise Invalid(str(exc)) from exc
-    reindex(conn, data_dir)
+    try:
+        reindex(conn, data_dir)
+    except Exception as exc:
+        # The index refused the folder, for this file or for another one. The new file goes, so a retry is not
+        # blocked by a file the user never saw as created.
+        path.unlink(missing_ok=True)
+        if isinstance(exc, TimelineError):
+            raise Invalid(f"Der Datenordner ist nicht gültig, deshalb wurde nichts angelegt:\n{exc}") from exc
+        raise
     accounts.audit(conn, "topic_created", user_id=actor_id, target=topic.key, detail=topic.kind, ip=ip)
     return get_topic(conn, topic.key)
 

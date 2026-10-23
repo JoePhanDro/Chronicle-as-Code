@@ -109,3 +109,11 @@ def test_a_topic_cannot_be_deleted_in_file_mode_yet(folder, conn):
         repository.delete_topic(conn, "weg", actor_id=None, ip="test", data_dir=folder)
     assert (folder / "weg.yaml").exists()
     assert repository.get_topic(conn, "weg") is not None
+
+
+def test_a_topic_file_is_removed_again_when_the_folder_no_longer_checks(folder, conn):
+    (folder / "kaputt.yaml").write_text("topic: [kaputt\n", encoding="utf-8")  # broken file, added outside Chronicle
+
+    with pytest.raises(Invalid):
+        repository.create_topic(conn, new_topic("neu"), actor_id=None, ip="test", data_dir=folder)
+    assert not (folder / "neu.yaml").exists()
