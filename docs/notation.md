@@ -96,7 +96,7 @@ Es gibt drei Arten von Verknüpfungen.
 
 ## 7. Prüfregeln
 
-Die Prüfung (Import heute, Prüfmodus nach Issue #85) verlangt:
+Die Prüfung (`chronicle check`, ohne Schreibzugriff) verlangt:
 
 1. Das Schema stimmt. Unbekannte Felder und fehlende Pflichtfelder sind Fehler.
 2. Event-Keys sind eindeutig über alle Dateien. Innerhalb einer Datei prüft das `models.py`, über Dateien hinweg `import_timelines` in `repository.py`.
@@ -105,7 +105,7 @@ Die Prüfung (Import heute, Prüfmodus nach Issue #85) verlangt:
 5. Ein Event löst nicht sich selbst aus, und Auslösungen bilden keinen Zyklus.
 6. Evidence-Dateien existieren, liegen innerhalb des Datenordners und sind zulässig.
 
-**Lücke (#85):** Topic-Keys werden über Dateien hinweg **nicht** geprüft. Zwei Dateien mit demselben Topic-Key überschreiben sich still. Der Import führt ein Upsert auf den Key aus (`_write_topic`), Titel, Art und Zusammenfassung der zweiten Datei gewinnen, und die Events landen im selben Topic. Die Regel 2 gilt für Event-Keys. Die Prüfung soll für Topic-Keys entsprechend gelten.
+Topic-Keys gelten nach derselben Regel wie Event-Keys: Ein Topic-Key ist in genau einer Datei definiert. `chronicle check` in `check.py` meldet eine zweite Definition als Fehler (#85).
 
 ## 8. Beispiel
 
@@ -168,5 +168,5 @@ Konten, Rollen, Sitzungen, Login-Sperren und das Audit-Log gehören zum Betrieb 
 
 ## 11. Offene Punkte
 
-- **Topic-Keys über Dateien hinweg:** Die Prüfung fehlt (siehe 7). Sie ist in #85 erfasst.
+- **Topic-Keys über Dateien hinweg:** Umgesetzt in `chronicle check` (siehe 7, #85).
 - **Ende des Übergangs:** Die Zeichenkette aus älteren Dateien wird weiter gelesen. Ob und wann das Lesen endet, entscheidet die nächste Notationsversion.
