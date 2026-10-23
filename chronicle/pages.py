@@ -236,8 +236,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             payload["key"] = new_event_key()  # the UI never asks for a key
             body = EventWrite.model_validate(payload)
             attachments = await _attachments_from_form(form)  # checked first, so a bad file writes nothing
-            created = repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request),
-                                              data_dir=request.app.state.data_dir)
+            created = repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request), data_dir=request.app.state.data_dir)
             for blob in attachments:
                 repository.add_evidence(conn, created["key"], blob, form.get("evidence_type") or "", "",
                                         user["id"], client_ip(request), data_dir=request.app.state.data_dir)
@@ -310,8 +309,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] != "admin":
             return render(request, "forbidden.html", user, status_code=403)
         try:
-            filename, body = make_report(conn, key, user["id"], client_ip(request),
-                                         data_dir=request.app.state.data_dir)
+            filename, body = make_report(conn, key, user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except repository.NotFound:
             return render(request, "not_found.html", user, status_code=404)
         return Response(content=body, media_type="text/html; charset=utf-8", headers=report_headers(filename))
@@ -393,7 +391,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             return render(request, "forbidden.html", user, status_code=403)
         values = _topic_values(form)
         try:
-            created = repository.create_topic(conn, Topic.model_validate(values), user["id"], client_ip(request))
+            created = repository.create_topic(conn, Topic.model_validate(values), user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except (ValidationError, repository.RepositoryError) as exc:
             status = 409 if isinstance(exc, repository.Conflict) else 422
             return render(request, "topic.html", user, status_code=status, mode="new", topic=None, events=[], addable=[],
@@ -426,7 +424,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             return render(request, "forbidden.html", user, status_code=403)
         values = {**_topic_values(form), "key": key}
         try:
-            repository.update_topic(conn, key, Topic.model_validate(values), user["id"], client_ip(request))
+            repository.update_topic(conn, key, Topic.model_validate(values), user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except (ValidationError, repository.RepositoryError) as exc:
             status = 404 if isinstance(exc, repository.NotFound) else 422
             return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
@@ -440,7 +438,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         try:
-            repository.delete_topic(conn, key, user["id"], client_ip(request))
+            repository.delete_topic(conn, key, user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except repository.RepositoryError as exc:
             status = 404 if isinstance(exc, repository.NotFound) else 409
             return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))

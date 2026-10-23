@@ -21,11 +21,13 @@ from .store import (
     VersionConflict,
     add_event_to_file,
     add_evidence_to_file,
+    create_topic_file,
     file_version,
     remove_event_from_file,
     remove_evidence_from_file,
     set_ref_in_file,
     update_event_in_file,
+    update_topic_in_file,
     write_new_file,
 )
 
@@ -1046,10 +1048,48 @@ def list_all_topic_keys(conn: sqlite3.Connection) -> list[str]:
 TOPIC_FIELDS = ("title", "kind", "summary")
 
 
-def create_topic(conn: sqlite3.Connection, topic: Topic, actor_id: int, ip: str) -> dict:
+def _create_topic_in_folder(conn: sqlite3.Connection, topic: Topic, data_dir: Path, actor_id: int, ip: str) -> dict:
+    # The new file is named after its key. An existing file of that name is refused, nothing is overwritten.
+    try:
+        create_topic_file(data_dir / f"{topic.key}.yaml", topic)
+    except VersionConflict as exc:
+        raise Conflict(f"{topic.key}.yaml existiert bereits im Datenordner ({exc}).") from exc
+    except StoreError as exc:
+        raise Invalid(str(exc)) from exc
+    reindex(conn, data_dir)
+    accounts.audit(conn, "topic_created", user_id=actor_id, target=topic.key, detail=topic.kind, ip=ip)
+    return get_topic(conn, topic.key)
+
+
+def _update_topic_in_folder(
+    conn: sqlite3.Connection, key: str, topic: Topic, data_dir: Path, actor_id: int, ip: str, changed: list[str],
+) -> dict:
+    located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (key,)).fetchone()
+    if located is None:
+        raise NotFound(f"Topic {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    try:
+        update_topic_in_file(data_dir / located["path"], topic,
+                             expected_version=_recorded_version(conn, located["path"]))
+    except VersionConflict as exc:
+        raise Conflict(
+            f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+            f"Die Änderung wurde nicht gespeichert ({exc})."
+        ) from exc
+    except StoreError as exc:
+        raise Invalid(str(exc)) from exc
+    reindex(conn, data_dir)
+    if changed:
+        accounts.audit(conn, "topic_updated", user_id=actor_id, target=key, detail=",".join(changed), ip=ip)
+    return get_topic(conn, key)
+
+
+def create_topic(conn: sqlite3.Connection, topic: Topic, actor_id: int, ip: str, data_dir: Path | None = None) -> dict:
+    """Create a topic. With data_dir its file is written first, and the index follows it (ADR 0008)."""
+    if conn.execute("SELECT 1 FROM topics WHERE key = ?", (topic.key,)).fetchone():
+        raise Conflict(f"Topic-Key {topic.key!r} ist bereits vergeben")
+    if data_dir is not None:
+        return _create_topic_in_folder(conn, topic, data_dir, actor_id, ip)
     with conn:
-        if conn.execute("SELECT 1 FROM topics WHERE key = ?", (topic.key,)).fetchone():
-            raise Conflict(f"Topic-Key {topic.key!r} ist bereits vergeben")
         conn.execute(
             "INSERT INTO topics (key, title, kind, summary) VALUES (?, ?, ?, ?)",
             (topic.key, topic.title, topic.kind, topic.summary),
@@ -1058,11 +1098,15 @@ def create_topic(conn: sqlite3.Connection, topic: Topic, actor_id: int, ip: str)
     return get_topic(conn, topic.key)
 
 
-def update_topic(conn: sqlite3.Connection, key: str, topic: Topic, actor_id: int, ip: str) -> dict:
+def update_topic(
+    conn: sqlite3.Connection, key: str, topic: Topic, actor_id: int, ip: str, data_dir: Path | None = None
+) -> dict:
     current = get_topic(conn, key)
     if current is None:
         raise NotFound(f"Topic {key!r} nicht gefunden")
     changed = [name for name in TOPIC_FIELDS if current[name] != getattr(topic, name)]
+    if data_dir is not None:
+        return _update_topic_in_folder(conn, key, topic, data_dir, actor_id, ip, changed)
     with conn:
         conn.execute(
             """
@@ -1076,9 +1120,12 @@ def update_topic(conn: sqlite3.Connection, key: str, topic: Topic, actor_id: int
     return get_topic(conn, key)
 
 
-def delete_topic(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) -> None:
+def delete_topic(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, data_dir: Path | None = None) -> None:
     if get_topic(conn, key) is None:
         raise NotFound(f"Topic {key!r} nicht gefunden")
+    if data_dir is not None:
+        # Not yet in file mode: a deleted row would come back with the next reindex, so the request is refused.
+        raise Invalid("Ein Topic kann im Dateimodus noch nicht gelöscht werden. Die Datei bitte von Hand entfernen.")
     homes = [row["key"] for row in conn.execute(
         "SELECT key FROM events WHERE home_topic = ? ORDER BY key", (key,)
     ).fetchall()]

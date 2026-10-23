@@ -170,17 +170,17 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
 
     @app.post("/api/v1/topics", status_code=201)
     def create_topic(body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
-        return _write(lambda: repository.create_topic(conn, body, user["id"], client_ip(request)))
+        return _write(lambda: repository.create_topic(conn, body, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
 
     @app.put("/api/v1/topics/{key}")
     def update_topic(key: str, body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
         if body.key != key:
             raise HTTPException(status_code=422, detail="Der Key im Pfad und im Body müssen übereinstimmen")
-        return _write(lambda: repository.update_topic(conn, key, body, user["id"], client_ip(request)))
+        return _write(lambda: repository.update_topic(conn, key, body, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
 
     @app.delete("/api/v1/topics/{key}", status_code=204, response_class=Response)
     def delete_topic(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> Response:
-        _write(lambda: repository.delete_topic(conn, key, user["id"], client_ip(request)))
+        _write(lambda: repository.delete_topic(conn, key, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
         return Response(status_code=204)
 
     @app.post("/api/v1/topics/{key}/events", status_code=201)
