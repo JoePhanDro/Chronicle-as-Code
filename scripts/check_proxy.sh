@@ -58,7 +58,7 @@ status=$(curl -sk -m 10 -o /dev/null -w '%{http_code}' -X POST https://localhost
 
 logged_ip=$("${COMPOSE[@]}" exec -T api python -c "
 import sqlite3
-row = sqlite3.connect('/db/chronicle.db').execute(\"SELECT ip FROM audit_log WHERE action = 'login_failed' ORDER BY pk DESC LIMIT 1\").fetchone()
+row = sqlite3.connect('/db/chronicle.ops.db').execute(\"SELECT ip FROM audit_log WHERE action = 'login_failed' ORDER BY pk DESC LIMIT 1\").fetchone()
 print(row[0] if row else '')
 ")
 [ -n "$logged_ip" ] || fail "no failed login in the audit log"

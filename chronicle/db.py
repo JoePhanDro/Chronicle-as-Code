@@ -14,7 +14,6 @@ CREATE TABLE IF NOT EXISTS topics (
     summary     TEXT NOT NULL DEFAULT '',
     updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
-
 CREATE TABLE IF NOT EXISTS events (
     pk            INTEGER PRIMARY KEY,
     key           TEXT NOT NULL UNIQUE,
@@ -31,7 +30,6 @@ CREATE TABLE IF NOT EXISTS events (
     version       INTEGER NOT NULL DEFAULT 1,
     updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
-
 -- Tombstones: events deleted in the UI are not re-created by a later import.
 -- snapshot is the last version of the event as JSON (issue 34). It is NULL for tombstones from before that.
 CREATE TABLE IF NOT EXISTS deleted_events (
@@ -39,7 +37,6 @@ CREATE TABLE IF NOT EXISTS deleted_events (
     deleted_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     snapshot    TEXT
 );
-
 -- Copies of the evidence of a deleted event, so that restoring the event brings it back with its evidence.
 CREATE TABLE IF NOT EXISTS deleted_evidence (
     pk           INTEGER PRIMARY KEY,
@@ -52,14 +49,12 @@ CREATE TABLE IF NOT EXISTS deleted_evidence (
     sha256       TEXT,
     content      BLOB
 );
-
 CREATE TABLE IF NOT EXISTS topic_events (
     topic_pk  INTEGER NOT NULL REFERENCES topics(pk) ON DELETE CASCADE,
     event_pk  INTEGER NOT NULL REFERENCES events(pk) ON DELETE CASCADE,
     PRIMARY KEY (topic_pk, event_pk)
 );
-
--- Evidence is stored in the database (ADR 0004). content is NULL for rows written before that change;
+-- Evidence is stored in the database (ADR 0004). content is NULL for rows written before that change
 -- a new import fills it in.
 CREATE TABLE IF NOT EXISTS evidence (
     pk           INTEGER PRIMARY KEY,
@@ -72,36 +67,35 @@ CREATE TABLE IF NOT EXISTS evidence (
     sha256       TEXT,
     content      BLOB
 );
-
--- Server-wide settings, e.g. the reading lock (issue 13).
-CREATE TABLE IF NOT EXISTS settings (
-    key    TEXT PRIMARY KEY,
-    value  TEXT NOT NULL
-);
-
 -- The data folder as last read (ADR 0008): the version of each topic file, and the file each event is defined in.
 -- An edit in the app writes that file and fails if its version has changed since (issue #89).
 CREATE TABLE IF NOT EXISTS source_files (
     path    TEXT PRIMARY KEY,
     sha256  TEXT NOT NULL
 );
-
 CREATE TABLE IF NOT EXISTS event_files (
     event_key  TEXT PRIMARY KEY,
     path       TEXT NOT NULL
 );
-
 -- The file each topic is defined in. A new event goes into the file of its home topic.
 CREATE TABLE IF NOT EXISTS topic_files (
     topic_key  TEXT PRIMARY KEY,
     path       TEXT NOT NULL
 );
-
 CREATE INDEX IF NOT EXISTS idx_events_t0 ON events (t0);
 CREATE INDEX IF NOT EXISTS idx_topic_events_event ON topic_events (event_pk);
 CREATE INDEX IF NOT EXISTS idx_evidence_event ON evidence (event_pk);
+"""
 
-CREATE TABLE IF NOT EXISTS users (
+# Operational data: accounts, sessions, login throttling, settings and the audit log. Kept in a second file,
+# attached as "ops", so that the index (the topic data) can be dropped and rebuilt from the files (ADR 0008).
+OPS_SCHEMA = """
+-- Server-wide settings, e.g. the reading lock (issue 13).
+CREATE TABLE IF NOT EXISTS ops.settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ops.users (
     id             INTEGER PRIMARY KEY,
     username       TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash  TEXT NOT NULL,
@@ -110,22 +104,18 @@ CREATE TABLE IF NOT EXISTS users (
     must_change_password INTEGER NOT NULL DEFAULT 0,
     created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
-
-CREATE TABLE IF NOT EXISTS sessions (
+CREATE TABLE IF NOT EXISTS ops.sessions (
     token_hash  TEXT PRIMARY KEY,
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     csrf_token  TEXT NOT NULL,
     expires_at  INTEGER NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS login_failures (
+CREATE TABLE IF NOT EXISTS ops.login_failures (
     key  TEXT NOT NULL,
     ts   INTEGER NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_login_failures_key ON login_failures (key, ts);
-
-CREATE TABLE IF NOT EXISTS audit_log (
+CREATE INDEX IF NOT EXISTS ops.idx_login_failures_key ON login_failures (key, ts);
+CREATE TABLE IF NOT EXISTS ops.audit_log (
     pk      INTEGER PRIMARY KEY,
     ts      INTEGER NOT NULL,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -135,6 +125,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
     ip      TEXT
 );
 """
+
 
 
 def _has_table(conn: sqlite3.Connection, name: str) -> bool:
@@ -228,8 +219,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
-    """Add a column to a table created by an earlier version of the schema."""
-    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    """Add a column to a table created by an earlier version of the schema. `table` may be "ops.<name>"."""
+    schema, _, name = table.rpartition(".")
+    prefix = f"{schema}." if schema else ""
+    existing = {row["name"] for row in conn.execute(f"PRAGMA {prefix}table_info({name})").fetchall()}
     if column not in existing:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
@@ -284,11 +277,46 @@ def _migrate_triggers(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+OPS_TABLES = ("users", "sessions", "login_failures", "audit_log", "settings")
+
+
+def ops_path(db_path: str | Path) -> Path:
+    """The operations file next to the index: chronicle.db has chronicle.ops.db beside it."""
+    path = Path(db_path)
+    return path.with_name(f"{path.stem}.ops{path.suffix}")
+
+
+def _move_operations_out_of_index(conn: sqlite3.Connection) -> None:
+    """Databases written before the split keep accounts and the audit log in the index file. Copy them to the
+    operations file and drop them from the index. Runs once: afterwards the index has no such tables."""
+    legacy = [table for table in OPS_TABLES if _has_table(conn, table)]
+    if not legacy:
+        return
+    conn.execute("PRAGMA foreign_keys = OFF")  # the copy and the drop must not cascade out of the old tables
+    try:
+        with conn:
+            for table in legacy:
+                main_columns = [row["name"] for row in conn.execute(f"PRAGMA main.table_info({table})")]
+                ops_columns = [row["name"] for row in conn.execute(f"PRAGMA ops.table_info({table})")]
+                common = ", ".join(column for column in main_columns if column in ops_columns)
+                conn.execute(f"INSERT OR IGNORE INTO ops.{table} ({common}) SELECT {common} FROM main.{table}")
+            for table in ("audit_log", "sessions", "login_failures", "settings", "users"):
+                if table in legacy:
+                    conn.execute(f"DROP TABLE main.{table}")
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
-    """Open the database, enable foreign keys, migrate old data and make sure the schema exists."""
+    """Open the index and its operations file, migrate old data and make sure both schemas exist."""
     # One connection per request, never shared between threads; async form handlers may hop threads.
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("ATTACH DATABASE ? AS ops", (str(ops_path(path)),))
+    for statement in OPS_SCHEMA.split(";"):
+        if statement.strip():
+            conn.execute(statement)
+    _move_operations_out_of_index(conn)
     conn.execute("PRAGMA foreign_keys = ON")
     migrate_incident_schema(conn)
     _create_schema(conn)
@@ -298,7 +326,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
     _ensure_column(conn, "evidence", "size", "INTEGER")
     _ensure_column(conn, "evidence", "sha256", "TEXT")
     _ensure_column(conn, "evidence", "content", "BLOB")
-    _ensure_column(conn, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "ops.users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "deleted_events", "snapshot", "TEXT")
     _migrate_triggers(conn)
     _ensure_search_index(conn)

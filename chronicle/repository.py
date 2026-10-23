@@ -98,7 +98,9 @@ def _event_pk(conn: sqlite3.Connection, key: str) -> int | None:
     return row["pk"] if row else None
 
 
-def _replace_import_evidence(conn: sqlite3.Connection, event_pk: int, event: Event, blobs: Mapping[str, Blob]) -> bool:
+def _replace_import_evidence(
+    conn: sqlite3.Connection, event_pk: int, event: Event, blobs: Mapping[str, Blob], keep_content: bool = True
+) -> bool:
     """Replace the evidence of an imported event. Each file must have been read and checked by the caller.
 
     Returns True if the evidence differs from what the database held, so that an unchanged re-import changes nothing.
@@ -117,7 +119,10 @@ def _replace_import_evidence(conn: sqlite3.Connection, event_pk: int, event: Eve
             INSERT INTO evidence (event_pk, file, type, description, mime, size, sha256, content)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (event_pk, item.file, item.type, item.description, blob.mime, blob.size, blob.sha256, blob.content),
+            # With keep_content=False the file in the data folder is the only copy (issue #89): the index keeps the
+            # checksum, and readers take the bytes from the file.
+            (event_pk, item.file, item.type, item.description, blob.mime, blob.size, blob.sha256,
+             blob.content if keep_content else None),
         )
     after = sorted((item.file, item.type, item.description, blobs[item.file].sha256) for item in event.evidence)
     return before != after
@@ -185,7 +190,7 @@ def import_timeline(conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping
 
 
 def import_timelines(
-    conn: sqlite3.Connection, items: Sequence[tuple[Timeline, Mapping[str, Blob]]]
+    conn: sqlite3.Connection, items: Sequence[tuple[Timeline, Mapping[str, Blob]]], *, keep_content: bool = True
 ) -> list[ImportReport]:
     """Create or update topics and their events from topic files, in one transaction.
 
@@ -205,7 +210,7 @@ def import_timelines(
             owners[event.key] = timeline.topic.key
 
     with conn:
-        reports = [_write_topic(conn, timeline, blobs) for timeline, blobs in items]
+        reports = [_write_topic(conn, timeline, blobs, keep_content) for timeline, blobs in items]
 
         for timeline, _ in items:
             for event in timeline.events:
@@ -236,7 +241,7 @@ def reindex(conn: sqlite3.Connection, data_dir: Path, known_keys: Collection[str
             "UPDATE events SET source = 'import' WHERE key = ?",
             [(event.key,) for _, timeline, _ in named for event in timeline.events],
         )
-    reports = write_index(conn, data_dir, named)
+    reports = write_index(conn, data_dir, named, keep_content=False)
     defined = {event.key for _, timeline, _ in named for event in timeline.events}
     wanted = {(timeline.topic.key, key) for _, timeline, _ in named
               for key in [*(event.key for event in timeline.events), *timeline.refs]}
@@ -260,11 +265,11 @@ def reindex(conn: sqlite3.Connection, data_dir: Path, known_keys: Collection[str
     return reports
 
 
-def write_index(conn: sqlite3.Connection, data_dir: Path, named: list) -> list[ImportReport]:
+def write_index(conn: sqlite3.Connection, data_dir: Path, named: list, *, keep_content: bool = True) -> list[ImportReport]:
     """Write checked folder contents (from load_named_folder) into the index. Events edited in the app stay
     'manual' and are kept back, as before (ADR 0003). See reindex for the file mode."""
     items = [(timeline, blobs) for _, timeline, blobs in named]
-    reports = import_timelines(conn, items)
+    reports = import_timelines(conn, items, keep_content=keep_content)
     with conn:
         conn.execute("DELETE FROM source_files")
         conn.execute("DELETE FROM event_files")
@@ -340,7 +345,9 @@ def _update_in_folder(
     return get_event(conn, key)
 
 
-def _write_topic(conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[str, Blob]) -> ImportReport:
+def _write_topic(
+    conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[str, Blob], keep_content: bool = True
+) -> ImportReport:
     topic = timeline.topic
     report = ImportReport(topic=topic.key)
 
@@ -406,7 +413,7 @@ def _write_topic(conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[st
             (event.key, *_event_values(event), topic.key),
         )
         event_pk = _event_pk(conn, event.key)
-        evidence_changed = _replace_import_evidence(conn, event_pk, event, blobs)
+        evidence_changed = _replace_import_evidence(conn, event_pk, event, blobs, keep_content)
         if existed and evidence_changed and cursor.rowcount == 0:
             # Evidence counts as an edit of the event (README, uploads), so it bumps the version too.
             conn.execute(
@@ -859,9 +866,18 @@ def _evidence_meta(conn: sqlite3.Connection, evidence_id: int) -> dict:
     return dict(conn.execute(f"{EVIDENCE_META} WHERE pk = ?", (evidence_id,)).fetchone())
 
 
-def get_evidence_content(conn: sqlite3.Connection, evidence_id: int) -> dict | None:
-    row = conn.execute("SELECT file, mime, content FROM evidence WHERE pk = ?", (evidence_id,)).fetchone()
-    return dict(row) if row else None
+def get_evidence_content(conn: sqlite3.Connection, evidence_id: int, data_dir: Path | None = None) -> dict | None:
+    """File name, type and bytes of an evidence item. In file mode the index holds no bytes: they come from the
+    data folder, and only if they still match the checksum recorded at the last index (issue #89)."""
+    row = conn.execute("SELECT file, mime, content, sha256 FROM evidence WHERE pk = ?", (evidence_id,)).fetchone()
+    if row is None:
+        return None
+    content = row["content"]
+    if content is None and data_dir is not None and (data_dir / row["file"]).is_file():
+        content = (data_dir / row["file"]).read_bytes()
+        if hashlib.sha256(content).hexdigest() != row["sha256"]:
+            raise Conflict(f"{row['file']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen.")
+    return {"file": row["file"], "mime": row["mime"], "content": content}
 
 
 EVIDENCE_CHUNK = 500  # SQLite limits how many values one statement can bind

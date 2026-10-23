@@ -15,19 +15,38 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .db import ops_path
+
 
 class BackupError(Exception):
     """The backup could not be written or did not pass the integrity check."""
 
 
 def backup_database(db_path: str | Path, target: str | Path) -> Path:
+    """Copy the index and the operations file (accounts, sessions, audit log) next to each other (issue #89).
+
+    The index can be rebuilt from the topic files, the operations file cannot. Both copies are owner-only.
+    """
     source = Path(db_path)
     if not source.is_file():
         raise BackupError(f"Datenbank nicht gefunden: {source}")
-
     destination = Path(target)
-    if destination.exists():
+    operations_source = ops_path(source)
+    operations_destination = ops_path(destination)
+    if destination.exists() or operations_destination.exists():
         raise BackupError(f"Die Zieldatei existiert bereits: {destination}")
+
+    _copy_database(source, destination)
+    if operations_source.is_file():
+        try:
+            _copy_database(operations_source, operations_destination)
+        except BackupError:
+            destination.unlink(missing_ok=True)
+            raise
+    return destination
+
+
+def _copy_database(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     # Created with owner-only permissions before SQLite writes into it.
@@ -49,7 +68,6 @@ def backup_database(db_path: str | Path, target: str | Path) -> Path:
     finally:
         writer.close()
         reader.close()
-    return destination
 
 
 def main(argv: list[str] | None = None) -> int:

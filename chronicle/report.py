@@ -20,9 +20,13 @@ from .renderer import render_dashboard
 STYLESHEET = Path(__file__).parent / "static" / "app.css"
 
 
-def make_report(conn: sqlite3.Connection, topic_key: str, actor_id: int, ip: str) -> tuple[str, bytes]:
-    """Build the report and write an audit entry. Raises NotFound for an unknown topic."""
-    found = topic_document(conn, topic_key, expand_refs=True)
+def make_report(
+    conn: sqlite3.Connection, topic_key: str, actor_id: int, ip: str, data_dir: Path | None = None
+) -> tuple[str, bytes]:
+    """Build the report and write an audit entry. Raises NotFound for an unknown topic.
+
+    In file mode the evidence bytes come from `data_dir` (see get_evidence_content)."""
+    found = topic_document(conn, topic_key, expand_refs=True, data_dir=data_dir)
     if found is None:
         raise repository.NotFound(f"Topic {topic_key!r} nicht gefunden")
     document, evidence = found
