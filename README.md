@@ -88,6 +88,7 @@ Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie 
 | `CHRONICLE_ADMIN_PASSWORD` | Passwort zu `CHRONICLE_ADMIN_USER`. Der Admin muss es beim ersten Login ändern | leer |
 | `CHRONICLE_COOKIE_SECURE` | `0` schaltet das `Secure`-Flag am Sitzungscookie ab (nur lokal über HTTP) | `1` |
 | `CHRONICLE_TRUSTED_PROXIES` | Adressen oder Netze von Reverse Proxies, z. B. `172.18.0.2, 10.0.0.0/8`. Nur von dort wird `X-Forwarded-For` gelesen | leer |
+| `CHRONICLE_DATA` | Datenordner mit den Topic-Dateien. Gesetzt, sind die Dateien die Quelle der Wahrheit (siehe unten). `python -m chronicle.serve --data <ordner>` setzt es | leer |
 
 Die Werte im Compose-Stack kommen aus `.env` (Vorlage: `.env.example`). `.env` wird nicht versioniert.
 
@@ -161,7 +162,9 @@ python -m chronicle build data --out site
 
 ## Datenhaltung und Bearbeitung
 
-Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
+**Mit Datenordner (`--data` bzw. `CHRONICLE_DATA`):** Die Topic-Dateien sind die Quelle der Wahrheit ([ADR 0008](docs/adr/0008-files-as-source-of-truth.md)). Eine Bearbeitung in der Oberfläche oder über die API ändert nur die betroffenen Felder der Datei. Kommentare, Reihenfolge und Layout bleiben erhalten. Danach wird der Index aus den Dateien neu aufgebaut. Hat jemand die Datei außerhalb von Chronicle geändert, schlägt das Speichern mit einem Konflikt fehl, bis `chronicle apply` ausgeführt wurde. Verknüpfungen zwischen Topics lassen sich in diesem Modus noch nicht ändern, Anhänge und neue Events auch nicht (Issue #89).
+
+**Ohne Datenordner:** Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
 
 - Ein erneuter Import überschreibt keine Events, die in der Oberfläche bearbeitet wurden. Gelöschte Events kehren nicht zurück. Beides meldet der Import.
 - Ein Import entfernt keine Topic-Verknüpfungen. Die ändert man in der Oberfläche.

@@ -79,6 +79,18 @@ CREATE TABLE IF NOT EXISTS settings (
     value  TEXT NOT NULL
 );
 
+-- The data folder as last read (ADR 0008): the version of each topic file, and the file each event is defined in.
+-- An edit in the app writes that file and fails if its version has changed since (issue #89).
+CREATE TABLE IF NOT EXISTS source_files (
+    path    TEXT PRIMARY KEY,
+    sha256  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS event_files (
+    event_key  TEXT PRIMARY KEY,
+    path       TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_t0 ON events (t0);
 CREATE INDEX IF NOT EXISTS idx_topic_events_event ON topic_events (event_pk);
 CREATE INDEX IF NOT EXISTS idx_evidence_event ON evidence (event_pk);

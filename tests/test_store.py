@@ -7,7 +7,7 @@ import yaml
 
 from chronicle.check import check_folder
 from chronicle.loader import _YAML_LOADER, find_topic_files, load_timeline
-from chronicle.models import Timeline
+from chronicle.models import Event, Timeline
 from chronicle.store import LOCK_FILE, StoreError, VersionConflict, dump_timeline, file_version, write_timeline
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -87,3 +87,96 @@ def test_the_written_file_loads_as_the_same_timeline(tmp_path):
     original = timeline(details="Text")
     write_timeline(path, original, expected_version=None)
     assert load_timeline(path) == original
+
+
+HAND_WRITTEN = """\
+# Eigene Notiz oben, bleibt erhalten.
+topic:
+  key: a
+  title: Titel
+events:
+  - key: a1
+    t0: 2026-10-14T08:40:00+02:00
+    phase: Exploit
+    actor: Angreifer
+    # Warum dieser Schritt: siehe Ticket 42
+    action: Ausnutzung
+    status: open
+    details: |
+      Erster Absatz.
+
+      Zweiter Absatz.
+"""
+
+
+def edited(event_key="a1", **changes):
+    base = timeline().events[0].model_dump()
+    base.update(key=event_key, **changes)
+    return Event.model_validate(base)
+
+
+def test_editing_one_event_keeps_comments_and_layout(tmp_path):
+    from chronicle.store import update_event_in_file
+
+    path = tmp_path / "a.yaml"
+    path.write_text(HAND_WRITTEN, encoding="utf-8")
+    version = file_version(path)
+    update_event_in_file(path, "a1", edited(action="Ausnutzung bestätigt", status="resolved",
+                                             details="Erster Absatz.\n\nZweiter Absatz.", system=None), expected_version=version)
+    text = path.read_text(encoding="utf-8")
+
+    assert text.startswith("# Eigene Notiz oben, bleibt erhalten.")
+    assert "# Warum dieser Schritt: siehe Ticket 42" in text
+    assert "action: Ausnutzung bestätigt" in text
+    assert "status: resolved" in text
+    assert "Zweiter Absatz." in text
+
+
+def test_editing_leaves_unchanged_text_byte_identical(tmp_path):
+    from chronicle.store import update_event_in_file
+
+    path = tmp_path / "a.yaml"
+    path.write_text(HAND_WRITTEN, encoding="utf-8")
+    unchanged = load_timeline(path).events[0]  # exactly what the file says
+    update_event_in_file(path, "a1", unchanged, expected_version=file_version(path))
+    assert path.read_text(encoding="utf-8") == HAND_WRITTEN
+
+
+def test_a_field_without_value_is_removed(tmp_path):
+    from chronicle.store import update_event_in_file
+
+    path = tmp_path / "a.yaml"
+    path.write_text(HAND_WRITTEN, encoding="utf-8")
+    update_event_in_file(path, "a1", edited(details=""), expected_version=file_version(path))
+    assert "details" not in path.read_text(encoding="utf-8")
+
+
+def test_evidence_of_the_event_is_kept(tmp_path):
+    from chronicle.store import update_event_in_file
+
+    path = tmp_path / "a.yaml"
+    source = timeline(details="x")
+    write_timeline(path, source, expected_version=None)
+    update_event_in_file(path, "a1", edited(action="neu"), expected_version=file_version(path))
+    assert load_timeline(path).events[0].evidence == source.events[0].evidence
+
+
+def test_stale_version_is_refused_for_an_event_edit(tmp_path):
+    from chronicle.store import update_event_in_file
+
+    path = tmp_path / "a.yaml"
+    path.write_text(HAND_WRITTEN, encoding="utf-8")
+    stale = file_version(path)
+    path.write_text(HAND_WRITTEN.replace("Ausnutzung", "anders"), encoding="utf-8")
+    with pytest.raises(VersionConflict):
+        update_event_in_file(path, "a1", edited(action="meins"), expected_version=stale)
+    assert "anders" in path.read_text(encoding="utf-8")
+
+
+def test_an_event_missing_from_the_file_is_reported(tmp_path):
+    from chronicle.store import EventNotInFile, update_event_in_file
+
+    path = tmp_path / "a.yaml"
+    path.write_text(HAND_WRITTEN, encoding="utf-8")
+    with pytest.raises(EventNotInFile):
+        update_event_in_file(path, "gibt-es-nicht", edited("gibt-es-nicht"), expected_version=file_version(path))

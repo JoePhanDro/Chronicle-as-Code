@@ -6,18 +6,22 @@ import argparse
 import sys
 from pathlib import Path
 
-from .check import load_folder
+from .check import load_named_folder
 from .db import connect
 from .loader import CheckFailed, TimelineError
-from .repository import ImportReport, import_timelines
+from .repository import ImportReport, write_index
 
 
 def import_folder(db_path: str | Path, data_dir: str | Path) -> list[ImportReport]:
-    """Import every topic file below data_dir. Nothing is written if any file fails the checks in check.py."""
-    items = load_folder(Path(data_dir), known_keys=_known_event_keys(db_path))
+    """Make the database match every topic file below data_dir (ADR 0008). Nothing is written if a check fails.
+
+    The checks run before the database is opened, so a failed check leaves no database file behind.
+    """
+    data = Path(data_dir)
+    named = load_named_folder(data, known_keys=_known_event_keys(db_path))
     conn = connect(db_path)
     try:
-        return import_timelines(conn, items)
+        return write_index(conn, data, named)
     finally:
         conn.close()
 

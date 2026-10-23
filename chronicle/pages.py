@@ -271,7 +271,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             payload["key"] = key
             body = EventWrite.model_validate(payload)
             repository.update_event(conn, key, event_of(body), topic_list(body), version,
-                                    user["id"], client_ip(request))
+                                    user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except (ValidationError, ValueError, repository.RepositoryError) as exc:
             status = 409 if isinstance(exc, repository.Conflict) else 422
             return render(request, "event.html", user, status_code=status, mode="view",

@@ -5,13 +5,16 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 
 from . import accounts
+from .check import load_named_folder
 from .evidence import EVIDENCE_TYPES, MAX_DESCRIPTION_LENGTH, Blob
 from .models import Event, Timeline, Topic
+from .store import EventNotInFile, StoreError, VersionConflict, file_version, update_event_in_file
 
 EVENT_SELECT = """
 SELECT events.pk, events.key, events.t0, events.phase, events.actor, events.system, events.action,
@@ -203,6 +206,65 @@ def import_timelines(
     return reports
 
 
+def reindex(conn: sqlite3.Connection, data_dir: Path, known_keys: Collection[str] | None = None) -> list[ImportReport]:
+    """Make the database match the topic files in data_dir (ADR 0008). Returns the import reports.
+
+    The files are the truth, so events are taken from them even if they were last edited in the app. Also records
+    the version of each file and the file each event is defined in, which the next edit checks against.
+    Nothing is written if any file fails the checks.
+    """
+    if known_keys is None:
+        known_keys = {row["key"] for row in conn.execute("SELECT key FROM events")}
+    named = load_named_folder(data_dir, known_keys=known_keys)
+    with conn:
+        # In file mode the files win over earlier manual edits, so no event is kept back as 'manual' (ADR 0003).
+        conn.executemany(
+            "UPDATE events SET source = 'import' WHERE key = ?",
+            [(event.key,) for _, timeline, _ in named for event in timeline.events],
+        )
+    return write_index(conn, data_dir, named)
+
+
+def write_index(conn: sqlite3.Connection, data_dir: Path, named: list) -> list[ImportReport]:
+    """Write checked folder contents (from load_named_folder) into the index. Events edited in the app stay
+    'manual' and are kept back, as before (ADR 0003). See reindex for the file mode."""
+    items = [(timeline, blobs) for _, timeline, blobs in named]
+    reports = import_timelines(conn, items)
+    with conn:
+        conn.execute("DELETE FROM source_files")
+        conn.execute("DELETE FROM event_files")
+        for name, timeline, _ in named:
+            conn.execute("INSERT INTO source_files (path, sha256) VALUES (?, ?)", (name, file_version(data_dir / name)))
+            conn.executemany(
+                "INSERT INTO event_files (event_key, path) VALUES (?, ?)",
+                [(event.key, name) for event in timeline.events],
+            )
+    return reports
+
+
+def _update_in_folder(
+    conn: sqlite3.Connection, key: str, event: Event, data_dir: Path, actor_id: int, ip: str, changed: list[str]
+) -> dict:
+    located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
+    if located is None:
+        raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    recorded = conn.execute("SELECT sha256 FROM source_files WHERE path = ?", (located["path"],)).fetchone()
+    if recorded is None:
+        raise Conflict(f"{located['path']} ist im Index nicht bekannt. Bitte chronicle apply ausführen.")
+    try:
+        update_event_in_file(data_dir / located["path"], key, event, expected_version=recorded["sha256"])
+    except VersionConflict as exc:
+        raise Conflict(
+            f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+            f"Die Änderung wurde nicht gespeichert ({exc})."
+        ) from exc
+    except (EventNotInFile, StoreError) as exc:
+        raise Invalid(str(exc)) from exc
+    reindex(conn, data_dir)
+    accounts.audit(conn, "event_updated", user_id=actor_id, target=key, detail=",".join(changed), ip=ip)
+    return get_event(conn, key)
+
+
 def _write_topic(conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[str, Blob]) -> ImportReport:
     topic = timeline.topic
     report = ImportReport(topic=topic.key)
@@ -329,7 +391,10 @@ def update_event(
     expected_version: int,
     actor_id: int,
     ip: str,
+    data_dir: Path | None = None,
 ) -> dict:
+    """Change an event. With data_dir the change is written to the event's topic file first, and the index is
+    then rebuilt from the folder (ADR 0008). Without it, only the database changes, as before."""
     row = conn.execute(
         "SELECT pk, version, home_topic FROM events WHERE key = ?", (key,)
     ).fetchone()
@@ -351,6 +416,10 @@ def update_event(
         changed.append("topics")
     if not changed:
         return old  # saving without changes creates no new revision
+    if data_dir is not None:
+        if "topics" in changed:
+            raise Invalid("Verknüpfungen lassen sich im Dateimodus noch nicht ändern (Issue #89, folgt).")
+        return _update_in_folder(conn, key, event, data_dir, actor_id, ip, changed)
 
     with conn:
         for topic_key in topic_keys:

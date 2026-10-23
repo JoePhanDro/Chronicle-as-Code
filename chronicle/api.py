@@ -53,8 +53,11 @@ class UserUpdate(BaseModel):
     password: str | None = None
 
 
-def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastAPI:
-    """`trusted_proxies` defaults to CHRONICLE_TRUSTED_PROXIES, see README."""
+def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir: str | Path | None = None) -> FastAPI:
+    """`trusted_proxies` defaults to CHRONICLE_TRUSTED_PROXIES, see README.
+
+    With `data_dir` the topic files are the source of truth: edits are written to them, then the index is rebuilt
+    (ADR 0008). Without it the database is the source, as before."""
     path = Path(db_path)
     setup_state = SetupState()
 
@@ -64,6 +67,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         yield
 
     app = FastAPI(title="Chronicle", version=__version__, lifespan=lifespan)
+    app.state.data_dir = Path(data_dir) if data_dir else None
     app.state.trusted_proxies = parse_trusted_proxies(
         os.environ.get("CHRONICLE_TRUSTED_PROXIES") if trusted_proxies is None else trusted_proxies
     )
@@ -234,7 +238,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
             raise HTTPException(status_code=422, detail="Der Key im Pfad und im Body müssen übereinstimmen")
         return _write(
             lambda: repository.update_event(
-                conn, key, event_of(body), topic_list(body), body.version, user["id"], client_ip(request)
+                conn, key, event_of(body), topic_list(body), body.version, user["id"], client_ip(request),
+                data_dir=request.app.state.data_dir,
             )
         )
 
@@ -349,4 +354,4 @@ def _announce_setup(path: Path, setup: SetupState) -> None:
 
 
 # Module-level app for `uvicorn chronicle.api:app`. The database path comes from the environment.
-app = create_app(os.environ.get("CHRONICLE_DB", DEFAULT_DB))
+app = create_app(os.environ.get("CHRONICLE_DB", DEFAULT_DB), data_dir=os.environ.get("CHRONICLE_DATA") or None)

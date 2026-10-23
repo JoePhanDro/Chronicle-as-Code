@@ -17,7 +17,15 @@ from .models import Timeline
 def load_folder(
     data_dir: Path, *, evidence: bool = True, known_keys: Collection[str] = ()
 ) -> list[tuple[Timeline, dict[str, Blob]]]:
-    """Read and check every topic file below data_dir.
+    """Read and check every topic file below data_dir. See load_named_folder."""
+    return [(timeline, blobs) for _, timeline, blobs in load_named_folder(
+        data_dir, evidence=evidence, known_keys=known_keys)]
+
+
+def load_named_folder(
+    data_dir: Path, *, evidence: bool = True, known_keys: Collection[str] = ()
+) -> list[tuple[str, Timeline, dict[str, Blob]]]:
+    """Read and check every topic file below data_dir. Each item carries the file name relative to data_dir.
 
     `known_keys` are event keys that exist outside the folder (the importer passes the keys already in the
     database). With `evidence=False` the attachments are not required, which the CI needs because they are not in git.
@@ -34,15 +42,15 @@ def load_folder(
 
     problems += link_problems(loaded, known_keys)
 
-    items: list[tuple[Timeline, dict[str, Blob]]] = []
-    for _, timeline in loaded:
+    items: list[tuple[str, Timeline, dict[str, Blob]]] = []
+    for name, timeline in loaded:
         blobs: dict[str, Blob] = {}
         if evidence:
             try:
                 blobs = load_evidence(timeline, data_dir)
             except TimelineError as exc:
                 problems.append(str(exc))
-        items.append((timeline, blobs))
+        items.append((name, timeline, blobs))
 
     if problems:
         raise CheckFailed(problems)
