@@ -23,7 +23,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from .loader import _YAML_LOADER, TimelineError
-from .models import Event, Evidence, Timeline
+from .models import Event, Evidence, Timeline, Topic
 from .schema import SCHEMA_URL
 
 LOCK_FILE = ".chronicle.lock"
@@ -91,6 +91,33 @@ def update_event_in_file(path: Path, key: str, event: Event, *, expected_version
             for known in current.events
         ]})
         _verify_read_back(stream.getvalue(), expected)
+        _atomic_write(path, stream.getvalue().encode("utf-8"))
+    return file_version(path)
+
+
+def create_topic_file(path: Path, topic: Topic) -> str:
+    """Create the file of a new topic, without events. Refused if the file exists. Returns its version."""
+    return write_timeline(path, Timeline(topic=topic), expected_version=None)
+
+
+def update_topic_in_file(path: Path, topic: Topic, *, expected_version: str) -> str:
+    """Change the title, kind and summary of the topic a file defines. The key does not change. Returns the new version."""
+    with folder_lock(path.parent):
+        _check_version(path, expected_version)
+        text = path.read_text(encoding="utf-8")
+        current = _read_model(text)
+        if current.topic.key != topic.key:
+            raise StoreError(f"{path.name} gehört zum Topic {current.topic.key!r}, nicht zu {topic.key!r}.")
+
+        document = _yaml().load(text)
+        section = document["topic"]
+        section["title"] = topic.title
+        section["kind"] = topic.kind
+        _put(section, "summary", _text(topic.summary) or None)
+        stream = io.StringIO()
+        _yaml().dump(document, stream)
+
+        _verify_read_back(stream.getvalue(), current.model_copy(update={"topic": topic}))
         _atomic_write(path, stream.getvalue().encode("utf-8"))
     return file_version(path)
 
