@@ -46,10 +46,6 @@ def test_a_new_event_is_appended_to_its_home_topic_file(folder, conn):
     assert created["home_topic"] == "inc-2026-042"
 
 
-def test_a_new_event_for_two_topics_is_refused_for_now(folder, conn):
-    with pytest.raises(Invalid, match="genau einem Topic"):
-        repository.create_event(conn, new_event(), ["inc-2026-042", "anderes"], actor_id=None, ip="test",
-                               data_dir=folder)
 
 
 def test_a_duplicate_key_is_refused_before_the_file_is_touched(folder, conn):
@@ -83,21 +79,6 @@ def test_an_event_another_one_depends_on_cannot_be_deleted(folder, conn):
         repository.delete_event(conn, "analysis", actor_id=None, ip="test", data_dir=folder)
 
 
-def test_an_event_linked_to_another_topic_cannot_be_deleted_yet(tmp_path):
-    folder = tmp_path / "data"
-    folder.mkdir()
-    (folder / "a.yaml").write_text(
-        "topic:\n  key: a\n  title: A\nevents:\n  - key: a1\n    t0: 2026-10-14T08:00:00+02:00\n    phase: Exploit\n"
-        "    actor: X\n    action: eins\n    status: open\n", encoding="utf-8")
-    (folder / "b.yaml").write_text("topic:\n  key: b\n  title: B\nrefs:\n  - a1\n", encoding="utf-8")
-    import_folder(tmp_path / "chronicle.db", folder)
-    conn = connect(tmp_path / "chronicle.db")
-    try:
-        with pytest.raises(Conflict, match="verknüpft"):
-            repository.delete_event(conn, "a1", actor_id=None, ip="test", data_dir=folder)
-        assert "key: a1" in (folder / "a.yaml").read_text(encoding="utf-8")
-    finally:
-        conn.close()
 
 
 def test_an_event_that_exists_only_in_the_database_survives_a_file_mode_edit(folder, conn):

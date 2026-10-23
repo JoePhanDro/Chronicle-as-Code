@@ -21,6 +21,7 @@ from .store import (
     add_event_to_file,
     file_version,
     remove_event_from_file,
+    set_ref_in_file,
     update_event_in_file,
 )
 
@@ -233,11 +234,25 @@ def reindex(conn: sqlite3.Connection, data_dir: Path, known_keys: Collection[str
         )
     reports = write_index(conn, data_dir, named)
     defined = {event.key for _, timeline, _ in named for event in timeline.events}
+    wanted = {(timeline.topic.key, key) for _, timeline, _ in named
+              for key in [*(event.key for event in timeline.events), *timeline.refs]}
     with conn:
         # An event that was in a file at the last index and is in none now was removed from its file. The index
         # follows. Events that were never in a file (created in the database) are not touched.
         for key in indexed - defined:
             conn.execute("DELETE FROM events WHERE key = ?", (key,))
+        # Links are the files' truth too: a link that is no longer under refs (or on the event) is removed. Import
+        # alone only adds links (ADR 0003), so this is where removals happen.
+        stale = [row for row in conn.execute(
+            "SELECT topics.key AS topic, events.key AS event FROM topic_events "
+            "JOIN topics ON topics.pk = topic_events.topic_pk JOIN events ON events.pk = topic_events.event_pk"
+        ).fetchall() if row["event"] in defined and (row["topic"], row["event"]) not in wanted]
+        for row in stale:
+            conn.execute(
+                "DELETE FROM topic_events WHERE topic_pk = (SELECT pk FROM topics WHERE key = ?) "
+                "AND event_pk = (SELECT pk FROM events WHERE key = ?)",
+                (row["topic"], row["event"]),
+            )
     return reports
 
 
@@ -260,24 +275,62 @@ def write_index(conn: sqlite3.Connection, data_dir: Path, named: list) -> list[I
     return reports
 
 
-def _update_in_folder(
-    conn: sqlite3.Connection, key: str, event: Event, data_dir: Path, actor_id: int, ip: str, changed: list[str]
-) -> dict:
-    located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
+def _linked_elsewhere(conn: sqlite3.Connection, key: str) -> list[str]:
+    """The topics an event is linked to besides its home topic, i.e. where it appears under refs."""
+    return [item["key"] for item in conn.execute(
+        "SELECT topics.key FROM topic_events JOIN topics ON topics.pk = topic_events.topic_pk "
+        "JOIN events ON events.pk = topic_events.event_pk WHERE events.key = ? AND topics.key != events.home_topic "
+        "ORDER BY topics.key",
+        (key,),
+    ).fetchall()]
+
+
+def _change_link(conn: sqlite3.Connection, key: str, topic_key: str, *, present: bool, data_dir: Path) -> None:
+    located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (topic_key,)).fetchone()
     if located is None:
-        raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
-    recorded = conn.execute("SELECT sha256 FROM source_files WHERE path = ?", (located["path"],)).fetchone()
-    if recorded is None:
-        raise Conflict(f"{located['path']} ist im Index nicht bekannt. Bitte chronicle apply ausführen.")
+        raise NotFound(f"Topic {topic_key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
     try:
-        update_event_in_file(data_dir / located["path"], key, event, expected_version=recorded["sha256"])
+        set_ref_in_file(data_dir / located["path"], key, present=present,
+                        expected_version=_recorded_version(conn, located["path"]))
     except VersionConflict as exc:
-        raise Conflict(
-            f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-            f"Die Änderung wurde nicht gespeichert ({exc})."
-        ) from exc
-    except (EventNotInFile, StoreError) as exc:
+        raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                       f"Der Verweis wurde nicht geändert ({exc}).") from exc
+    except StoreError as exc:
         raise Invalid(str(exc)) from exc
+
+
+def _change_links(conn: sqlite3.Connection, key: str, *, add, remove, data_dir: Path) -> None:
+    """Link an event to topics (add) and unlink it from topics (remove). Each change is one topic file."""
+    for topic_key in sorted(add):
+        _change_link(conn, key, topic_key, present=True, data_dir=data_dir)
+    for topic_key in sorted(remove):
+        _change_link(conn, key, topic_key, present=False, data_dir=data_dir)
+
+
+def _update_in_folder(
+    conn: sqlite3.Connection, key: str, event: Event, topic_keys: list[str], data_dir: Path,
+    actor_id: int, ip: str, changed: list[str],
+) -> dict:
+    """The event's fields go to its home file, the links to the files of the other topics. Then the index follows."""
+    if [name for name in changed if name != "topics"]:
+        located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
+        if located is None:
+            raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+        try:
+            update_event_in_file(data_dir / located["path"], key, event,
+                                 expected_version=_recorded_version(conn, located["path"]))
+        except VersionConflict as exc:
+            raise Conflict(
+                f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                f"Die Änderung wurde nicht gespeichert ({exc})."
+            ) from exc
+        except (EventNotInFile, StoreError) as exc:
+            raise Invalid(str(exc)) from exc
+    if "topics" in changed:
+        home = conn.execute("SELECT home_topic FROM events WHERE key = ?", (key,)).fetchone()["home_topic"]
+        linked = set(_linked_elsewhere(conn, key))
+        wanted = set(topic_keys) - {home}
+        _change_links(conn, key, add=wanted - linked, remove=linked - wanted, data_dir=data_dir)
     reindex(conn, data_dir)
     accounts.audit(conn, "event_updated", user_id=actor_id, target=key, detail=",".join(changed), ip=ip)
     return get_event(conn, key)
@@ -387,8 +440,6 @@ def _recorded_version(conn: sqlite3.Connection, path: str) -> str:
 def _create_in_folder(
     conn: sqlite3.Connection, event: Event, topic_keys: list[str], data_dir: Path, actor_id: int, ip: str
 ) -> dict:
-    if len(topic_keys) != 1:
-        raise Invalid("Im Dateimodus gehört ein neues Event zu genau einem Topic. Verknüpfungen folgen (Issue #89).")
     if _event_pk(conn, event.key) is not None:
         raise Conflict(f"Event-Key {event.key!r} ist bereits vergeben")
     _check_triggers(conn, event.triggered_by, own_key=event.key)
@@ -403,8 +454,11 @@ def _create_in_folder(
                        f"Das Event wurde nicht angelegt ({exc}).") from exc
     except StoreError as exc:
         raise Invalid(str(exc)) from exc
+    # The event is in its home file now. Links go into the other topics' files; a failure here leaves the event
+    # in place, and the links can be added by editing it again.
+    _change_links(conn, event.key, add=set(topic_keys[1:]), remove=set(), data_dir=data_dir)
     reindex(conn, data_dir)
-    accounts.audit(conn, "event_created", user_id=actor_id, target=event.key, detail=f"topics={topic_keys[0]}", ip=ip)
+    accounts.audit(conn, "event_created", user_id=actor_id, target=event.key, detail=f"topics={','.join(topic_keys)}", ip=ip)
     return get_event(conn, event.key)
 
 
@@ -412,15 +466,8 @@ def _delete_in_folder(conn: sqlite3.Connection, key: str, data_dir: Path, actor_
     located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
     if located is None:
         raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
-    elsewhere = [item["key"] for item in conn.execute(
-        "SELECT topics.key FROM topic_events JOIN topics ON topics.pk = topic_events.topic_pk "
-        "JOIN events ON events.pk = topic_events.event_pk WHERE events.key = ? AND topics.key != events.home_topic "
-        "ORDER BY topics.key",
-        (key,),
-    ).fetchall()]
-    if elsewhere:
-        raise Conflict(f"Event ist auch mit {', '.join(elsewhere)} verknüpft. Den Verweis in deren Datei entfernen, "
-                       "dann erneut löschen.")
+    # The links go first: an event without links is still valid, a link to a missing event is not.
+    _change_links(conn, key, add=set(), remove=set(_linked_elsewhere(conn, key)), data_dir=data_dir)
     try:
         remove_event_from_file(data_dir / located["path"], key,
                                expected_version=_recorded_version(conn, located["path"]))
@@ -496,9 +543,7 @@ def update_event(
     if not changed:
         return old  # saving without changes creates no new revision
     if data_dir is not None:
-        if "topics" in changed:
-            raise Invalid("Verknüpfungen lassen sich im Dateimodus noch nicht ändern (Issue #89, folgt).")
-        return _update_in_folder(conn, key, event, data_dir, actor_id, ip, changed)
+        return _update_in_folder(conn, key, event, topic_keys, data_dir, actor_id, ip, changed)
 
     with conn:
         for topic_key in topic_keys:

@@ -76,11 +76,6 @@ def test_a_change_made_outside_the_app_is_refused(folder, conn):
     assert repository.get_event(conn, "analysis")["action"] != "App-Änderung"
 
 
-def test_links_between_topics_cannot_change_in_file_mode(folder, conn):
-    current, event = edited(conn, "analysis")
-    with pytest.raises(Invalid, match="Verknüpfungen"):
-        repository.update_event(conn, "analysis", event, [current["home_topic"], "anderes-topic"],
-                                current["version"], actor_id=None, ip="test", data_dir=folder)
 
 
 def test_the_database_mode_is_unchanged_without_a_folder(folder, conn):

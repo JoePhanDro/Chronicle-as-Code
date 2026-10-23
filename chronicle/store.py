@@ -137,6 +137,35 @@ def remove_event_from_file(path: Path, key: str, *, expected_version: str) -> st
     return file_version(path)
 
 
+def set_ref_in_file(path: Path, key: str, *, present: bool, expected_version: str) -> str:
+    """Add or remove the link to an event defined in another topic file (a key under refs). Returns the new version.
+
+    An event cannot be linked to the topic it is defined in; the model refuses that on read back.
+    """
+    with folder_lock(path.parent):
+        _check_version(path, expected_version)
+        text = path.read_text(encoding="utf-8")
+        current = _read_model(text)
+        if present == (key in current.refs):
+            return file_version(path)
+
+        document = _yaml().load(text)
+        if present:
+            document.setdefault("refs", []).append(key)
+            refs = [*current.refs, key]
+        else:
+            document["refs"] = [ref for ref in document["refs"] if ref != key]
+            if not document["refs"]:
+                del document["refs"]
+            refs = [ref for ref in current.refs if ref != key]
+        stream = io.StringIO()
+        _yaml().dump(document, stream)
+
+        _verify_read_back(stream.getvalue(), current.model_copy(update={"refs": refs}))
+        _atomic_write(path, stream.getvalue().encode("utf-8"))
+    return file_version(path)
+
+
 @contextmanager
 def folder_lock(folder: Path) -> Iterator[None]:
     """One writer at a time for a data folder. The lock file is not a topic file, so the loader ignores it."""
