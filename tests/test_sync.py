@@ -208,7 +208,7 @@ def test_without_a_data_folder_the_preview_is_refused(tmp_path):
 
 def test_a_committed_but_unpushed_change_is_still_reported(tmp_path, folder):
     remote = tmp_path / "remote.git"
-    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(remote))
     git(folder, "remote", "add", "origin", str(remote))
     git(folder, "push", "-q", "-u", "origin", "main")
     edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Lokal committet"')
@@ -219,7 +219,7 @@ def test_a_committed_but_unpushed_change_is_still_reported(tmp_path, folder):
 
 def test_an_upstream_without_local_changes_gives_an_empty_plan(tmp_path, folder):
     remote = tmp_path / "remote.git"
-    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(remote))
     git(folder, "remote", "add", "origin", str(remote))
     git(folder, "push", "-q", "-u", "origin", "main")
 
@@ -232,7 +232,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def remote_of(tmp_path, folder):
     """A bare remote that holds the folder's history, with the folder set up to push to it."""
     remote = tmp_path / "remote.git"
-    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(remote))
     git(folder, "remote", "add", "origin", str(remote))
     git(folder, "push", "-q", "-u", "origin", "main")
     return remote
@@ -326,7 +326,7 @@ def test_broken_files_stop_the_sync_before_anything_is_committed(tmp_path, folde
 
 def test_the_first_upload_creates_the_branch_on_the_remote(tmp_path, folder):
     remote = tmp_path / "leer.git"
-    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(remote))
     git(folder, "remote", "add", "origin", str(remote))
 
     result = sync.synchronise(folder)
