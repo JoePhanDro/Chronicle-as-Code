@@ -310,7 +310,8 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] != "admin":
             return render(request, "forbidden.html", user, status_code=403)
         try:
-            filename, body = make_report(conn, key, user["id"], client_ip(request))
+            filename, body = make_report(conn, key, user["id"], client_ip(request),
+                                         data_dir=request.app.state.data_dir)
         except repository.NotFound:
             return render(request, "not_found.html", user, status_code=404)
         return Response(content=body, media_type="text/html; charset=utf-8", headers=report_headers(filename))

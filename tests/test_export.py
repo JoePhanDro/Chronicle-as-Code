@@ -221,6 +221,7 @@ def test_backup_cli_writes_a_timestamped_file_into_a_folder(source_db, tmp_path,
     folder = tmp_path / "backups"
     folder.mkdir()
     assert backup_main(["--db", str(source_db), "--out", str(folder)]) == 0
-    written = list(folder.glob("chronicle-*.db"))
-    assert len(written) == 1
+    written = sorted(path for path in folder.glob("chronicle-*.db") if not path.name.endswith(".ops.db"))
+    assert len(written) == 1  # the index copy; the operations copy sits beside it as chronicle-*.ops.db
+    assert len(list(folder.glob("chronicle-*.ops.db"))) == 1
     assert str(written[0]) in capsys.readouterr().out

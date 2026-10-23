@@ -145,8 +145,14 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
 
     # Evidence is served only to logged-in users, never as a public file (ADR 0004).
     @app.get("/api/v1/evidence/{evidence_id}")
-    def evidence_file(evidence_id: int, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> Response:
-        found = repository.get_evidence_content(conn, evidence_id)
+    def evidence_file(
+        evidence_id: int, request: Request, conn: sqlite3.Connection = Depends(get_conn),
+        _: dict = Depends(current_user),
+    ) -> Response:
+        try:
+            found = repository.get_evidence_content(conn, evidence_id, request.app.state.data_dir)
+        except repository.Conflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         if found is None or found["content"] is None:
             raise HTTPException(
                 status_code=404,
@@ -302,7 +308,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
         conn: sqlite3.Connection = Depends(get_conn),
         admin: dict = Depends(admin_only),
     ) -> Response:
-        filename, body = _write(lambda: make_report(conn, key, admin["id"], client_ip(request)))
+        filename, body = _write(lambda: make_report(conn, key, admin["id"], client_ip(request),
+                                                    data_dir=request.app.state.data_dir))
         return Response(content=body, media_type="text/html; charset=utf-8", headers=report_headers(filename))
 
     @app.get("/api/v1/audit")
