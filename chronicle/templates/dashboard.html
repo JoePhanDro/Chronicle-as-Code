@@ -395,11 +395,11 @@
       );
 
       const links = [];
-      if (ev.triggered_by) {
-        const trigger = eventsById.get(ev.triggered_by);
-        links.push(trigger ? eventButton(trigger, '↑ ausgelöst durch: ') : el('span', 'rounded-md px-2 py-0.5 text-xs text-orange-300 ring-1 ring-orange-400/20', `↑ ausgelöst durch: ${ev.triggered_by}`));
+      for (const causeId of ev.triggered_by) {
+        const trigger = eventsById.get(causeId);
+        links.push(trigger ? eventButton(trigger, '↑ ausgelöst durch: ') : el('span', 'rounded-md px-2 py-0.5 text-xs text-orange-300 ring-1 ring-orange-400/20', `↑ ausgelöst durch: ${causeId}`));
       }
-      for (const child of DATA.events.filter(other => other.triggered_by === ev.id)) {
+      for (const child of DATA.events.filter(other => other.triggered_by.includes(ev.id))) {
         links.push(eventButton(child, '↓ löst aus: '));
       }
       if (links.length) hero.append(el('div', 'flex flex-wrap gap-2', links));
@@ -541,7 +541,7 @@
         figures = [
           `${ev.phase} · ${ev.status.replace('_', ' ')}`,
           `Belege: ${ev.evidence.length}`,
-          `löst aus: ${DATA.events.filter(other => other.triggered_by === ev.id).length}`,
+          `löst aus: ${DATA.events.filter(other => other.triggered_by.includes(ev.id)).length}`,
         ];
       } else if (kind === 'evidence') {
         const item = ev.evidence.find(entry => node.id === `evidence:${ev.id}:${entry.file}`);

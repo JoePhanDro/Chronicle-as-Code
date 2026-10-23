@@ -17,7 +17,15 @@ from .models import Timeline
 def load_folder(
     data_dir: Path, *, evidence: bool = True, known_keys: Collection[str] = ()
 ) -> list[tuple[Timeline, dict[str, Blob]]]:
-    """Read and check every topic file below data_dir.
+    """Read and check every topic file below data_dir. See load_named_folder."""
+    return [(timeline, blobs) for _, timeline, blobs in load_named_folder(
+        data_dir, evidence=evidence, known_keys=known_keys)]
+
+
+def load_named_folder(
+    data_dir: Path, *, evidence: bool = True, known_keys: Collection[str] = ()
+) -> list[tuple[str, Timeline, dict[str, Blob]]]:
+    """Read and check every topic file below data_dir. Each item carries the file name relative to data_dir.
 
     `known_keys` are event keys that exist outside the folder (the importer passes the keys already in the
     database). With `evidence=False` the attachments are not required, which the CI needs because they are not in git.
@@ -34,15 +42,15 @@ def load_folder(
 
     problems += link_problems(loaded, known_keys)
 
-    items: list[tuple[Timeline, dict[str, Blob]]] = []
-    for _, timeline in loaded:
+    items: list[tuple[str, Timeline, dict[str, Blob]]] = []
+    for name, timeline in loaded:
         blobs: dict[str, Blob] = {}
         if evidence:
             try:
                 blobs = load_evidence(timeline, data_dir)
             except TimelineError as exc:
                 problems.append(str(exc))
-        items.append((timeline, blobs))
+        items.append((name, timeline, blobs))
 
     if problems:
         raise CheckFailed(problems)
@@ -87,40 +95,39 @@ def link_problems(items: Sequence[tuple[str, Timeline]], known_keys: Collection[
             if key not in known:
                 problems.append(f"{name}: refs verweist auf {key!r}, das in keiner Datei definiert ist")
 
-    # One trigger per event for now (issue #87 makes it a list). The graph is only built from known targets.
-    triggers: dict[str, str] = {}
+    # The graph has an edge from each event to each event that triggered it. Targets outside the folder
+    # cannot close a cycle within it, so they are not part of the graph.
+    triggers: dict[str, list[str]] = {}
     for name, timeline in items:
         for event in timeline.events:
-            target = event.triggered_by
-            if target is None:
-                continue
-            if target == event.key:
-                problems.append(f"{name}: Event {event.key!r} kann sich nicht selbst auslösen")
-            elif target not in known:
-                problems.append(f"{name}: triggered_by {target!r} bei {event.key!r} ist kein bekannter Event-Key")
-            elif target in event_owner:
-                triggers[event.key] = target
-            # A target defined only outside the folder cannot close a cycle within it.
+            for target in event.triggered_by:
+                if target == event.key:
+                    problems.append(f"{name}: Event {event.key!r} kann sich nicht selbst auslösen")
+                elif target not in known:
+                    problems.append(f"{name}: triggered_by {target!r} bei {event.key!r} ist kein bekannter Event-Key")
+                elif target in event_owner:
+                    triggers.setdefault(event.key, []).append(target)
 
     problems += cycle_problems(triggers)
     return problems
 
 
-def cycle_problems(triggers: dict[str, str]) -> list[str]:
-    """Report each cycle in the chain of triggers. `triggers` maps an event key to the key that triggered it."""
+def cycle_problems(triggers: dict[str, list[str]]) -> list[str]:
+    """Report each cycle in the triggers. `triggers` maps an event key to the keys that triggered it."""
     problems: list[str] = []
     finished: set[str] = set()
+
+    def visit(node: str, path: list[str]) -> None:
+        if node in path:
+            cycle = path[path.index(node) :] + [node]
+            problems.append("Auslösungen bilden einen Kreis: " + " → ".join(cycle))
+            return
+        if node in finished:
+            return
+        for target in triggers.get(node, []):
+            visit(target, [*path, node])
+        finished.add(node)
+
     for start in triggers:
-        path: list[str] = []
-        position: dict[str, int] = {}
-        node = start
-        while node in triggers and node not in finished:
-            if node in position:
-                cycle = path[position[node] :] + [node]
-                problems.append("Auslösungen bilden einen Kreis: " + " → ".join(cycle))
-                break
-            position[node] = len(path)
-            path.append(node)
-            node = triggers[node]
-        finished.update(path)
+        visit(start, [])
     return problems

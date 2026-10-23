@@ -105,7 +105,7 @@ def test_restore_leaves_out_topics_and_triggers_that_are_gone(db):
 
     event, dropped = repository.restore_event(conn, "e4", anna, IP)
 
-    assert event["triggered_by"] is None
+    assert event["triggered_by"] == []
     assert event["topics"] == ["a"]
     assert dropped == ["Topic b", "Auslöser e2"]
     conn.close()
@@ -173,7 +173,7 @@ def test_restored_event_is_treated_like_any_imported_event(db):
 
     [report] = [item for item in import_folder(db, db.parent / "data") if item.topic == "a"]
     assert "e1" not in [key for key, _ in report.skipped]
-    assert "e1" in report.updated
+    assert "e1" not in report.updated  # restored with the same values as the file, so nothing changes
 
 
 def test_admin_page_is_for_admins_only(db):

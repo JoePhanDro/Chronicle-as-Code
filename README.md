@@ -88,6 +88,7 @@ Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie 
 | `CHRONICLE_ADMIN_PASSWORD` | Passwort zu `CHRONICLE_ADMIN_USER`. Der Admin muss es beim ersten Login ändern | leer |
 | `CHRONICLE_COOKIE_SECURE` | `0` schaltet das `Secure`-Flag am Sitzungscookie ab (nur lokal über HTTP) | `1` |
 | `CHRONICLE_TRUSTED_PROXIES` | Adressen oder Netze von Reverse Proxies, z. B. `172.18.0.2, 10.0.0.0/8`. Nur von dort wird `X-Forwarded-For` gelesen | leer |
+| `CHRONICLE_DATA` | Datenordner mit den Topic-Dateien. Gesetzt, sind die Dateien die Quelle der Wahrheit (siehe unten). `python -m chronicle.serve --data <ordner>` setzt es | leer |
 
 Die Werte im Compose-Stack kommen aus `.env` (Vorlage: `.env.example`). `.env` wird nicht versioniert.
 
@@ -138,9 +139,38 @@ python -m chronicle check data --ohne-anhaenge  # ohne Anhänge, z. B. in der CI
 
 Die Regeln stehen in [docs/notation.md](docs/notation.md). Der Import prüft dieselben Regeln, bevor er schreibt.
 
+Editoren mit YAML-Unterstützung (z. B. VS Code mit der Erweiterung „YAML“) prüfen und ergänzen die Felder anhand des JSON Schemas. Exportierte Dateien und der Beispieldatensatz enthalten den Verweis bereits. `python -m chronicle schema` gibt das Schema aus, die Kopie im Repo liegt unter [schema/timeline.schema.json](schema/timeline.schema.json).
+
+### Index schreiben
+
+`chronicle apply` schreibt den Stand aus den Dateien in die Datenbank, die die Anwendung liest. Es ist wiederholbar: Ein zweiter Lauf ohne Änderung schreibt nichts und zählt keine Versionen hoch. Prüfung und Schreiben laufen in einer Transaktion, bei einem Fehler bleibt die Datenbank unverändert.
+
+```bash
+python -m chronicle apply data --db chronicle.db
+```
+
+Die Messung für Index und Topic-Seiten steht in [scripts/measure_index.py](scripts/measure_index.py).
+
+### Statische Seiten
+
+`chronicle build` schreibt pro Topic eine eigenständige HTML-Seite und eine `index.html` in einen Ordner. Die Seiten enthalten Stylesheet und Anhänge selbst, sie brauchen also keinen Server. Sie sind wie der Bericht aus der Datenbank als Snapshot gekennzeichnet und enthalten vertrauliche Inhalte. Die Ausgabe ist reproduzierbar: Derselbe Ordner ergibt dieselben Dateien.
+
+```bash
+npm run build:css                                # einmal, erzeugt das Stylesheet
+python -m chronicle build data --out site
+```
+
 ## Datenhaltung und Bearbeitung
 
-Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
+**Mit Datenordner (`--data` bzw. `CHRONICLE_DATA`):** Die Topic-Dateien sind die Quelle der Wahrheit ([ADR 0008](docs/adr/0008-files-as-source-of-truth.md)). Eine Bearbeitung in der Oberfläche oder über die API ändert nur die betroffenen Felder der Datei. Ein neues Event wird an das Ende der Datei seines Topics geschrieben. Ein gelöschtes Event verschwindet aus der Datei, und es gibt keinen Grabstein: Die Historie liefert Git. Kommentare, Reihenfolge und Layout bleiben erhalten. Danach wird der Index aus den Dateien neu aufgebaut. Hat jemand die Datei außerhalb von Chronicle geändert, schlägt das Speichern mit einem Konflikt fehl, bis `chronicle apply` ausgeführt wurde.
+
+Verknüpfungen zwischen Topics stehen im Dateimodus unter `refs` in der Datei des anderen Topics. Wer ein Event einem weiteren Topic zuordnet, bekommt dort eine Zeile, und wer die Zuordnung entfernt, verliert sie. Beim Löschen eines Events werden seine Verweise aus den anderen Topic-Dateien vorher entfernt.
+
+Anhänge liegen im Dateimodus als Dateien unter `evidence/<Event-Key>/` im Datenordner. Die Topic-Datei nennt Pfad, Typ und Beschreibung. Gleiche Namen mit anderem Inhalt bekommen eine Nummer, nichts wird überschrieben. Ein Anhang, der bereits am Event hängt, wird nicht doppelt angelegt. Der Ordner `evidence/` gehört in die Synchronisation (z. B. OneDrive), nicht in Git (ADR 0008).
+
+Noch offen: Topics anlegen und bearbeiten im Dateimodus (Issue #89).
+
+**Ohne Datenordner:** Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
 
 - Ein erneuter Import überschreibt keine Events, die in der Oberfläche bearbeitet wurden. Gelöschte Events kehren nicht zurück. Beides meldet der Import.
 - Ein Import entfernt keine Topic-Verknüpfungen. Die ändert man in der Oberfläche.

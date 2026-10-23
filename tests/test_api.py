@@ -69,7 +69,7 @@ def test_import_sample_timeline_is_readable_via_api(db_path, client):
     assert events[0]["key"] == "feed-cve"  # earliest first
 
     analysis = client.get("/api/v1/events/analysis").json()
-    assert analysis["triggered_by"] == "exploit"
+    assert analysis["triggered_by"] == ["exploit"]
     assert analysis["topics"] == ["inc-2026-042"]
     assert [(item["file"], item["type"], item["mime"]) for item in analysis["evidence"]] == [
         ("evidence/waf-block.png", "screenshot", "image/png")

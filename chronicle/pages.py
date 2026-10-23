@@ -77,7 +77,7 @@ def _payload_from_form(form, topic_home: str | None = None) -> dict:
         "system": (form.get("system") or "").strip() or None,
         "action": (form.get("action") or "").strip(),
         "status": form.get("status") or "",
-        "triggered_by": (form.get("triggered_by") or "").strip() or None,
+        "triggered_by": [key.strip() for key in form.getlist("triggered_by") if key.strip()],
         "details": form.get("details") or "",
         "topic": topic_home or form.get("topic") or "",
         "topics": topics,
@@ -94,9 +94,10 @@ def _topic_values(form) -> dict:
 
 
 def _form_dict(form) -> dict:
-    """Plain dict of a submitted form, with the checkbox list kept as a list."""
+    """Plain dict of a submitted form, with the multi-value fields kept as lists."""
     values = {name: form.get(name) for name in form.keys()}
     values["topics"] = form.getlist("topics")
+    values["triggered_by"] = form.getlist("triggered_by")
     return values
 
 
@@ -104,7 +105,7 @@ def edit_form(event: dict) -> dict:
     """A stored event as the edit form shows it. The timestamp is shown in the default zone."""
     return {
         "key": event["key"], "phase": event["phase"], "actor": event["actor"], "system": event["system"] or "",
-        "action": event["action"], "status": event["status"], "triggered_by": event["triggered_by"] or "",
+        "action": event["action"], "status": event["status"], "triggered_by": event["triggered_by"],
         "details": event["details"] or "", "topics": event["topics"], "topic": event["home_topic"],
         "version": event["version"], **t0_parts(event["t0"]),
     }
@@ -235,10 +236,11 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             payload["key"] = new_event_key()  # the UI never asks for a key
             body = EventWrite.model_validate(payload)
             attachments = await _attachments_from_form(form)  # checked first, so a bad file writes nothing
-            created = repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request))
+            created = repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request),
+                                              data_dir=request.app.state.data_dir)
             for blob in attachments:
                 repository.add_evidence(conn, created["key"], blob, form.get("evidence_type") or "", "",
-                                        user["id"], client_ip(request))
+                                        user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except (ValidationError, ValueError, repository.RepositoryError) as exc:
             return render(request, "event.html", user, status_code=422, mode="new", event=None,
                           errors=_error_text(exc), **form_context(conn, form=_form_dict(form)))
@@ -270,7 +272,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             payload["key"] = key
             body = EventWrite.model_validate(payload)
             repository.update_event(conn, key, event_of(body), topic_list(body), version,
-                                    user["id"], client_ip(request))
+                                    user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except (ValidationError, ValueError, repository.RepositoryError) as exc:
             status = 409 if isinstance(exc, repository.Conflict) else 422
             return render(request, "event.html", user, status_code=status, mode="view",
@@ -286,7 +288,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         try:
-            repository.delete_event(conn, key, user["id"], client_ip(request))
+            repository.delete_event(conn, key, user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except repository.RepositoryError as exc:
             return render(request, "event.html", user, status_code=409, mode="view",
                           event=repository.get_event(conn, key), errors=_error_text(exc),
@@ -329,7 +331,8 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
                 raise ValueError("Bitte eine Datei auswählen")
             data = await upload.read(MAX_EVIDENCE_BYTES + 1)  # one byte over the limit is enough to reject
             repository.add_evidence(conn, key, check_file(upload.filename or "", data), form.get("type") or "",
-                                    (form.get("description") or "").strip(), user["id"], client_ip(request))
+                                    (form.get("description") or "").strip(), user["id"], client_ip(request),
+                                    data_dir=request.app.state.data_dir)
         except (ValueError, repository.RepositoryError) as exc:
             status = 404 if isinstance(exc, repository.NotFound) else 422
             return render(request, "event.html", user, status_code=status, mode="view",
@@ -345,7 +348,8 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         try:
-            repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request))
+            repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request),
+                                       data_dir=request.app.state.data_dir)
         except repository.RepositoryError as exc:
             return render(request, "event.html", user, status_code=404, mode="view",
                           event=repository.get_event(conn, key), errors=_error_text(exc),

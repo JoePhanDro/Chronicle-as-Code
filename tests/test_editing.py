@@ -311,7 +311,7 @@ def test_html_new_event_is_stored_in_utc_with_attachments(db_path, monkeypatch):
     stored = client.get("/api/v1/events/files-1").json()
     assert datetime.fromisoformat(stored["t0"]) == datetime(2026, 10, 15, 7, 30, tzinfo=UTC)
     assert stored["phase"] == "Activity"
-    assert stored["triggered_by"] == "siem-alert"
+    assert stored["triggered_by"] == ["siem-alert"]
     assert [item["file"] for item in stored["evidence"]] == ["one.png", "two.png"]
 
 

@@ -53,8 +53,11 @@ class UserUpdate(BaseModel):
     password: str | None = None
 
 
-def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastAPI:
-    """`trusted_proxies` defaults to CHRONICLE_TRUSTED_PROXIES, see README."""
+def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir: str | Path | None = None) -> FastAPI:
+    """`trusted_proxies` defaults to CHRONICLE_TRUSTED_PROXIES, see README.
+
+    With `data_dir` the topic files are the source of truth: edits are written to them, then the index is rebuilt
+    (ADR 0008). Without it the database is the source, as before."""
     path = Path(db_path)
     setup_state = SetupState()
 
@@ -64,6 +67,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         yield
 
     app = FastAPI(title="Chronicle", version=__version__, lifespan=lifespan)
+    app.state.data_dir = Path(data_dir) if data_dir else None
     app.state.trusted_proxies = parse_trusted_proxies(
         os.environ.get("CHRONICLE_TRUSTED_PROXIES") if trusted_proxies is None else trusted_proxies
     )
@@ -196,7 +200,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         data = await file.read(MAX_EVIDENCE_BYTES + 1)  # one byte over the limit is enough to reject
         return _write(
             lambda: repository.add_evidence(
-                conn, key, check_file(file.filename or "", data), evidence_type, description, user["id"], client_ip(request)
+                conn, key, check_file(file.filename or "", data), evidence_type, description, user["id"], client_ip(request),
+                data_dir=request.app.state.data_dir,
             )
         )
 
@@ -207,7 +212,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         conn: sqlite3.Connection = Depends(get_conn),
         user: dict = Depends(writer),
     ) -> Response:
-        _write(lambda: repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request)))
+        _write(lambda: repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request),
+                                                  data_dir=request.app.state.data_dir))
         return Response(status_code=204)
 
     @app.post("/api/v1/events", status_code=201)
@@ -219,7 +225,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
     ) -> dict:
         event = body.model_copy(update={"key": body.key or new_event_key()})
         return _write(
-            lambda: repository.create_event(conn, event_of(event), topic_list(event), user["id"], client_ip(request))
+            lambda: repository.create_event(conn, event_of(event), topic_list(event), user["id"], client_ip(request),
+                                            data_dir=request.app.state.data_dir)
         )
 
     @app.put("/api/v1/events/{key}")
@@ -234,7 +241,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
             raise HTTPException(status_code=422, detail="Der Key im Pfad und im Body müssen übereinstimmen")
         return _write(
             lambda: repository.update_event(
-                conn, key, event_of(body), topic_list(body), body.version, user["id"], client_ip(request)
+                conn, key, event_of(body), topic_list(body), body.version, user["id"], client_ip(request),
+                data_dir=request.app.state.data_dir,
             )
         )
 
@@ -245,7 +253,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None) -> FastA
         conn: sqlite3.Connection = Depends(get_conn),
         user: dict = Depends(writer),
     ) -> Response:
-        _write(lambda: repository.delete_event(conn, key, user["id"], client_ip(request)))
+        _write(lambda: repository.delete_event(conn, key, user["id"], client_ip(request),
+                                               data_dir=request.app.state.data_dir))
         return Response(status_code=204)
 
     # Users and audit log: admins only. The rules live in chronicle.administration.
@@ -349,4 +358,4 @@ def _announce_setup(path: Path, setup: SetupState) -> None:
 
 
 # Module-level app for `uvicorn chronicle.api:app`. The database path comes from the environment.
-app = create_app(os.environ.get("CHRONICLE_DB", DEFAULT_DB))
+app = create_app(os.environ.get("CHRONICLE_DB", DEFAULT_DB), data_dir=os.environ.get("CHRONICLE_DATA") or None)
