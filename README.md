@@ -166,7 +166,9 @@ python -m chronicle build data --out site
 
 Verknüpfungen zwischen Topics stehen im Dateimodus unter `refs` in der Datei des anderen Topics. Wer ein Event einem weiteren Topic zuordnet, bekommt dort eine Zeile, und wer die Zuordnung entfernt, verliert sie. Beim Löschen eines Events werden seine Verweise aus den anderen Topic-Dateien vorher entfernt.
 
-Noch nicht im Dateimodus: Anhänge hochladen oder entfernen (Issue #89). Sie werden dort abgelehnt, statt still in der Datenbank zu landen.
+Anhänge liegen im Dateimodus als Dateien unter `evidence/<Event-Key>/` im Datenordner. Die Topic-Datei nennt Pfad, Typ und Beschreibung. Gleiche Namen mit anderem Inhalt bekommen eine Nummer, nichts wird überschrieben. Ein Anhang, der bereits am Event hängt, wird nicht doppelt angelegt. Der Ordner `evidence/` gehört in die Synchronisation (z. B. OneDrive), nicht in Git (ADR 0008).
+
+Noch offen: Topics anlegen und bearbeiten im Dateimodus (Issue #89).
 
 **Ohne Datenordner:** Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
 

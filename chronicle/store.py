@@ -23,7 +23,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from .loader import _YAML_LOADER, TimelineError
-from .models import Event, Timeline
+from .models import Event, Evidence, Timeline
 from .schema import SCHEMA_URL
 
 LOCK_FILE = ".chronicle.lock"
@@ -164,6 +164,66 @@ def set_ref_in_file(path: Path, key: str, *, present: bool, expected_version: st
         _verify_read_back(stream.getvalue(), current.model_copy(update={"refs": refs}))
         _atomic_write(path, stream.getvalue().encode("utf-8"))
     return file_version(path)
+
+
+def add_evidence_to_file(path: Path, event_key: str, item: dict, *, expected_version: str) -> str:
+    """Add one evidence entry (file, type, description) to an event in its topic file. Returns the new version."""
+    with folder_lock(path.parent):
+        _check_version(path, expected_version)
+        text = path.read_text(encoding="utf-8")
+        current = _read_model(text)
+        event = next((known for known in current.events if known.key == event_key), None)
+        if event is None:
+            raise EventNotInFile(f"Event {event_key!r} steht nicht in {path.name}.")
+
+        document = _yaml().load(text)
+        entry = next(entry for entry in document["events"] if entry["key"] == event_key)
+        entry.setdefault("evidence", []).append(item)
+        stream = io.StringIO()
+        _yaml().dump(document, stream)
+
+        added = Evidence.model_validate(item)
+        _verify_read_back(stream.getvalue(), current.model_copy(update={"events": [
+            known.model_copy(update={"evidence": [*known.evidence, added]}) if known.key == event_key else known
+            for known in current.events
+        ]}))
+        _atomic_write(path, stream.getvalue().encode("utf-8"))
+    return file_version(path)
+
+
+def remove_evidence_from_file(path: Path, event_key: str, file: str, *, expected_version: str) -> str:
+    """Remove the evidence entry for one file from an event. The file on disk is not touched here."""
+    with folder_lock(path.parent):
+        _check_version(path, expected_version)
+        text = path.read_text(encoding="utf-8")
+        current = _read_model(text)
+        event = next((known for known in current.events if known.key == event_key), None)
+        if event is None or not any(item.file == file for item in event.evidence):
+            raise StoreError(f"Der Beleg {file!r} steht nicht bei {event_key!r} in {path.name}.")
+
+        document = _yaml().load(text)
+        entry = next(entry for entry in document["events"] if entry["key"] == event_key)
+        entry["evidence"] = [item for item in entry["evidence"] if item["file"] != file]
+        if not entry["evidence"]:
+            del entry["evidence"]
+        stream = io.StringIO()
+        _yaml().dump(document, stream)
+
+        _verify_read_back(stream.getvalue(), current.model_copy(update={"events": [
+            known.model_copy(update={"evidence": [item for item in known.evidence if item.file != file]})
+            if known.key == event_key else known
+            for known in current.events
+        ]}))
+        _atomic_write(path, stream.getvalue().encode("utf-8"))
+    return file_version(path)
+
+
+def write_new_file(path: Path, data: bytes) -> None:
+    """Write a binary file that must not exist yet (an attachment). Atomic, like the topic files."""
+    if path.exists():
+        raise StoreError(f"{path.name} existiert bereits.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write(path, data)
 
 
 @contextmanager

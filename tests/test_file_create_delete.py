@@ -94,9 +94,6 @@ def test_an_event_that_exists_only_in_the_database_survives_a_file_mode_edit(fol
     assert repository.get_event(conn, "nur-db") is not None
 
 
-def test_evidence_is_not_changed_in_file_mode_yet(folder, conn):
-    with pytest.raises(Invalid, match="Dateimodus"):
-        repository.delete_evidence(conn, 1, actor_id=None, ip="test", data_dir=folder)
 
 
 PASSWORD = "correct horse battery"

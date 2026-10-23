@@ -236,13 +236,11 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             payload["key"] = new_event_key()  # the UI never asks for a key
             body = EventWrite.model_validate(payload)
             attachments = await _attachments_from_form(form)  # checked first, so a bad file writes nothing
-            if attachments and request.app.state.data_dir is not None:
-                raise repository.Invalid(repository.FILE_MODE_EVIDENCE_TEXT)  # before the event is created
             created = repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request),
                                               data_dir=request.app.state.data_dir)
             for blob in attachments:
                 repository.add_evidence(conn, created["key"], blob, form.get("evidence_type") or "", "",
-                                        user["id"], client_ip(request))
+                                        user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except (ValidationError, ValueError, repository.RepositoryError) as exc:
             return render(request, "event.html", user, status_code=422, mode="new", event=None,
                           errors=_error_text(exc), **form_context(conn, form=_form_dict(form)))
