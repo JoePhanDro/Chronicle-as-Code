@@ -17,7 +17,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import __version__, accounts, administration, repository, security
+from . import __version__, accounts, administration, repository, security, sync
 from .admin_pages import make_admin_pages
 from .auth import PasswordChangeRequired, SetupState, client_ip, make_auth, parse_trusted_proxies
 from .db import connect
@@ -167,6 +167,22 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
     # Writing events: admins and analysts. Validation is the same as for imports.
 
     writer = auth.require_role("admin", "analyst")
+
+    # Abgleichen (issue #90): what a synchronisation with the Git remote would change. Nothing is written.
+
+    @app.get("/api/v1/sync/preview")
+    def sync_preview(request: Request, _: dict = Depends(writer)) -> dict:
+        data_dir = request.app.state.data_dir
+        if data_dir is None:
+            raise HTTPException(status_code=409, detail="Kein Datenordner konfiguriert")
+        try:
+            result = sync.preview(data_dir)
+        except sync.SyncError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "problems": result.problems,
+            "changes": [{"action": item.action, "key": item.key, "file": item.file} for item in result.changes],
+        }
 
     @app.post("/api/v1/topics", status_code=201)
     def create_topic(body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:

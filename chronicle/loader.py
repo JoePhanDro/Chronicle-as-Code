@@ -46,16 +46,21 @@ def find_topic_files(data_dir: Path) -> list[Path]:
 _YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
-def load_timeline(path: Path) -> Timeline:
+def parse_timeline(text: str, where: str) -> Timeline:
+    """A topic file from its text. `where` names the file in the error messages."""
     try:
-        raw = yaml.load(path.read_text(encoding="utf-8"), Loader=_YAML_LOADER)
+        raw = yaml.load(text, Loader=_YAML_LOADER)
     except yaml.YAMLError as exc:
-        raise TimelineError(f"YAML-Syntaxfehler in {path}: {exc}") from exc
+        raise TimelineError(f"YAML-Syntaxfehler in {where}: {exc}") from exc
 
     try:
         return Timeline.model_validate(raw)
     except ValidationError as exc:
-        raise TimelineError(f"Schema-Validierung fehlgeschlagen für {path}:\n{exc}") from exc
+        raise TimelineError(f"Schema-Validierung fehlgeschlagen für {where}:\n{exc}") from exc
+
+
+def load_timeline(path: Path) -> Timeline:
+    return parse_timeline(path.read_text(encoding="utf-8"), str(path))
 
 
 def load_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Blob]:
