@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Abgleichen{% endblock %}
+{% block content %}
+<h1 class="text-xl font-semibold text-slate-100">Abgleichen</h1>
+<p class="mb-6 mt-2 text-sm text-slate-400">Vergleicht die Topic-Dateien mit dem Stand des gemeinsamen Git-Remotes. Erst die Vorschau prüfen, dann abgleichen. Dabei wird lokal committet, der Remote übernommen und hochgeladen.</p>
+
+{% if error %}
+<p role="alert" class="mb-6 whitespace-pre-line rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{{ error }}</p>
+{% endif %}
+
+{% if result %}
+<section aria-labelledby="sync-result" class="mb-6 rounded-xl border border-white/10 px-4 py-3 text-sm">
+  <h2 id="sync-result" class="mb-2 font-semibold text-slate-100">Ergebnis</h2>
+  {% if result.conflicts %}
+    <p class="text-amber-200">Konflikt in {{ result.conflicts|join(", ") }}. Das Zusammenführen ist abgebrochen, nichts wurde hochgeladen. Der Konflikt muss von Hand gelöst werden.</p>
+  {% elif result.problems %}
+    <p class="text-amber-200">Der zusammengeführte Stand besteht die Prüfung nicht. Die Zusammenführung ist rückgängig gemacht, nichts wurde hochgeladen.</p>
+    <ul class="mt-2 list-disc space-y-1 pl-5 text-rose-200">
+      {% for problem in result.problems %}<li class="whitespace-pre-line">{{ problem }}</li>{% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-emerald-200">Abgeglichen.
+      {% if result.committed %}Lokale Änderungen sind committet.{% else %}Keine lokalen Änderungen.{% endif %}
+      {% if result.merged %}Der Stand des Remotes ist übernommen.{% endif %}
+    </p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if preview %}
+  {% if preview.problems %}
+  <section aria-labelledby="sync-checks" class="mb-6 rounded-xl border border-white/10 px-4 py-3 text-sm">
+    <h2 id="sync-checks" class="mb-2 font-semibold text-slate-100">Prüfung</h2>
+    <p class="text-slate-400">Die Dateien bestehen die Prüfung nicht. Bitte zuerst beheben, dann ist die Vorschau verfügbar.</p>
+    <ul class="mt-2 list-disc space-y-1 pl-5 text-rose-200">
+      {% for problem in preview.problems %}<li class="whitespace-pre-line">{{ problem }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% else %}
+  <section aria-labelledby="sync-plan" class="mb-6">
+    <h2 id="sync-plan" class="mb-2 text-sm font-semibold text-slate-100">Vorschau</h2>
+    <ul class="divide-y divide-white/10 rounded-xl border border-white/10">
+      {% for change in preview.changes %}
+      <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3 text-sm">
+        <span class="font-medium text-slate-100">{{ change.action }}</span>
+        <span class="font-mono text-slate-300">{{ change.key }}</span>
+        <span class="font-mono text-xs text-slate-500">{{ change.file }}</span>
+      </li>
+      {% else %}
+      <li class="px-4 py-3 text-sm text-slate-500">Keine Änderungen gegenüber dem Remote.</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <form method="post" action="/abgleich">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Abgleichen</button>
+  </form>
+  {% endif %}
+{% endif %}
+{% endblock %}

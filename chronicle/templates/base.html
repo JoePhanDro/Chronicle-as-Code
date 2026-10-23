@@ -45,6 +45,7 @@
       {{ menu("menu-views", "Ansichten", [("/events", "Ereignisse"), ("/topics", "Topics")] + ([("/reports", "Berichte")] if user.role == 'admin' else [])) }}
       {% if writer %}
       {{ menu("menu-new", "Neu", [("/events/new", "Ereignis"), ("/topics/new", "Topic")], align_end=true) }}
+      {{ menu("menu-data", "Daten", [("/abgleich", "Abgleichen")], align_end=true) }}
       {% endif %}
       {% if user.role == 'admin' %}
       {{ menu("menu-admin", "Verwaltung", [("/admin/users", "Benutzer"), ("/admin/grabsteine", "Gelöschte Events"), ("/admin/audit", "Audit-Log")], align_end=true) }}

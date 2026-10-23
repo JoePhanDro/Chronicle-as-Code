@@ -16,8 +16,9 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile  # form uploads are Starlette objects
+from starlette.concurrency import run_in_threadpool
 
-from . import repository
+from . import accounts, repository, sync
 from .auth import Auth, client_ip
 from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, Blob, check_file
 from .exporter import ExportError
@@ -293,6 +294,51 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
                           event=repository.get_event(conn, key), errors=_error_text(exc),
                           **form_context(conn, form=None))
         return RedirectResponse("/events", status_code=303)
+
+    def render_sync(request: Request, user: dict, *, status_code: int = 200, error: str | None = None,
+                    result: sync.SyncResult | None = None) -> HTMLResponse:
+        """The synchronisation page: the preview of what would change, and the outcome of the last run."""
+        data_dir = request.app.state.data_dir
+        preview = None
+        if data_dir is None:
+            error = error or "Kein Datenordner konfiguriert."
+        else:
+            try:
+                preview = sync.preview(data_dir)
+            except sync.SyncError as exc:
+                error = error or str(exc)
+        return render(request, "sync.html", user, status_code=status_code, error=error, preview=preview, result=result)
+
+    @router.get("/abgleich", response_class=HTMLResponse)
+    def sync_page(request: Request, user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        if user["role"] not in WRITER_ROLES:
+            return render(request, "forbidden.html", user, status_code=403)
+        return render_sync(request, user)
+
+    @router.post("/abgleich", response_class=HTMLResponse)
+    async def sync_run_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        data_dir = request.app.state.data_dir
+        if data_dir is None:
+            return await run_in_threadpool(render_sync, request, user, status_code=409)
+        try:
+            # Git talks to the remote: that must not block the event loop. The index is rebuilt on this thread,
+            # because the database connection belongs to it.
+            result = await run_in_threadpool(sync.synchronise, data_dir)
+            if result.merged:
+                repository.reindex(conn, data_dir)
+        except sync.SyncError as exc:
+            return await run_in_threadpool(render_sync, request, user, status_code=409, error=str(exc))
+        accounts.audit(conn, "sync", user_id=user["id"], target="remote",
+                       detail=f"committed={result.committed},merged={result.merged},conflicts={len(result.conflicts)}",
+                       ip=client_ip(request))
+        return await run_in_threadpool(render_sync, request, user, result=result)
 
     @router.get("/reports", response_class=HTMLResponse)
     def reports_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

@@ -185,7 +185,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
         }
 
     @app.post("/api/v1/sync")
-    def sync_now(request: Request, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(writer)) -> dict:
+    def sync_now(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
         """Commit the topic files, take in the remote's state, push. After a merge the index is rebuilt (issue #90)."""
         data_dir = request.app.state.data_dir
         if data_dir is None:
@@ -196,6 +196,9 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if result.merged:
             repository.reindex(conn, data_dir)
+        accounts.audit(conn, "sync", user_id=user["id"], target="remote",
+                       detail=f"committed={result.committed},merged={result.merged},conflicts={len(result.conflicts)}",
+                       ip=client_ip(request))
         return {"committed": result.committed, "merged": result.merged, "conflicts": result.conflicts,
                 "problems": result.problems}
 
