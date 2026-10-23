@@ -10,7 +10,7 @@ from chronicle import repository
 from chronicle.db import connect
 from chronicle.importer import import_folder
 from chronicle.models import Event
-from chronicle.repository import Conflict, Invalid
+from chronicle.repository import Conflict
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
@@ -142,3 +142,13 @@ def test_api_edit_after_an_outside_change_is_a_conflict(tmp_path, folder):
 
     assert response.status_code == 409
     assert "# von Hand angehängt" in path.read_text(encoding="utf-8")
+
+
+def test_api_topic_create_with_a_broken_folder_answers_422_and_writes_nothing(tmp_path, folder):
+    client = api_client(tmp_path, folder)
+    (folder / "kaputt.yaml").write_text("topic: [kaputt\n", encoding="utf-8")
+
+    response = client.post("/api/v1/topics", json={"key": "neu", "title": "Neu", "kind": "project"})
+
+    assert response.status_code == 422, response.text
+    assert not (folder / "neu.yaml").exists()
