@@ -236,7 +236,10 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             payload["key"] = new_event_key()  # the UI never asks for a key
             body = EventWrite.model_validate(payload)
             attachments = await _attachments_from_form(form)  # checked first, so a bad file writes nothing
-            created = repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request))
+            if attachments and request.app.state.data_dir is not None:
+                raise repository.Invalid(repository.FILE_MODE_EVIDENCE_TEXT)  # before the event is created
+            created = repository.create_event(conn, event_of(body), topic_list(body), user["id"], client_ip(request),
+                                              data_dir=request.app.state.data_dir)
             for blob in attachments:
                 repository.add_evidence(conn, created["key"], blob, form.get("evidence_type") or "", "",
                                         user["id"], client_ip(request))
@@ -287,7 +290,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         try:
-            repository.delete_event(conn, key, user["id"], client_ip(request))
+            repository.delete_event(conn, key, user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except repository.RepositoryError as exc:
             return render(request, "event.html", user, status_code=409, mode="view",
                           event=repository.get_event(conn, key), errors=_error_text(exc),
@@ -330,7 +333,8 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
                 raise ValueError("Bitte eine Datei auswählen")
             data = await upload.read(MAX_EVIDENCE_BYTES + 1)  # one byte over the limit is enough to reject
             repository.add_evidence(conn, key, check_file(upload.filename or "", data), form.get("type") or "",
-                                    (form.get("description") or "").strip(), user["id"], client_ip(request))
+                                    (form.get("description") or "").strip(), user["id"], client_ip(request),
+                                    data_dir=request.app.state.data_dir)
         except (ValueError, repository.RepositoryError) as exc:
             status = 404 if isinstance(exc, repository.NotFound) else 422
             return render(request, "event.html", user, status_code=status, mode="view",
@@ -346,7 +350,8 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         try:
-            repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request))
+            repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request),
+                                       data_dir=request.app.state.data_dir)
         except repository.RepositoryError as exc:
             return render(request, "event.html", user, status_code=404, mode="view",
                           event=repository.get_event(conn, key), errors=_error_text(exc),

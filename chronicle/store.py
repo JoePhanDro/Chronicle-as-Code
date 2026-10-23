@@ -95,6 +95,48 @@ def update_event_in_file(path: Path, key: str, event: Event, *, expected_version
     return file_version(path)
 
 
+def add_event_to_file(path: Path, event: Event, *, expected_version: str) -> str:
+    """Append a new event to a topic file. Returns the new version of the file."""
+    with folder_lock(path.parent):
+        _check_version(path, expected_version)
+        text = path.read_text(encoding="utf-8")
+        current = _read_model(text)
+        if any(known.key == event.key for known in current.events):
+            raise StoreError(f"Event {event.key!r} steht bereits in {path.name}.")
+
+        document = _yaml().load(text)
+        document.setdefault("events", []).append(_event_document(event))
+        stream = io.StringIO()
+        _yaml().dump(document, stream)
+
+        _verify_read_back(stream.getvalue(), current.model_copy(update={"events": [*current.events, event]}))
+        _atomic_write(path, stream.getvalue().encode("utf-8"))
+    return file_version(path)
+
+
+def remove_event_from_file(path: Path, key: str, *, expected_version: str) -> str:
+    """Remove one event from a topic file. Its lines go with it; everything else stays. Returns the new version."""
+    with folder_lock(path.parent):
+        _check_version(path, expected_version)
+        text = path.read_text(encoding="utf-8")
+        current = _read_model(text)
+        if not any(known.key == key for known in current.events):
+            raise EventNotInFile(f"Event {key!r} steht nicht in {path.name}.")
+
+        document = _yaml().load(text)
+        document["events"] = [entry for entry in document["events"] if entry["key"] != key]
+        if not document["events"]:
+            del document["events"]
+        stream = io.StringIO()
+        _yaml().dump(document, stream)
+
+        _verify_read_back(stream.getvalue(), current.model_copy(update={
+            "events": [known for known in current.events if known.key != key],
+        }))
+        _atomic_write(path, stream.getvalue().encode("utf-8"))
+    return file_version(path)
+
+
 @contextmanager
 def folder_lock(folder: Path) -> Iterator[None]:
     """One writer at a time for a data folder. The lock file is not a topic file, so the loader ignores it."""
@@ -183,30 +225,33 @@ def _document(timeline: Timeline) -> dict:
         topic["summary"] = _text(timeline.topic.summary)
     document: dict = {"topic": topic}
 
-    events = []
-    for event in timeline.events:
-        item: dict = {
-            "key": event.key,
-            "t0": event.t0.isoformat(),
-            "phase": event.phase.value,
-            "actor": event.actor,
-        }
-        if event.system:
-            item["system"] = event.system
-        item["action"] = event.action
-        item["status"] = event.status.value
-        if event.triggered_by:
-            item["triggered_by"] = list(event.triggered_by)
-        if event.details:
-            item["details"] = _text(event.details)
-        if event.evidence:
-            item["evidence"] = [_evidence_document(evidence) for evidence in event.evidence]
-        events.append(item)
+    events = [_event_document(event) for event in timeline.events]
     if events:
         document["events"] = events
     if timeline.refs:
         document["refs"] = list(timeline.refs)
     return document
+
+
+def _event_document(event: Event) -> dict:
+    """One event as it is written in a topic file. Empty optional fields are left out."""
+    item: dict = {
+        "key": event.key,
+        "t0": event.t0.isoformat(),
+        "phase": event.phase.value,
+        "actor": event.actor,
+    }
+    if event.system:
+        item["system"] = event.system
+    item["action"] = event.action
+    item["status"] = event.status.value
+    if event.triggered_by:
+        item["triggered_by"] = list(event.triggered_by)
+    if event.details:
+        item["details"] = _text(event.details)
+    if event.evidence:
+        item["evidence"] = [_evidence_document(evidence) for evidence in event.evidence]
+    return item
 
 
 def _evidence_document(evidence) -> dict:

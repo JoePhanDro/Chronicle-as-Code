@@ -91,6 +91,12 @@ CREATE TABLE IF NOT EXISTS event_files (
     path       TEXT NOT NULL
 );
 
+-- The file each topic is defined in. A new event goes into the file of its home topic.
+CREATE TABLE IF NOT EXISTS topic_files (
+    topic_key  TEXT PRIMARY KEY,
+    path       TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_t0 ON events (t0);
 CREATE INDEX IF NOT EXISTS idx_topic_events_event ON topic_events (event_pk);
 CREATE INDEX IF NOT EXISTS idx_evidence_event ON evidence (event_pk);

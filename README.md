@@ -162,7 +162,9 @@ python -m chronicle build data --out site
 
 ## Datenhaltung und Bearbeitung
 
-**Mit Datenordner (`--data` bzw. `CHRONICLE_DATA`):** Die Topic-Dateien sind die Quelle der Wahrheit ([ADR 0008](docs/adr/0008-files-as-source-of-truth.md)). Eine Bearbeitung in der Oberfläche oder über die API ändert nur die betroffenen Felder der Datei. Kommentare, Reihenfolge und Layout bleiben erhalten. Danach wird der Index aus den Dateien neu aufgebaut. Hat jemand die Datei außerhalb von Chronicle geändert, schlägt das Speichern mit einem Konflikt fehl, bis `chronicle apply` ausgeführt wurde. Verknüpfungen zwischen Topics lassen sich in diesem Modus noch nicht ändern, Anhänge und neue Events auch nicht (Issue #89).
+**Mit Datenordner (`--data` bzw. `CHRONICLE_DATA`):** Die Topic-Dateien sind die Quelle der Wahrheit ([ADR 0008](docs/adr/0008-files-as-source-of-truth.md)). Eine Bearbeitung in der Oberfläche oder über die API ändert nur die betroffenen Felder der Datei. Ein neues Event wird an das Ende der Datei seines Topics geschrieben. Ein gelöschtes Event verschwindet aus der Datei, und es gibt keinen Grabstein: Die Historie liefert Git. Kommentare, Reihenfolge und Layout bleiben erhalten. Danach wird der Index aus den Dateien neu aufgebaut. Hat jemand die Datei außerhalb von Chronicle geändert, schlägt das Speichern mit einem Konflikt fehl, bis `chronicle apply` ausgeführt wurde.
+
+Noch nicht im Dateimodus: Verknüpfungen zwischen Topics ändern, ein neues Event mit mehreren Topics anlegen, Löschen eines Events, das mit einem anderen Topic verknüpft ist, sowie Anhänge hochladen oder entfernen (Issue #89). Anhänge werden dort abgelehnt, statt still in der Datenbank zu landen.
 
 **Ohne Datenordner:** Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
 

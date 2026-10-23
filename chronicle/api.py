@@ -200,7 +200,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
         data = await file.read(MAX_EVIDENCE_BYTES + 1)  # one byte over the limit is enough to reject
         return _write(
             lambda: repository.add_evidence(
-                conn, key, check_file(file.filename or "", data), evidence_type, description, user["id"], client_ip(request)
+                conn, key, check_file(file.filename or "", data), evidence_type, description, user["id"], client_ip(request),
+                data_dir=request.app.state.data_dir,
             )
         )
 
@@ -211,7 +212,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
         conn: sqlite3.Connection = Depends(get_conn),
         user: dict = Depends(writer),
     ) -> Response:
-        _write(lambda: repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request)))
+        _write(lambda: repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request),
+                                                  data_dir=request.app.state.data_dir))
         return Response(status_code=204)
 
     @app.post("/api/v1/events", status_code=201)
@@ -223,7 +225,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
     ) -> dict:
         event = body.model_copy(update={"key": body.key or new_event_key()})
         return _write(
-            lambda: repository.create_event(conn, event_of(event), topic_list(event), user["id"], client_ip(request))
+            lambda: repository.create_event(conn, event_of(event), topic_list(event), user["id"], client_ip(request),
+                                            data_dir=request.app.state.data_dir)
         )
 
     @app.put("/api/v1/events/{key}")
@@ -250,7 +253,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
         conn: sqlite3.Connection = Depends(get_conn),
         user: dict = Depends(writer),
     ) -> Response:
-        _write(lambda: repository.delete_event(conn, key, user["id"], client_ip(request)))
+        _write(lambda: repository.delete_event(conn, key, user["id"], client_ip(request),
+                                               data_dir=request.app.state.data_dir))
         return Response(status_code=204)
 
     # Users and audit log: admins only. The rules live in chronicle.administration.

@@ -14,7 +14,15 @@ from . import accounts
 from .check import load_named_folder
 from .evidence import EVIDENCE_TYPES, MAX_DESCRIPTION_LENGTH, Blob
 from .models import Event, Timeline, Topic
-from .store import EventNotInFile, StoreError, VersionConflict, file_version, update_event_in_file
+from .store import (
+    EventNotInFile,
+    StoreError,
+    VersionConflict,
+    add_event_to_file,
+    file_version,
+    remove_event_from_file,
+    update_event_in_file,
+)
 
 EVENT_SELECT = """
 SELECT events.pk, events.key, events.t0, events.phase, events.actor, events.system, events.action,
@@ -216,13 +224,21 @@ def reindex(conn: sqlite3.Connection, data_dir: Path, known_keys: Collection[str
     if known_keys is None:
         known_keys = {row["key"] for row in conn.execute("SELECT key FROM events")}
     named = load_named_folder(data_dir, known_keys=known_keys)
+    indexed = {row["event_key"] for row in conn.execute("SELECT event_key FROM event_files")}
     with conn:
         # In file mode the files win over earlier manual edits, so no event is kept back as 'manual' (ADR 0003).
         conn.executemany(
             "UPDATE events SET source = 'import' WHERE key = ?",
             [(event.key,) for _, timeline, _ in named for event in timeline.events],
         )
-    return write_index(conn, data_dir, named)
+    reports = write_index(conn, data_dir, named)
+    defined = {event.key for _, timeline, _ in named for event in timeline.events}
+    with conn:
+        # An event that was in a file at the last index and is in none now was removed from its file. The index
+        # follows. Events that were never in a file (created in the database) are not touched.
+        for key in indexed - defined:
+            conn.execute("DELETE FROM events WHERE key = ?", (key,))
+    return reports
 
 
 def write_index(conn: sqlite3.Connection, data_dir: Path, named: list) -> list[ImportReport]:
@@ -233,8 +249,10 @@ def write_index(conn: sqlite3.Connection, data_dir: Path, named: list) -> list[I
     with conn:
         conn.execute("DELETE FROM source_files")
         conn.execute("DELETE FROM event_files")
+        conn.execute("DELETE FROM topic_files")
         for name, timeline, _ in named:
             conn.execute("INSERT INTO source_files (path, sha256) VALUES (?, ?)", (name, file_version(data_dir / name)))
+            conn.execute("INSERT INTO topic_files (topic_key, path) VALUES (?, ?)", (timeline.topic.key, name))
             conn.executemany(
                 "INSERT INTO event_files (event_key, path) VALUES (?, ?)",
                 [(event.key, name) for event in timeline.events],
@@ -359,7 +377,68 @@ def _link_topic(conn: sqlite3.Connection, timeline: Timeline, report: ImportRepo
 
 # Manual changes from the UI or the API
 
-def create_event(conn: sqlite3.Connection, event: Event, topic_keys: list[str], actor_id: int, ip: str) -> dict:
+def _recorded_version(conn: sqlite3.Connection, path: str) -> str:
+    row = conn.execute("SELECT sha256 FROM source_files WHERE path = ?", (path,)).fetchone()
+    if row is None:
+        raise Conflict(f"{path} ist im Index nicht bekannt. Bitte chronicle apply ausführen.")
+    return row["sha256"]
+
+
+def _create_in_folder(
+    conn: sqlite3.Connection, event: Event, topic_keys: list[str], data_dir: Path, actor_id: int, ip: str
+) -> dict:
+    if len(topic_keys) != 1:
+        raise Invalid("Im Dateimodus gehört ein neues Event zu genau einem Topic. Verknüpfungen folgen (Issue #89).")
+    if _event_pk(conn, event.key) is not None:
+        raise Conflict(f"Event-Key {event.key!r} ist bereits vergeben")
+    _check_triggers(conn, event.triggered_by, own_key=event.key)
+    located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (topic_keys[0],)).fetchone()
+    if located is None:
+        raise NotFound(f"Topic {topic_keys[0]!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    try:
+        add_event_to_file(data_dir / located["path"], event,
+                          expected_version=_recorded_version(conn, located["path"]))
+    except VersionConflict as exc:
+        raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                       f"Das Event wurde nicht angelegt ({exc}).") from exc
+    except StoreError as exc:
+        raise Invalid(str(exc)) from exc
+    reindex(conn, data_dir)
+    accounts.audit(conn, "event_created", user_id=actor_id, target=event.key, detail=f"topics={topic_keys[0]}", ip=ip)
+    return get_event(conn, event.key)
+
+
+def _delete_in_folder(conn: sqlite3.Connection, key: str, data_dir: Path, actor_id: int, ip: str) -> None:
+    located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
+    if located is None:
+        raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    elsewhere = [item["key"] for item in conn.execute(
+        "SELECT topics.key FROM topic_events JOIN topics ON topics.pk = topic_events.topic_pk "
+        "JOIN events ON events.pk = topic_events.event_pk WHERE events.key = ? AND topics.key != events.home_topic "
+        "ORDER BY topics.key",
+        (key,),
+    ).fetchall()]
+    if elsewhere:
+        raise Conflict(f"Event ist auch mit {', '.join(elsewhere)} verknüpft. Den Verweis in deren Datei entfernen, "
+                       "dann erneut löschen.")
+    try:
+        remove_event_from_file(data_dir / located["path"], key,
+                               expected_version=_recorded_version(conn, located["path"]))
+    except VersionConflict as exc:
+        raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                       f"Nichts wurde gelöscht ({exc}).") from exc
+    except (EventNotInFile, StoreError) as exc:
+        raise Invalid(str(exc)) from exc
+    reindex(conn, data_dir)
+    accounts.audit(conn, "event_deleted", user_id=actor_id, target=key, ip=ip)
+
+
+def create_event(
+    conn: sqlite3.Connection, event: Event, topic_keys: list[str], actor_id: int, ip: str, data_dir: Path | None = None
+) -> dict:
+    """Create an event in its home topic. With data_dir the event is appended to the topic file first (ADR 0008)."""
+    if data_dir is not None:
+        return _create_in_folder(conn, event, topic_keys, data_dir, actor_id, ip)
     home = topic_keys[0]
     with conn:
         for key in topic_keys:
@@ -440,9 +519,16 @@ def update_event(
     return get_event(conn, key)
 
 
+FILE_MODE_EVIDENCE_TEXT = "Anhänge lassen sich im Dateimodus noch nicht ändern (Issue #89, folgt)."
+
+
 def add_evidence(
-    conn: sqlite3.Connection, key: str, blob: Blob, evidence_type: str, description: str, actor_id: int, ip: str
+    conn: sqlite3.Connection, key: str, blob: Blob, evidence_type: str, description: str, actor_id: int, ip: str,
+    data_dir: Path | None = None,
 ) -> dict:
+    if data_dir is not None:
+        # Evidence lives in the database here. An index rebuild from the files would replace it silently.
+        raise Invalid(FILE_MODE_EVIDENCE_TEXT)
     if evidence_type not in EVIDENCE_TYPES:
         raise Invalid(f"Unbekannter Evidence-Typ {evidence_type!r}")
     if len(description) > MAX_DESCRIPTION_LENGTH:
@@ -465,7 +551,9 @@ def add_evidence(
     return _evidence_meta(conn, cursor.lastrowid)
 
 
-def delete_evidence(conn: sqlite3.Connection, evidence_id: int, actor_id: int, ip: str) -> None:
+def delete_evidence(conn: sqlite3.Connection, evidence_id: int, actor_id: int, ip: str, data_dir: Path | None = None) -> None:
+    if data_dir is not None:
+        raise Invalid(FILE_MODE_EVIDENCE_TEXT)
     row = conn.execute(
         """
         SELECT evidence.event_pk, evidence.file, events.key
@@ -484,7 +572,9 @@ def delete_evidence(conn: sqlite3.Connection, evidence_id: int, actor_id: int, i
     accounts.audit(conn, "evidence_deleted", user_id=actor_id, target=row["key"], detail=row["file"], ip=ip)
 
 
-def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) -> None:
+def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, data_dir: Path | None = None) -> None:
+    """Delete an event. With data_dir it is removed from its topic file first, and no tombstone is kept: the file
+    is the record now (ADR 0008). Without it the database keeps a tombstone, as before."""
     row = conn.execute("SELECT pk FROM events WHERE key = ?", (key,)).fetchone()
     if row is None:
         raise NotFound(f"Event {key!r} nicht gefunden")
@@ -494,6 +584,8 @@ def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str) -> 
     ).fetchall()]
     if dependents:
         raise Conflict(f"Event wird von {', '.join(dependents)} ausgelöst. Zuerst dort den Verweis entfernen.")
+    if data_dir is not None:
+        return _delete_in_folder(conn, key, data_dir, actor_id, ip)
 
     # Copied before the event goes, so that the tombstone can bring it back (issue #34).
     snapshot = _snapshot(conn, row["pk"])
