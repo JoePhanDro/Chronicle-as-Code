@@ -38,7 +38,7 @@ def folder(tmp_path):
     git(data, "add", ".")
     git(data, "commit", "-q", "-m", "Stand")
     remote = tmp_path / "remote.git"
-    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(remote))
     git(data, "remote", "add", "origin", str(remote))
     git(data, "push", "-q", "-u", "origin", "main")
     return data
