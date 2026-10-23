@@ -267,6 +267,7 @@ def folder_lock(folder: Path) -> Iterator[None]:
 def _yaml() -> YAML:
     """Round-trip YAML with the layout of the hand-written demo file (data/timeline.yaml), which it reproduces exactly."""
     yaml_rt = YAML(typ="rt")
+    yaml_rt.preserve_quotes = True  # without it, every quoted value in a file loses its quotes on the next write
     yaml_rt.indent(mapping=2, sequence=4, offset=2)
     yaml_rt.width = 4096
     return yaml_rt
