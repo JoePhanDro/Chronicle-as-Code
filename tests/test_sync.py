@@ -224,3 +224,149 @@ def test_an_upstream_without_local_changes_gives_an_empty_plan(tmp_path, folder)
     git(folder, "push", "-q", "-u", "origin", "main")
 
     assert sync.preview(folder).changes == []
+
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def remote_of(tmp_path, folder):
+    """A bare remote that holds the folder's history, with the folder set up to push to it."""
+    remote = tmp_path / "remote.git"
+    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(folder, "remote", "add", "origin", str(remote))
+    git(folder, "push", "-q", "-u", "origin", "main")
+    return remote
+
+
+def clone_of(tmp_path, remote, name):
+    path = tmp_path / name
+    subprocess.run(["git", "clone", "-q", str(remote), str(path)], capture_output=True, text=True, check=True)
+    return path
+
+
+def subjects(folder: Path) -> list[str]:
+    return git(folder, "log", "--format=%s").splitlines()
+
+
+def test_a_local_change_is_committed_and_pushed(tmp_path, folder):
+    remote = remote_of(tmp_path, folder)
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Neu"')
+
+    result = sync.synchronise(folder)
+
+    assert result == sync.SyncResult(committed=True, merged=False, conflicts=[], problems=[])
+    assert subjects(remote)[0].startswith("Abgleich ")
+
+
+def test_nothing_to_do_commits_and_pushes_nothing(tmp_path, folder):
+    remote_of(tmp_path, folder)
+    before = subjects(folder)
+
+    result = sync.synchronise(folder)
+
+    assert result.committed is False
+    assert subjects(folder) == before
+
+
+def test_remote_changes_to_other_fields_of_an_event_are_merged_with_the_driver(tmp_path, folder, monkeypatch):
+    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    edit(other, "timeline.yaml", 'details: |\n      Herstellerhinweis', 'details: |\n      Anna Notiz\n      Herstellerhinweis')
+    assert sync.synchronise(other).committed
+    edit(folder, "timeline.yaml", "status: resolved\n    details: |", "status: open\n    details: |")  # the feed-cve status, locally
+
+    result = sync.synchronise(folder)
+
+    assert result.merged and result.conflicts == []
+    feed_cve = next(item for item in yaml.safe_load((folder / "timeline.yaml").read_text(encoding="utf-8"))["events"]
+                    if item["key"] == "feed-cve")
+    assert feed_cve["status"] == "open"  # our change
+    assert "Anna Notiz" in feed_cve["details"]  # the other side's change
+
+
+def test_the_same_field_changed_on_both_sides_is_a_conflict_and_nothing_is_pushed(tmp_path, folder, monkeypatch):
+    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    edit(other, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Anna"')
+    assert sync.synchronise(other).committed
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Bernd"')
+    remote_before = git(remote, "rev-parse", "main").strip()
+
+    result = sync.synchronise(folder)
+
+    assert result.conflicts == ["timeline.yaml"]
+    assert result.merged is False
+    assert git(remote, "rev-parse", "main").strip() == remote_before
+    assert not (folder / ".git" / "MERGE_HEAD").exists()
+
+
+def test_an_unreachable_remote_keeps_the_local_commit(tmp_path, folder):
+    remote_of(tmp_path, folder)
+    git(folder, "remote", "set-url", "origin", str(tmp_path / "gibt-es-nicht.git"))
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Offline"')
+
+    with pytest.raises(sync.SyncError, match="nicht erreichbar"):
+        sync.synchronise(folder)
+
+    assert subjects(folder)[0].startswith("Abgleich ")
+
+
+def test_broken_files_stop_the_sync_before_anything_is_committed(tmp_path, folder):
+    remote_of(tmp_path, folder)
+    (folder / "b.yaml").write_text("topic: [kaputt\n", encoding="utf-8")
+    before = subjects(folder)
+
+    result = sync.synchronise(folder)
+
+    assert result.problems
+    assert subjects(folder) == before
+
+
+def test_the_first_upload_creates_the_branch_on_the_remote(tmp_path, folder):
+    remote = tmp_path / "leer.git"
+    git(tmp_path, "init", "-q", "--bare", str(remote))
+    git(folder, "remote", "add", "origin", str(remote))
+
+    result = sync.synchronise(folder)
+
+    assert result.committed is False
+    assert git(remote, "rev-parse", "--verify", "main").strip()
+
+
+def test_the_sync_endpoint_takes_in_the_remote_and_rebuilds_the_index(tmp_path, folder, monkeypatch):
+    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    edit(other, "timeline.yaml", "    details: |\n      Herstellerhinweis", "    details: |\n      Von Anna\n      Herstellerhinweis")
+    assert sync.synchronise(other).committed
+    client = api_client(tmp_path, folder)
+
+    response = client.post("/api/v1/sync")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["merged"] is True
+    assert "Von Anna" in client.get("/api/v1/events/feed-cve").json()["details"]
+
+
+def test_the_sync_endpoint_reports_a_conflict_without_pushing(tmp_path, folder, monkeypatch):
+    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    edit(other, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Anna"')
+    assert sync.synchronise(other).committed
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Bernd"')
+    client = api_client(tmp_path, folder)
+
+    response = client.post("/api/v1/sync")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["conflicts"] == ["timeline.yaml"]
+
+
+def test_a_viewer_cannot_sync(tmp_path, folder):
+    remote_of(tmp_path, folder)
+    client = api_client(tmp_path, folder, role="viewer")
+
+    assert client.post("/api/v1/sync").status_code == 403
