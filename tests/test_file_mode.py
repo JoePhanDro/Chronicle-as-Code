@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 
 from chronicle import repository
 from chronicle.db import connect
@@ -45,7 +46,7 @@ def test_an_edit_is_written_to_the_file_and_the_index_follows(folder, conn):
                                       actor_id=None, ip="test", data_dir=folder)
 
     text = (folder / "timeline.yaml").read_text(encoding="utf-8")
-    assert "action: Analyse abgeschlossen" in text
+    assert {item["key"]: item for item in yaml.safe_load(text)["events"]}["analysis"]["action"] == "Analyse abgeschlossen"
     assert text.startswith(before_text.splitlines()[0])  # the comments at the top of the file are kept
     assert "# Evidence-Pfade sind relativ zum Datenordner." in text
     assert updated["action"] == "Analyse abgeschlossen"
@@ -127,7 +128,8 @@ def test_api_edit_is_written_to_the_file_and_answered_with_the_new_state(tmp_pat
 
     assert response.status_code == 200, response.text
     assert response.json()["action"] == "über die API geändert"
-    assert "action: über die API geändert" in (folder / "timeline.yaml").read_text(encoding="utf-8")
+    events = yaml.safe_load((folder / "timeline.yaml").read_text(encoding="utf-8"))["events"]
+    assert {item["key"]: item for item in events}["analysis"]["action"] == "über die API geändert"
 
 
 def test_api_edit_after_an_outside_change_is_a_conflict(tmp_path, folder):
