@@ -186,7 +186,7 @@ Noch offen: Topics anlegen und bearbeiten im Dateimodus (Issue #89).
 Zwei Befehle, mit unterschiedlichem Zweck:
 
 - **Export** schreibt jedes Topic als YAML im Importformat, Evidence daneben. Die Dateien lassen sich mit dem Importer in eine leere Datenbank einspielen und ergeben dort wieder denselben Export. Konten, Sitzungen und das Audit-Log gehören nicht dazu.
-- **Backup** kopiert die ganze Datenbank konsistent, auch während der Dienst läuft. Die Kopie enthält Passwort-Hashes, Sitzungen und das Audit-Log. Sie ist nur für den Eigentümer lesbar und gehört entsprechend gesichert.
+- **Backup** kopiert den Index und die Betriebsdatei (`chronicle.ops.db` neben `chronicle.db`) konsistent, auch während der Dienst läuft. Die Betriebsdatei enthält Passwort-Hashes, Sitzungen und das Audit-Log und ist nicht aus den Dateien rekonstruierbar. Den Index kann man dagegen aus den Topic-Dateien neu aufbauen. Beide Kopien sind nur für den Eigentümer lesbar und gehören entsprechend gesichert.
 
 ```bash
 mkdir -p export backup
