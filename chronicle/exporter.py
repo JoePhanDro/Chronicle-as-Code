@@ -47,13 +47,14 @@ class ExportReport:
     evidence: int = 0
 
 
-def export_database(db_path: str | Path, out_dir: str | Path) -> ExportReport:
+def export_database(db_path: str | Path, out_dir: str | Path, data_dir: str | Path | None = None) -> ExportReport:
+    """`data_dir` is needed when the index holds no evidence bytes, i.e. in file mode (issue #89)."""
     if not Path(db_path).is_file():
         raise ExportError(f"Datenbank nicht gefunden: {db_path}")
 
     conn = connect(db_path)
     try:
-        files, report = _build(conn)
+        files, report = _build(conn, Path(data_dir) if data_dir is not None else None)
     finally:
         conn.close()
 
@@ -67,11 +68,11 @@ def export_database(db_path: str | Path, out_dir: str | Path) -> ExportReport:
     return report
 
 
-def _build(conn) -> tuple[dict[str, bytes], ExportReport]:
+def _build(conn, data_dir: Path | None = None) -> tuple[dict[str, bytes], ExportReport]:
     files: dict[str, bytes] = {}
     report = ExportReport()
     for topic in repository.list_topics(conn):
-        document, evidence = _topic_document(conn, topic, report)
+        document, evidence = _topic_document(conn, topic, report, data_dir=data_dir)
         files.update(evidence)
         files[f"{topic['key']}.yaml"] = _yaml_bytes(document)
         report.topics += 1
@@ -79,7 +80,8 @@ def _build(conn) -> tuple[dict[str, bytes], ExportReport]:
 
 
 def topic_document(
-    conn, key: str, *, expand_refs: bool = False, evidence_ids: dict[str, int] | None = None
+    conn, key: str, *, expand_refs: bool = False, evidence_ids: dict[str, int] | None = None,
+    data_dir: Path | None = None,
 ) -> tuple[dict, dict[str, bytes]] | None:
     """One topic in the import format, plus the evidence contents it refers to. Used for reports.
 
@@ -89,20 +91,23 @@ def topic_document(
     topic = repository.get_topic(conn, key)
     if topic is None:
         return None
-    return _topic_document(conn, topic, ExportReport(), expand_refs=expand_refs, evidence_ids=evidence_ids)
+    return _topic_document(conn, topic, ExportReport(), expand_refs=expand_refs, evidence_ids=evidence_ids,
+                           data_dir=data_dir)
 
 
 def _topic_document(
-    conn, topic: dict, report: ExportReport, *, expand_refs: bool = False, evidence_ids: dict[str, int] | None = None
+    conn, topic: dict, report: ExportReport, *, expand_refs: bool = False, evidence_ids: dict[str, int] | None = None,
+    data_dir: Path | None = None,
 ) -> tuple[dict, dict[str, bytes]]:
     files: dict[str, bytes] = {}
     events = []
     refs = []
     for event in repository.list_topic_events(conn, topic["key"]):
         if event["home_topic"] == topic["key"]:
-            events.append(_event_document(conn, event, files, report, evidence_ids))
+            events.append(_event_document(conn, event, files, report, evidence_ids, data_dir))
         elif expand_refs:
-            events.append(_event_document(conn, repository.get_event(conn, event["key"]), files, report, evidence_ids))
+            events.append(_event_document(conn, repository.get_event(conn, event["key"]), files, report, evidence_ids,
+                                          data_dir))
         else:
             refs.append(event["key"])
 
@@ -122,7 +127,8 @@ def _yaml_bytes(document: dict) -> bytes:
 
 
 def _event_document(
-    conn, event: dict, files: dict[str, bytes], report: ExportReport, evidence_ids: dict[str, int] | None = None
+    conn, event: dict, files: dict[str, bytes], report: ExportReport, evidence_ids: dict[str, int] | None = None,
+    data_dir: Path | None = None,
 ) -> dict:
     document = {
         "key": event["key"],
@@ -142,11 +148,11 @@ def _event_document(
     used: set[str] = set()
     evidence = []
     for item in event["evidence"]:
-        content = repository.get_evidence_content(conn, item["id"])["content"]
+        content = repository.get_evidence_content(conn, item["id"], data_dir)["content"]
         if content is None:
             raise ExportError(
                 f"Evidence {item['file']!r} von {event['key']!r} hat keinen gespeicherten Inhalt. "
-                "Bitte den Import erneut ausführen."
+                "Bitte den Import erneut ausführen, im Dateimodus mit --data den Datenordner angeben."
             )
         relative = _evidence_path(event["key"], item["file"], used)
         files[relative] = content
@@ -180,10 +186,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="chronicle.exporter", description="Export topics and events as YAML files.")
     parser.add_argument("--db", required=True, type=Path, help="SQLite file to read")
     parser.add_argument("--out", required=True, type=Path, help="folder for the YAML files and evidence")
+    parser.add_argument("--data", type=Path, default=None,
+                        help="data folder with the evidence files, needed when the database holds no evidence bytes")
     args = parser.parse_args(argv)
 
     try:
-        report = export_database(args.db, args.out)
+        report = export_database(args.db, args.out, args.data)
     except ExportError as exc:
         print(f"Fehler: {exc}", file=sys.stderr)
         return 1

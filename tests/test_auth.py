@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
+from chronicle.db import ops_path
 from chronicle import accounts, security
 from chronicle.api import create_app
 from chronicle.db import connect
@@ -151,7 +152,7 @@ def test_last_active_admin_cannot_be_demoted(client):
 
 def test_expired_session_is_rejected(client, db_path):
     login_as(client, "anna")
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(ops_path(db_path))
     conn.execute("UPDATE sessions SET expires_at = 0")
     conn.commit()
     conn.close()
@@ -160,7 +161,7 @@ def test_expired_session_is_rejected(client, db_path):
 
 def test_passwords_and_tokens_are_not_stored_in_clear(client, db_path):
     login_as(client, "anna")
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(ops_path(db_path))
     stored_hashes = [row[0] for row in conn.execute("SELECT password_hash FROM users")]
     token_hashes = [row[0] for row in conn.execute("SELECT token_hash FROM sessions")]
     conn.close()
