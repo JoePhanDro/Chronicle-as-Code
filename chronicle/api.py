@@ -184,6 +184,21 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
             "changes": [{"action": item.action, "key": item.key, "file": item.file} for item in result.changes],
         }
 
+    @app.post("/api/v1/sync")
+    def sync_now(request: Request, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(writer)) -> dict:
+        """Commit the topic files, take in the remote's state, push. After a merge the index is rebuilt (issue #90)."""
+        data_dir = request.app.state.data_dir
+        if data_dir is None:
+            raise HTTPException(status_code=409, detail="Kein Datenordner konfiguriert")
+        try:
+            result = sync.synchronise(data_dir)
+        except sync.SyncError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if result.merged:
+            repository.reindex(conn, data_dir)
+        return {"committed": result.committed, "merged": result.merged, "conflicts": result.conflicts,
+                "problems": result.problems}
+
     @app.post("/api/v1/topics", status_code=201)
     def create_topic(body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
         return _write(lambda: repository.create_topic(conn, body, user["id"], client_ip(request), data_dir=request.app.state.data_dir))

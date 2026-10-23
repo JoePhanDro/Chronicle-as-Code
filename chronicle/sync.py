@@ -7,14 +7,18 @@ like `terraform plan`. Attachments are not in Git (ADR 0009) and are not compare
 
 from __future__ import annotations
 
+import shlex
 import subprocess
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .check import load_named_folder
 from .loader import CheckFailed, TimelineError, parse_timeline
 from .models import Timeline
+from .store import folder_lock
 
 TOPIC_SUFFIXES = (".yaml", ".yml")  # the files the loader reads, see loader.find_topic_files
 
@@ -36,13 +40,18 @@ class Preview:
     problems: list[str]  # not empty: the files fail the checks, so no plan can be made
 
 
-def _git(data_dir: Path, *args: str) -> str:
+def _run(data_dir: Path, *args: str) -> subprocess.CompletedProcess:
+    """Run git in the data folder. The exit code is the caller's to read."""
     try:
-        result = subprocess.run(["git", "-C", str(data_dir), *args], capture_output=True, text=True, check=True)
+        return subprocess.run(["git", "-C", str(data_dir), *args], capture_output=True, text=True, check=False)
     except FileNotFoundError as exc:
         raise SyncError("Git ist auf diesem Rechner nicht installiert.") from exc
-    except subprocess.CalledProcessError as exc:
-        raise SyncError(f"Git meldet einen Fehler: {exc.stderr.strip() or exc}") from exc
+
+
+def _git(data_dir: Path, *args: str) -> str:
+    result = _run(data_dir, *args)
+    if result.returncode != 0:
+        raise SyncError(f"Git meldet einen Fehler: {result.stderr.strip() or result.returncode}")
     return result.stdout
 
 
@@ -124,3 +133,105 @@ def preview(data_dir: Path) -> Preview:
     except CheckFailed as exc:
         return Preview(changes=[], problems=list(exc.problems))
     return Preview(changes=plan(base_timelines(data_dir), current), problems=[])
+
+
+REMOTE = "origin"
+MERGE_DRIVER = "chronicle"  # the name in .gitattributes and in the git config, see chronicle/merge.py
+
+
+@dataclass(frozen=True)
+class SyncResult:
+    committed: bool  # the local topic files were committed (nothing was committed if they had no changes)
+    merged: bool  # the remote's state was taken in and changed the files
+    conflicts: list[str]  # the merge conflicted; it was aborted, nothing was pushed
+    problems: list[str]  # the merged files fail the checks; the merge was undone, nothing was pushed
+
+
+def synchronise(data_dir: Path) -> SyncResult:
+    """Commit the local topic files, take in the remote's state and push (ADR 0008, point 3).
+
+    Stops before each step that could lose data: a file that fails the checks, a conflict, a merge that breaks the
+    files. A failed upload leaves the local commit in place; the next synchronisation tries again.
+    """
+    state = preview(data_dir)
+    if state.problems:
+        return SyncResult(committed=False, merged=False, conflicts=[], problems=state.problems)
+    with folder_lock(data_dir):
+        _use_merge_driver(data_dir)
+        committed = _commit_topic_files(data_dir)
+        branch = _git(data_dir, "rev-parse", "--abbrev-ref", "HEAD").strip()
+        if branch == "HEAD":
+            raise SyncError("Die Datenkopie ist auf keinem Branch. Bitte zuerst einen Branch auschecken.")
+        _fetch(data_dir)
+
+        remote_ref = f"{REMOTE}/{branch}"
+        if not _ref_exists(data_dir, remote_ref):
+            _push(data_dir, branch)  # the first upload: nothing to merge yet
+            return SyncResult(committed=committed, merged=False, conflicts=[], problems=[])
+
+        before = _git(data_dir, "rev-parse", "HEAD").strip()
+        outcome = _run(data_dir, "merge", "--no-edit", remote_ref)
+        if outcome.returncode != 0:
+            conflicts = _git(data_dir, "diff", "--name-only", "--diff-filter=U").splitlines()
+            if not conflicts:  # refused before it started, e.g. an untracked file is in the way: nothing to abort
+                raise SyncError(f"Das Zusammenführen ist fehlgeschlagen: {outcome.stderr.strip() or outcome.stdout.strip()}")
+            _git(data_dir, "merge", "--abort")
+            return SyncResult(committed=committed, merged=False, conflicts=conflicts, problems=[])
+
+        merged = _git(data_dir, "rev-parse", "HEAD").strip() != before
+        try:
+            load_named_folder(data_dir, evidence=False)
+        except CheckFailed as exc:
+            _git(data_dir, "reset", "--hard", before)
+            return SyncResult(committed=committed, merged=False, conflicts=[], problems=list(exc.problems))
+        _push(data_dir, branch)
+        return SyncResult(committed=committed, merged=merged, conflicts=[], problems=[])
+
+
+def _use_merge_driver(data_dir: Path) -> None:
+    """Make the data folder use the merge driver of chronicle/merge.py. The setting is per clone, so it is set here.
+
+    The attribute goes to .git/info/attributes, which is local and not committed. Existing lines are kept.
+    """
+    _git(data_dir, "config", "--local", f"merge.{MERGE_DRIVER}.name", "Chronicle: Feldebene")
+    _git(data_dir, "config", "--local", f"merge.{MERGE_DRIVER}.driver",
+         f"{shlex.quote(sys.executable)} -m chronicle.merge %O %A %B")
+    attributes = data_dir / _git(data_dir, "rev-parse", "--git-path", "info/attributes").strip()
+    existing = attributes.read_text(encoding="utf-8") if attributes.exists() else ""
+    wanted = [f"*{suffix} merge={MERGE_DRIVER}" for suffix in TOPIC_SUFFIXES]
+    missing = [line for line in wanted if line not in existing.splitlines()]
+    if missing:
+        attributes.parent.mkdir(parents=True, exist_ok=True)
+        attributes.write_text(existing + "".join(f"{line}\n" for line in missing), encoding="utf-8")
+
+
+def _commit_topic_files(data_dir: Path) -> bool:
+    """Commit the topic files only. Attachments and the lock file are not in Git. Returns False if nothing changed."""
+    # Named one by one: a pathspec that matches nothing makes git fail, and a folder may have no .yml files.
+    changed = _git(data_dir, "ls-files", "-m", "-d", "-o", "--exclude-standard").splitlines()
+    topic_files = [name for name in changed if name.endswith(TOPIC_SUFFIXES)]
+    if not topic_files:
+        return False
+    _git(data_dir, "add", "-A", "--", *topic_files)
+    if _run(data_dir, "diff", "--cached", "--quiet").returncode == 0:
+        return False
+    _git(data_dir, "commit", "-q", "-m", f"Abgleich {datetime.now(UTC):%Y-%m-%d %H:%M} UTC")
+    return True
+
+
+def _fetch(data_dir: Path) -> None:
+    result = _run(data_dir, "fetch", "--quiet", REMOTE)
+    if result.returncode != 0:
+        raise SyncError("Der Remote ist nicht erreichbar. Lokal bleibt alles erhalten, der Abgleich lässt sich später "
+                        f"wiederholen.\n{result.stderr.strip()}")
+
+
+def _ref_exists(data_dir: Path, ref: str) -> bool:
+    return _run(data_dir, "rev-parse", "--verify", "--quiet", ref).returncode == 0
+
+
+def _push(data_dir: Path, branch: str) -> None:
+    result = _run(data_dir, "push", "--quiet", "-u", REMOTE, f"HEAD:refs/heads/{branch}")
+    if result.returncode != 0:
+        raise SyncError("Hochladen ist fehlgeschlagen. Die Änderungen sind lokal committet und bleiben erhalten.\n"
+                        f"{result.stderr.strip()}")
