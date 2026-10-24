@@ -1,7 +1,5 @@
 """File mode (ADR 0008, issue #89): attachments are files in evidence/ and the topic file names them."""
 
-import shutil
-from pathlib import Path
 
 import pytest
 import yaml
@@ -9,28 +7,11 @@ import yaml
 from chronicle import repository
 from chronicle.db import connect
 from chronicle.evidence import check_file
-from chronicle.importer import import_folder
 from chronicle.models import Event
 from chronicle.repository import Conflict, Invalid, NotFound
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
 OTHER_PNG = b"\x89PNG\r\n\x1a\n" + b"\x01" * 24
-
-
-@pytest.fixture
-def folder(tmp_path):
-    copy = tmp_path / "data"
-    shutil.copytree(DATA_DIR, copy)
-    import_folder(tmp_path / "chronicle.db", copy)
-    return copy
-
-
-@pytest.fixture
-def conn(folder):
-    connection = connect(folder.parent / "chronicle.db")
-    yield connection
-    connection.close()
 
 
 def attach(conn, folder, key, name, data, evidence_type="screenshot", description=""):
