@@ -19,7 +19,7 @@ Danke, dass du mitmachen möchtest. Dieses Dokument beschreibt, wie wir arbeiten
 ## Pull-Requests
 
 1. Branch von aktuellem `main` anlegen.
-2. Tests lokal laufen lassen (`pytest`), bei Template-Änderungen `npm run build:css`.
+2. Lint und Tests lokal laufen lassen (`ruff check .`, `pytest`), bei Template-Änderungen `npm run build:css`.
 3. PR öffnen. Die Vorlage bringt eine Checkliste mit. Ungeprüfte Punkte bitte offen lassen und benennen.
 4. Wenn `main` sich inzwischen geändert hat, den Branch aktualisieren (GitHub: „Update branch“). Die Protection verlangt das.
 5. Auf die CI warten. Rote Checks zuerst beheben, bevor jemand reviewt.

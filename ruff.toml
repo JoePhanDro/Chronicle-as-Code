@@ -1,0 +1,6 @@
+line-length = 120
+
+[lint]
+# E501 (Zeilenlänge) ist aus: bestehende Zeilen werden beim Anfassen umgebrochen, nicht auf einmal.
+select = ["E", "F"]
+ignore = ["E501"]

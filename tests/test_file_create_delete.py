@@ -9,7 +9,7 @@ from chronicle import repository
 from chronicle.db import connect
 from chronicle.importer import import_folder
 from chronicle.models import Event
-from chronicle.repository import Conflict, Invalid, NotFound
+from chronicle.repository import Conflict, NotFound
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
