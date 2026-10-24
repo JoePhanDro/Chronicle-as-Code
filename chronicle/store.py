@@ -76,24 +76,69 @@ def update_event_in_file(path: Path, key: str, event: Event, *, expected_version
     with folder_lock(path.parent):
         _check_version(path, expected_version)
         text = path.read_text(encoding="utf-8")
-        current = _read_model(text)
-        old = next((item for item in current.events if item.key == key), None)
-        if old is None:
-            raise EventNotInFile(f"Event {key!r} steht nicht in {path.name}.")
+        start, end = _entry_span(text, key, path.name)
+        entry = text[start:end]
+        old = _entry_event(entry)
 
-        document = _yaml().load(text)
-        item = next(entry for entry in document["events"] if entry["key"] == key)
+        # Only the entry of this event goes through the round trip. Parsing the whole file here took seconds for a
+        # file of 10,000 events (issue #125); the rest of the file stays as it is, byte for byte.
+        prefix = "events:\n  - "
+        item = _yaml().load(prefix + entry)["events"][0]
         _set_changed_fields(item, old, event)
         stream = io.StringIO()
-        _yaml().dump(document, stream)
-
-        expected = current.model_copy(update={"events": [
-            event.model_copy(update={"evidence": old.evidence}) if known.key == key else known
-            for known in current.events
-        ]})
-        _verify_read_back(stream.getvalue(), expected)
-        _atomic_write(path, stream.getvalue().encode("utf-8"))
+        _yaml().dump({"events": [item]}, stream)
+        if not stream.getvalue().startswith(prefix):
+            raise StoreError("Der geänderte Eintrag hat eine andere Form als erwartet, deshalb wird nichts geschrieben.")
+        new_entry = stream.getvalue()[len(prefix):]
+        _verify_read_back_entry(new_entry, event.model_copy(update={"evidence": old.evidence}))
+        _atomic_write(path, (text[:start] + new_entry + text[end:]).encode("utf-8"))
     return file_version(path)
+
+
+def _entry_span(text: str, key: str, name: str) -> tuple[int, int]:
+    """Where the entry of one event sits in the file text: from its first key to the end of its last line.
+
+    The YAML composer gives the positions, so the file is not loaded into objects to find the entry.
+    """
+    root = yaml.compose(text, Loader=_YAML_LOADER)
+    fields = root.value if isinstance(root, yaml.MappingNode) else []
+    events = next((value for field, value in fields if field.value == "events"), None)
+    for entry in events.value if events is not None else []:
+        entry_key = next(value for field, value in entry.value if field.value == "key")
+        if entry_key.value == key:
+            return entry.start_mark.index, _line_end(text, _last_index(entry))
+    raise EventNotInFile(f"Event {key!r} steht nicht in {name}.")
+
+
+def _last_index(node) -> int:
+    """The position after the last character of a YAML node."""
+    if isinstance(node, yaml.MappingNode):
+        return max(_last_index(value) for _, value in node.value)
+    if isinstance(node, yaml.SequenceNode):
+        return max(_last_index(value) for value in node.value)
+    return node.end_mark.index
+
+
+def _line_end(text: str, position: int) -> int:
+    """The start of the line after position, or position itself if it is already at a line start."""
+    if position == 0 or text[position - 1] == "\n":
+        return position
+    newline = text.find("\n", position)
+    return len(text) if newline == -1 else newline + 1
+
+
+def _entry_event(entry: str) -> Event:
+    """The event of one entry text, validated with the same model as a whole topic file."""
+    try:
+        document = yaml.load("events:\n  - " + entry, Loader=_YAML_LOADER)
+        return Timeline.model_validate({"topic": {"key": "entry", "title": "entry"}, "events": document["events"]}).events[0]
+    except (yaml.YAMLError, ValueError) as exc:
+        raise StoreError(f"Die Datei ist nach der Änderung nicht lesbar, deshalb wird nichts geschrieben: {exc}") from exc
+
+
+def _verify_read_back_entry(entry: str, expected: Event) -> None:
+    if _entry_event(entry) != expected:
+        raise StoreError("Der geänderte Eintrag würde sich beim Lesen anders verhalten als geplant, deshalb wird nichts geschrieben.")
 
 
 def create_topic_file(path: Path, topic: Topic) -> str:

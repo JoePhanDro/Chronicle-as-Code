@@ -121,17 +121,17 @@ def test_a_failed_change_does_not_take_a_parallel_change_back_out_of_the_folder(
     """
     first_is_writing = threading.Event()
     second_finished = threading.Event()
-    real_reindex = repository.reindex
+    real_index_check = repository._folder_as_indexed
 
-    def reindex_that_fails_for_the_first_change(conn_, data_dir, *args, **kwargs):
+    def check_that_fails_for_the_first_change(conn_, data_dir, *, changed):
         if threading.current_thread().name.startswith("erste"):
             first_is_writing.set()
             # Without a lock the second change finishes now. With the lock it waits for this rollback.
             second_finished.wait(timeout=1)
             raise Invalid("absichtlich abgebrochen")
-        return real_reindex(conn_, data_dir, *args, **kwargs)
+        return real_index_check(conn_, data_dir, changed=changed)
 
-    monkeypatch.setattr(repository, "reindex", reindex_that_fails_for_the_first_change)
+    monkeypatch.setattr(repository, "_folder_as_indexed", check_that_fails_for_the_first_change)
     current = repository.get_event(conn, "feed-cve")
     edited = _event_of(conn, "feed-cve").model_copy(update={"action": "Parallel geändert"})
 
