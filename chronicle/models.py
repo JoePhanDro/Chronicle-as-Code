@@ -6,6 +6,7 @@ instead of silently dropping data.
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
@@ -132,7 +133,8 @@ class Timeline(BaseModel):
     @model_validator(mode="after")
     def _check_local_keys(self) -> Timeline:
         keys = [event.key for event in self.events]
-        duplicates = sorted({key for key in keys if keys.count(key) > 1})
+        counts = Counter(keys)  # list.count per key was quadratic: seconds for 10,000 events (issue #125)
+        duplicates = sorted(key for key, count in counts.items() if count > 1)
         if duplicates:
             raise ValueError(f"duplicate event keys: {duplicates}")
         overlap = sorted(set(keys) & set(self.refs))
