@@ -15,7 +15,7 @@ from pathlib import Path
 from . import accounts
 from .check import load_named_folder
 from .evidence import EVIDENCE_TYPES, MAX_DESCRIPTION_LENGTH, Blob
-from .loader import TOPIC_FILE_PATTERNS, TimelineError
+from .loader import TOPIC_FILE_PATTERNS, TimelineError, find_topic_files
 from .models import Event, Timeline, Topic
 from .store import (
     EventNotInFile,
@@ -328,10 +328,12 @@ def _update_in_folder(
 ) -> dict:
     """The event's fields go to its home file, the links to the files of the other topics. Then the index follows."""
     with _all_or_nothing(data_dir):
+        written = None
         if [name for name in changed if name != "topics"]:
             located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
             if located is None:
                 raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+            written = located["path"]
             try:
                 update_event_in_file(data_dir / located["path"], key, event,
                                      expected_version=_recorded_version(conn, located["path"]))
@@ -347,9 +349,45 @@ def _update_in_folder(
             linked = set(_linked_elsewhere(conn, key))
             wanted = set(topic_keys) - {home}
             _change_links(conn, key, add=wanted - linked, remove=linked - wanted, data_dir=data_dir)
-        reindex(conn, data_dir)
+            reindex(conn, data_dir)
+        else:
+            _index_field_change(conn, key, event, written, data_dir)
     accounts.audit(conn, "event_updated", user_id=actor_id, target=key, detail=",".join(changed), ip=ip)
     return get_event(conn, key)
+
+
+def _index_field_change(conn: sqlite3.Connection, key: str, event: Event, written: str, data_dir: Path) -> None:
+    """The index after the fields of one event were written to its file (issue #125).
+
+    Only that file changed. If every other file is exactly as the index recorded it, the event's row and the file's
+    version are updated, and no file is read again. Otherwise the folder is indexed as a whole, which checks every file.
+    """
+    if not _folder_as_indexed(conn, data_dir, changed=written):
+        reindex(conn, data_dir)
+        return
+    with conn:
+        conn.execute(
+            """
+            UPDATE events SET t0 = ?, phase = ?, actor = ?, system = ?, action = ?, status = ?,
+                              triggered_by = ?, details = ?, source = 'import', version = version + 1,
+                              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE key = ?
+            """,
+            (*_event_values(event), key),
+        )
+        conn.execute("UPDATE source_files SET sha256 = ? WHERE path = ?", (file_version(data_dir / written), written))
+        # A full index holds no attachment bytes (keep_content=False, issue #89); the files are the only copy.
+        conn.execute("UPDATE evidence SET content = NULL WHERE content IS NOT NULL")
+
+
+def _folder_as_indexed(conn: sqlite3.Connection, data_dir: Path, *, changed: str) -> bool:
+    """True if the topic files on disk are the ones the index recorded, except the file named changed (its new
+    version is recorded by the caller). A file that is new, gone or edited outside Chronicle makes this False."""
+    recorded = {row["path"]: row["sha256"] for row in conn.execute("SELECT path, sha256 FROM source_files")}
+    on_disk = {path.relative_to(data_dir).as_posix(): path for path in find_topic_files(data_dir)}
+    if recorded.keys() != on_disk.keys() or changed not in recorded:
+        return False
+    return all(name == changed or file_version(path) == recorded[name] for name, path in on_disk.items())
 
 
 def _write_topic(
