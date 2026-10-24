@@ -14,6 +14,7 @@ import fcntl
 import hashlib
 import io
 import os
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -258,14 +259,36 @@ def write_new_file(path: Path, data: bytes) -> None:
     _atomic_write(path, data)
 
 
+_thread_locks: dict[str, threading.Lock] = {}
+_thread_locks_guard = threading.Lock()
+_held = threading.local()
+
+
+def _thread_lock(key: str) -> threading.Lock:
+    with _thread_locks_guard:
+        return _thread_locks.setdefault(key, threading.Lock())
+
+
 @contextmanager
 def folder_lock(folder: Path) -> Iterator[None]:
-    """One writer at a time for a data folder. The lock file is not a topic file, so the loader ignores it."""
-    with (folder / LOCK_FILE).open("a") as handle:
+    """One writer at a time for a data folder. The lock file is not a topic file, so the loader ignores it.
+
+    Threads of this process take turns on a lock in memory, other processes on the file lock. A second flock
+    in the same process would wait for the first one, so a folder this thread already holds is not locked again.
+    """
+    key = str(folder.resolve())
+    if not hasattr(_held, "folders"):
+        _held.folders = set()
+    if key in _held.folders:
+        yield
+        return
+    with _thread_lock(key), (folder / LOCK_FILE).open("a") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        _held.folders.add(key)
         try:
             yield
         finally:
+            _held.folders.discard(key)
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
