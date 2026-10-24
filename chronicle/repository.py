@@ -25,6 +25,7 @@ from .store import (
     add_evidence_to_file,
     create_topic_file,
     file_version,
+    folder_lock,
     remove_event_from_file,
     remove_evidence_from_file,
     restore_file,
@@ -460,20 +461,23 @@ def _all_or_nothing(data_dir: Path) -> Iterator[list[Path]]:
 
     If anything fails, the topic files go back to how they were read and the files the block created are removed.
     The yielded list collects those created files. An index that refuses the folder is reported as Invalid.
+    The folder stays locked for the whole block: a change that runs meanwhile would otherwise be taken back by the
+    rollback of this one (issue #126).
     """
-    before = {path: path.read_bytes() for pattern in TOPIC_FILE_PATTERNS for path in data_dir.rglob(pattern)}
-    created: list[Path] = []
-    try:
-        yield created
-    except StoreError as exc:
-        _restore_folder(data_dir, before, created)
-        raise Invalid(str(exc)) from exc
-    except TimelineError as exc:
-        _restore_folder(data_dir, before, created)
-        raise Invalid(f"Nichts wurde geändert, weil der Datenordner nicht gültig ist:\n{exc}") from exc
-    except BaseException:
-        _restore_folder(data_dir, before, created)
-        raise
+    with folder_lock(data_dir):
+        before = {path: path.read_bytes() for pattern in TOPIC_FILE_PATTERNS for path in data_dir.rglob(pattern)}
+        created: list[Path] = []
+        try:
+            yield created
+        except StoreError as exc:
+            _restore_folder(data_dir, before, created)
+            raise Invalid(str(exc)) from exc
+        except TimelineError as exc:
+            _restore_folder(data_dir, before, created)
+            raise Invalid(f"Nichts wurde geändert, weil der Datenordner nicht gültig ist:\n{exc}") from exc
+        except BaseException:
+            _restore_folder(data_dir, before, created)
+            raise
 
 
 def _restore_folder(data_dir: Path, before: Mapping[Path, bytes], created: Sequence[Path]) -> None:
