@@ -8,7 +8,7 @@ import yaml
 from chronicle.check import check_folder
 from chronicle.loader import _YAML_LOADER, find_topic_files, load_timeline
 from chronicle.models import Event, Timeline
-from chronicle.store import LOCK_FILE, StoreError, VersionConflict, dump_timeline, file_version, write_timeline
+from chronicle.store import LOCK_FILE, VersionConflict, dump_timeline, file_version, write_timeline
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 

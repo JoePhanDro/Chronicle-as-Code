@@ -1,7 +1,5 @@
 """chronicle build: a static view from the files, without database or server (ADR 0009, issue #92)."""
 
-from pathlib import Path
-
 import pytest
 
 from chronicle.build import STYLESHEET, build_site

@@ -139,7 +139,7 @@ def test_header_has_a_theme_toggle_and_the_settings_offer_system_light_dark(db_p
 
     assert 'id="theme-toggle"' in html
     for value in ["system", "light", "dark"]:
-        assert f'data-setting="chronicle.theme" class="accent-sky-400"' in html and f'value="{value}"' in html, value
+        assert 'data-setting="chronicle.theme" class="accent-sky-400"' in html and f'value="{value}"' in html, value
 
 
 def test_dashboard_has_light_and_system_theme_variables(db_path):

@@ -8,7 +8,6 @@ import pytest
 
 from chronicle import repository
 from chronicle.db import connect
-from chronicle.evidence import check_file
 from chronicle.exporter import ExportError, export_database
 from chronicle.importer import import_folder
 from chronicle.models import Event
