@@ -1,35 +1,14 @@
 """File mode (ADR 0008, issue #89): the index keeps no copy of the attachments. The bytes come from the data folder."""
 
-import shutil
 import sqlite3
-from pathlib import Path
 
 import pytest
 
 from chronicle import repository
-from chronicle.db import connect
 from chronicle.exporter import ExportError, export_database
-from chronicle.importer import import_folder
 from chronicle.models import Event
 from chronicle.repository import Conflict
 from chronicle.report import make_report
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-
-
-@pytest.fixture
-def folder(tmp_path):
-    copy = tmp_path / "data"
-    shutil.copytree(DATA_DIR, copy)
-    import_folder(tmp_path / "chronicle.db", copy)
-    return copy
-
-
-@pytest.fixture
-def conn(folder):
-    connection = connect(folder.parent / "chronicle.db")
-    yield connection
-    connection.close()
 
 
 def edit_in_file_mode(conn, folder, key="analysis"):

@@ -1,38 +1,18 @@
 """File mode (ADR 0008, issue #89): links between topics live under refs in the other topic's file."""
 
-import shutil
 from pathlib import Path
 
 import pytest
 import yaml
 
 from chronicle import repository
-from chronicle.db import connect
-from chronicle.importer import import_folder
 from chronicle.models import Event
 from chronicle.repository import NotFound
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-
 
 @pytest.fixture
-def folder(tmp_path):
-    copy = tmp_path / "data"
-    shutil.copytree(DATA_DIR, copy)
-    (copy / "b.yaml").write_text(
-        "topic:\n  key: b\n  title: B\nevents:\n  - key: b1\n    t0: 2026-10-14T10:00:00+02:00\n"
-        "    phase: Analysis\n    actor: X\n    action: Schritt B\n    status: open\n",
-        encoding="utf-8",
-    )
-    import_folder(tmp_path / "chronicle.db", copy)
-    return copy
-
-
-@pytest.fixture
-def conn(folder):
-    connection = connect(folder.parent / "chronicle.db")
-    yield connection
-    connection.close()
+def folder(folder_with_b):
+    return folder_with_b
 
 
 def refs_of(path: Path) -> list[str]:

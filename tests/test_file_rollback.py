@@ -3,41 +3,22 @@
 The broken file stands in for any file of the folder that fails the checks, for example one edited by hand.
 """
 
-import shutil
 from pathlib import Path
 
 import pytest
 
 from chronicle import repository
-from chronicle.db import connect
 from chronicle.evidence import check_file
-from chronicle.importer import import_folder
 from chronicle.store import LOCK_FILE
 from chronicle.models import Event
 from chronicle.repository import Invalid, NotFound
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 BROKEN = "topic: [kaputt\n"
 
 
 @pytest.fixture
-def folder(tmp_path):
-    copy = tmp_path / "data"
-    shutil.copytree(DATA_DIR, copy)
-    (copy / "b.yaml").write_text(
-        "topic:\n  key: b\n  title: B\nevents:\n  - key: b1\n    t0: 2026-10-14T10:00:00+02:00\n"
-        "    phase: Analysis\n    actor: X\n    action: Schritt B\n    status: open\n",
-        encoding="utf-8",
-    )
-    import_folder(tmp_path / "chronicle.db", copy)
-    return copy
-
-
-@pytest.fixture
-def conn(folder):
-    connection = connect(folder.parent / "chronicle.db")
-    yield connection
-    connection.close()
+def folder(folder_with_b):
+    return folder_with_b
 
 
 def snapshot(folder: Path) -> dict[str, bytes]:

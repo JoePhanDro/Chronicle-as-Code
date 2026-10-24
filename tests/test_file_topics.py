@@ -1,33 +1,13 @@
 """File mode (ADR 0008, issue #89): creating and editing topics writes the topic file, then the index follows it."""
 
-import shutil
 from pathlib import Path
 
 import pytest
 import yaml
 
 from chronicle import repository
-from chronicle.db import connect
-from chronicle.importer import import_folder
 from chronicle.models import Topic
 from chronicle.repository import Conflict, Invalid
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-
-
-@pytest.fixture
-def folder(tmp_path):
-    copy = tmp_path / "data"
-    shutil.copytree(DATA_DIR, copy)
-    import_folder(tmp_path / "chronicle.db", copy)
-    return copy
-
-
-@pytest.fixture
-def conn(folder):
-    connection = connect(folder.parent / "chronicle.db")
-    yield connection
-    connection.close()
 
 
 def new_topic(key="neu-2026", **changes):

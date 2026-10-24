@@ -144,26 +144,9 @@ def test_before_the_first_commit_every_event_is_added(tmp_path, monkeypatch):
 PASSWORD = "correct horse battery"
 
 
-def api_client(tmp_path, folder, role="analyst"):
-    from fastapi.testclient import TestClient
-
-    from chronicle import accounts, security
-    from chronicle.api import create_app
-    from chronicle.db import connect
-
-    conn = connect(tmp_path / "chronicle.db")
-    accounts.create_user(conn, "anna", security.hash_password(PASSWORD), role)
-    conn.close()
-    client = TestClient(create_app(tmp_path / "chronicle.db", data_dir=folder))
-    response = client.post("/api/v1/auth/login", json={"username": "anna", "password": PASSWORD})
-    assert response.status_code == 200, response.text
-    client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
-    return client
-
-
-def test_the_preview_endpoint_lists_the_changes(tmp_path, folder):
+def test_the_preview_endpoint_lists_the_changes(tmp_path, folder, api_client):
     edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Neu formuliert"')
-    client = api_client(tmp_path, folder)
+    client = api_client()
 
     response = client.get("/api/v1/sync/preview")
 
@@ -172,9 +155,9 @@ def test_the_preview_endpoint_lists_the_changes(tmp_path, folder):
                                "changes": [{"action": "geändert", "key": "feed-cve", "file": "timeline.yaml"}]}
 
 
-def test_the_preview_endpoint_reports_problems_instead_of_a_plan(tmp_path, folder):
+def test_the_preview_endpoint_reports_problems_instead_of_a_plan(tmp_path, folder, api_client):
     (folder / "b.yaml").write_text("topic: [kaputt\n", encoding="utf-8")
-    client = api_client(tmp_path, folder)
+    client = api_client()
 
     response = client.get("/api/v1/sync/preview")
 
@@ -183,8 +166,8 @@ def test_the_preview_endpoint_reports_problems_instead_of_a_plan(tmp_path, folde
     assert response.json()["problems"]
 
 
-def test_a_viewer_cannot_preview(tmp_path, folder):
-    client = api_client(tmp_path, folder, role="viewer")
+def test_a_viewer_cannot_preview(tmp_path, folder, api_client):
+    client = api_client(role="viewer")
 
     assert client.get("/api/v1/sync/preview").status_code == 403
 
@@ -335,13 +318,13 @@ def test_the_first_upload_creates_the_branch_on_the_remote(tmp_path, folder):
     assert git(remote, "rev-parse", "--verify", "main").strip()
 
 
-def test_the_sync_endpoint_takes_in_the_remote_and_rebuilds_the_index(tmp_path, folder, monkeypatch):
+def test_the_sync_endpoint_takes_in_the_remote_and_rebuilds_the_index(tmp_path, folder, monkeypatch, api_client):
     monkeypatch.setenv("PYTHONPATH", str(ROOT))
     remote = remote_of(tmp_path, folder)
     other = clone_of(tmp_path, remote, "anna")
     edit(other, "timeline.yaml", "    details: |\n      Herstellerhinweis", "    details: |\n      Von Anna\n      Herstellerhinweis")
     assert sync.synchronise(other).committed
-    client = api_client(tmp_path, folder)
+    client = api_client()
 
     response = client.post("/api/v1/sync")
 
@@ -350,14 +333,14 @@ def test_the_sync_endpoint_takes_in_the_remote_and_rebuilds_the_index(tmp_path, 
     assert "Von Anna" in client.get("/api/v1/events/feed-cve").json()["details"]
 
 
-def test_the_sync_endpoint_reports_a_conflict_without_pushing(tmp_path, folder, monkeypatch):
+def test_the_sync_endpoint_reports_a_conflict_without_pushing(tmp_path, folder, monkeypatch, api_client):
     monkeypatch.setenv("PYTHONPATH", str(ROOT))
     remote = remote_of(tmp_path, folder)
     other = clone_of(tmp_path, remote, "anna")
     edit(other, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Anna"')
     assert sync.synchronise(other).committed
     edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Bernd"')
-    client = api_client(tmp_path, folder)
+    client = api_client()
 
     response = client.post("/api/v1/sync")
 
@@ -365,8 +348,8 @@ def test_the_sync_endpoint_reports_a_conflict_without_pushing(tmp_path, folder, 
     assert response.json()["conflicts"] == ["timeline.yaml"]
 
 
-def test_a_viewer_cannot_sync(tmp_path, folder):
+def test_a_viewer_cannot_sync(tmp_path, folder, api_client):
     remote_of(tmp_path, folder)
-    client = api_client(tmp_path, folder, role="viewer")
+    client = api_client(role="viewer")
 
     assert client.post("/api/v1/sync").status_code == 403

@@ -1,32 +1,11 @@
 """File mode (ADR 0008, issue #89): creating and deleting events writes the topic file, then the index follows it."""
 
-import shutil
-from pathlib import Path
 
 import pytest
 
 from chronicle import repository
-from chronicle.db import connect
-from chronicle.importer import import_folder
 from chronicle.models import Event
 from chronicle.repository import Conflict, NotFound
-
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-
-
-@pytest.fixture
-def folder(tmp_path):
-    copy = tmp_path / "data"
-    shutil.copytree(DATA_DIR, copy)
-    import_folder(tmp_path / "chronicle.db", copy)
-    return copy
-
-
-@pytest.fixture
-def conn(folder):
-    connection = connect(folder.parent / "chronicle.db")
-    yield connection
-    connection.close()
 
 
 def new_event(key="neu-1", **changes):
@@ -44,8 +23,6 @@ def test_a_new_event_is_appended_to_its_home_topic_file(folder, conn):
     assert text.count("key: feed-cve") == 1  # the others are untouched
     assert created["version"] == 1
     assert created["home_topic"] == "inc-2026-042"
-
-
 
 
 def test_a_duplicate_key_is_refused_before_the_file_is_touched(folder, conn):
@@ -79,8 +56,6 @@ def test_an_event_another_one_depends_on_cannot_be_deleted(folder, conn):
         repository.delete_event(conn, "analysis", actor_id=None, ip="test", data_dir=folder)
 
 
-
-
 def test_an_event_that_exists_only_in_the_database_survives_a_file_mode_edit(folder, conn):
     # Created in database mode, so it is in no file. An edit in file mode rebuilds the index and must keep it.
     repository.create_event(conn, new_event(key="nur-db"), ["inc-2026-042"], actor_id=None, ip="test")
@@ -94,28 +69,13 @@ def test_an_event_that_exists_only_in_the_database_survives_a_file_mode_edit(fol
     assert repository.get_event(conn, "nur-db") is not None
 
 
-
-
-PASSWORD = "correct horse battery"
-
-
 @pytest.fixture(autouse=True)
 def insecure_cookies_for_http_tests(monkeypatch):
     monkeypatch.setenv("CHRONICLE_COOKIE_SECURE", "0")
 
 
-def test_api_creates_and_deletes_events_in_the_file(tmp_path, folder):
-    from fastapi.testclient import TestClient
-
-    from chronicle import accounts, security
-    from chronicle.api import create_app
-
-    setup = connect(tmp_path / "chronicle.db")
-    accounts.create_user(setup, "anna", security.hash_password(PASSWORD), "analyst")
-    setup.close()
-    client = TestClient(create_app(tmp_path / "chronicle.db", data_dir=folder))
-    response = client.post("/api/v1/auth/login", json={"username": "anna", "password": PASSWORD})
-    client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
+def test_api_creates_and_deletes_events_in_the_file(folder, api_client):
+    client = api_client()
     body = {"key": "api-neu", "t0": "2026-10-27T10:00:00+02:00", "phase": "Activity", "actor": "Anna",
             "action": "über die API", "status": "open", "topic": "inc-2026-042", "topics": ["inc-2026-042"]}
 
