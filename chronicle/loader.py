@@ -51,15 +51,19 @@ def find_topic_files(data_dir: Path) -> list[Path]:
     pending = [data_dir]
     while pending:
         folder = pending.pop()
-        with os.scandir(folder) as entries:
-            for entry in entries:
-                if entry.is_symlink():
-                    links.append(Path(entry.path).relative_to(data_dir).as_posix())
-                elif entry.is_dir(follow_symlinks=False):
-                    if not (folder == data_dir and entry.name == ".git"):
-                        pending.append(Path(entry.path))
-                elif entry.name.endswith(TOPIC_SUFFIXES) and entry.is_file(follow_symlinks=False):
-                    files.append(Path(entry.path))
+        try:
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    if entry.is_symlink():
+                        links.append(Path(entry.path).relative_to(data_dir).as_posix())
+                    elif entry.is_dir(follow_symlinks=False):
+                        if not (folder == data_dir and entry.name == ".git"):
+                            pending.append(Path(entry.path))
+                    elif entry.name.endswith(TOPIC_SUFFIXES) and entry.is_file(follow_symlinks=False):
+                        files.append(Path(entry.path))
+        except OSError as exc:  # only the path is named: the error text of the system may hold file names
+            where = folder.relative_to(data_dir).as_posix()
+            raise TimelineError(f"Ordner nicht lesbar: {where} ({exc.strerror})") from exc
     if links:
         links.sort()
         more = f" und {len(links) - MAX_LISTED_LINKS} weitere" if len(links) > MAX_LISTED_LINKS else ""

@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import stat
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -674,8 +675,12 @@ def _free_evidence_name(data_dir: Path, key: str, name: str, sha256: str) -> tup
     for number in range(1, 1000):
         candidate = Path("evidence") / key / (safe if number == 1 else f"{stem}-{number}{dot}{extension}")
         target = data_dir / candidate
-        if not target.exists():
+        try:
+            found = target.lstat()
+        except FileNotFoundError:
             return candidate.as_posix(), True
+        if not stat.S_ISREG(found.st_mode):
+            raise Invalid(f"{candidate.as_posix()} ist ein Link oder keine gewöhnliche Datei.")
         if hashlib.sha256(target.read_bytes()).hexdigest() == sha256:
             return candidate.as_posix(), False
     raise Invalid("Zu viele Dateien mit demselben Namen bei diesem Event.")
@@ -734,6 +739,10 @@ def _delete_evidence_in_folder(conn: sqlite3.Connection, evidence_id: int, data_
     located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (row["key"],)).fetchone()
     if located is None:
         raise Invalid(f"Event {row['key']!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    try:
+        require_no_link(data_dir, (data_dir / row["file"]).parent)
+    except StoreError as exc:
+        raise Invalid(str(exc)) from exc
     with _all_or_nothing(data_dir):
         try:
             remove_evidence_from_file(data_dir / located["path"], row["key"], row["file"],
@@ -745,10 +754,6 @@ def _delete_evidence_in_folder(conn: sqlite3.Connection, evidence_id: int, data_
             raise Invalid(str(exc)) from exc
         reindex(conn, data_dir)
     # The file goes last: until the index has accepted the removal, the topic file still names it.
-    try:
-        require_no_link(data_dir, (data_dir / row["file"]).parent)
-    except StoreError as exc:
-        raise Invalid(str(exc)) from exc
     (data_dir / row["file"]).unlink(missing_ok=True)
     accounts.audit(conn, "evidence_deleted", user_id=actor_id, target=row["key"], detail=row["file"], ip=ip)
 

@@ -78,7 +78,11 @@ def root_problems(data_dir: Path) -> list[str]:
     if not data_dir.is_dir():
         return []
     problems = []
-    for entry in sorted(data_dir.iterdir()):
+    try:
+        entries = sorted(data_dir.iterdir())
+    except OSError:
+        return []  # find_topic_files reports the folder that cannot be read
+    for entry in entries:
         if entry.name.endswith(IMPORTABLE_SUFFIXES) or _is_package(entry):
             problems.append(f"{entry.name}: Code gehört nicht in den Wurzelordner des Datenordners (Python würde ihn "
                             "importieren), bitte entfernen")
@@ -87,8 +91,11 @@ def root_problems(data_dir: Path) -> list[str]:
 
 def _is_package(entry: Path) -> bool:
     """A folder with an __init__ module. Without one it is only a namespace package, which a regular module beats."""
-    return entry.is_dir() and any(
-        child.name.startswith("__init__.") and child.name.endswith(IMPORTABLE_SUFFIXES) for child in entry.iterdir())
+    try:
+        return entry.is_dir() and any(
+            child.name.startswith("__init__.") and child.name.endswith(IMPORTABLE_SUFFIXES) for child in entry.iterdir())
+    except OSError:
+        return False
 
 
 def check_folder(data_dir: Path, *, evidence: bool = True) -> list[str]:

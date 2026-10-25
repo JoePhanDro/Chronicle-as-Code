@@ -498,27 +498,107 @@ def test_the_undo_of_a_merge_that_fails_the_checks_keeps_uncommitted_changes_to_
     assert (folder / "NOTES.md").read_text(encoding="utf-8") == "meine ungesicherte Notiz\n"
 
 
-def test_a_link_in_the_local_base_is_an_error_with_the_name_only(folder, tmp_path):
+def test_a_link_in_the_base_is_skipped_and_never_read(folder, tmp_path):
     (tmp_path / "geheim.txt").write_text("GEHEIMER-INHALT", encoding="utf-8")
     (folder / "evidence" / "l.png").symlink_to(tmp_path / "geheim.txt")
+    (folder / "l.yaml").symlink_to(tmp_path / "geheim.txt")
     git(folder, "add", "-A")
-    git(folder, "commit", "-q", "-m", "Link")
+    git(folder, "commit", "-q", "-m", "Links")
 
-    with pytest.raises(sync.SyncError, match="evidence/l.png") as caught:
-        sync.base_timelines(folder)
-
-    assert "GEHEIMER-INHALT" not in str(caught.value)
+    assert sorted(sync.base_timelines(folder)) == ["b.yaml", "timeline.yaml"]
 
 
-def test_a_link_in_the_remote_blocks_the_preview_and_the_message_says_where_and_what_to_do(tmp_path, folder):
+def test_the_sync_runs_again_once_the_remote_has_removed_a_link(tmp_path, folder):
+    # The preview runs before the fetch, so a refusal on a link in the base would lock every later sync.
     remote = remote_of(tmp_path, folder)
     other = clone_of(tmp_path, remote, "anna")
     link_to_remote(other, tmp_path)
     git(folder, "fetch", "-q", "origin")
+    assert sync.preview(folder).problems == []  # the link in the upstream does not block the preview
+    first = sync.synchronise(folder)
+    assert first.problems and not (folder / "link.yaml").exists()
+
+    git(other, "rm", "-q", "link.yaml")
+    push_from(other, "Link entfernt", stage=False)
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Neu"')
+    second = sync.synchronise(folder)
+
+    assert second.problems == [] and second.conflicts == []
+    assert git(remote, "show", "main:timeline.yaml").count('action: "Neu"') == 1  # the local change was pushed
+    assert not (folder / "link.yaml").exists()
+
+
+def test_a_file_named_like_the_failure_marker_does_not_turn_a_conflict_into_a_crash(tmp_path, folder):
+    name = f"{sync.DRIVER_FAILED}.yaml"
+    (folder / name).write_text(B_TOPIC.replace("key: b\n", "key: c\n").replace("b1", "c1"), encoding="utf-8")
+    git(folder, "add", "-A")
+    git(folder, "commit", "-q", "-m", "Datei")
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    edit(other, name, "Schritt B", "Anna")
+    assert sync.synchronise(other).committed
+    edit(folder, name, "Schritt B", "Bernd")
+
+    result = sync.synchronise(folder)
+
+    assert result.conflicts == [name]
+
+
+def broken_package(tmp_path, merge_source):
+    root = tmp_path / "broken"
+    (root / "chronicle").mkdir(parents=True)
+    (root / "chronicle" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "chronicle" / "merge.py").write_text(merge_source, encoding="utf-8")
+    return root
+
+
+def test_a_driver_killed_by_a_signal_gives_a_fixed_message_without_the_output_of_git(tmp_path, folder, monkeypatch):
+    source = "import os, signal\ndef main(argv):\n    os.kill(os.getpid(), signal.SIGKILL)\n"
+    monkeypatch.setattr(sync, "PACKAGE_ROOT", broken_package(tmp_path, source))
+    diverged(tmp_path, folder)
 
     with pytest.raises(sync.SyncError) as caught:
-        sync.preview(folder)
+        sync.synchronise(folder)
 
-    message = str(caught.value)
-    assert "origin/main" in message and "link.yaml" in message and "entfernen" in message
-    assert "@{u}" not in message
+    assert "unerwartet beendet" in str(caught.value)
+    assert "import" not in str(caught.value) and "sys.path" not in str(caught.value)
+    assert not (folder / ".git" / "MERGE_HEAD").exists()
+
+
+def test_the_reported_driver_failure_is_short_and_free_of_control_characters(tmp_path, folder, monkeypatch):
+    source = "def main(argv):\n    raise RuntimeError('\\x1b[31m' + 'x' * 1000 + 'ENDE')\n"
+    monkeypatch.setattr(sync, "PACKAGE_ROOT", broken_package(tmp_path, source))
+    diverged(tmp_path, folder)
+
+    with pytest.raises(sync.SyncError) as caught:
+        sync.synchronise(folder)
+
+    assert len(str(caught.value)) < 500
+    assert "\x1b" not in str(caught.value) and "ENDE" not in str(caught.value)
+
+
+@pytest.mark.parametrize("planted", ["yaml.py", "sitecustomize.py"])
+def test_relative_and_empty_entries_of_pythonpath_do_not_bring_the_data_folder_in(tmp_path, folder, monkeypatch, planted):
+    extra = tmp_path / "extra"
+    extra.mkdir()
+    marker = tmp_path / "marker"
+    monkeypatch.setenv("PYTHONPATH", f":{extra}:.")
+    diverged(tmp_path, folder)
+    git(folder, "commit", "-q", "-am", "lokal")
+    git(folder, "fetch", "-q", "origin")
+    (folder / planted).write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
+    sync._use_merge_driver(folder)
+
+    merge = subprocess.run(["git", "-C", str(folder), "merge", "--no-edit", "origin/main"],
+                           capture_output=True, text=True, check=False)
+
+    assert not marker.exists()
+    assert merge.returncode == 0, merge.stdout + merge.stderr
+
+
+def test_a_lock_file_that_is_a_folder_is_a_sync_error(tmp_path, folder):
+    remote_of(tmp_path, folder)
+    (folder / ".chronicle.lock").mkdir()
+
+    with pytest.raises(sync.SyncError, match="chronicle.lock"):
+        sync.synchronise(folder)

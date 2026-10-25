@@ -7,6 +7,7 @@ import pytest
 from chronicle.check import check_folder
 from chronicle.loader import TimelineError, find_topic_files
 from chronicle.models import Timeline
+from chronicle.repository import Invalid, _free_evidence_name
 from chronicle.store import LOCK_FILE, StoreError, _atomic_write, folder_lock, write_new_file, write_timeline
 
 TOPIC = ("topic:\n  key: a\n  title: A\nevents:\n  - key: a1\n    t0: 2026-10-14T08:40:00+02:00\n"
@@ -244,3 +245,26 @@ def test_a_lock_file_that_is_a_pipe_is_an_error(folder):
     with pytest.raises(StoreError, match=LOCK_FILE):
         with folder_lock(folder):
             pytest.fail("the lock must not be taken")
+
+
+def test_an_unreadable_folder_is_reported_by_its_path(folder):
+    locked = folder / "gesperrt"
+    locked.mkdir()
+    locked.chmod(0)
+    try:
+        if os.access(locked, os.R_OK):
+            pytest.skip("the folder is readable anyway (running as root)")
+        with pytest.raises(TimelineError, match="gesperrt"):
+            find_topic_files(folder)
+        problems = check_folder(folder, evidence=False)
+        assert problems and "gesperrt" in problems[0]
+    finally:
+        locked.chmod(0o755)
+
+
+def test_an_attachment_name_that_is_a_link_is_refused(folder, tmp_path):
+    (folder / "evidence" / "k1").mkdir(parents=True)
+    (folder / "evidence" / "k1" / "a.png").symlink_to(tmp_path)
+
+    with pytest.raises(Invalid, match="evidence/k1/a.png"):
+        _free_evidence_name(folder, "k1", "a.png", "0" * 64)
