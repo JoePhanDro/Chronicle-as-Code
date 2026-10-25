@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Callable
 from functools import cache
 from pathlib import Path, PurePosixPath
@@ -31,6 +32,36 @@ def _vendor_inline() -> dict[str, str]:
         "vendor_timeline_js": (VENDOR_DIR / "vis-timeline-graph2d.min.js").read_text(encoding="utf-8"),
         "vendor_network_js": (VENDOR_DIR / "vis-network.min.js").read_text(encoding="utf-8"),
     }
+
+
+# Inter (variable weight) and JetBrains Mono, latin subset, as shipped in static/vendor/fonts. Other characters
+# fall back to the system fonts of the CSS font stack.
+_LATIN = (
+    "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,"
+    "U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+)
+_FONTS = [
+    ("Inter", "100 900", "inter-latin-wght-normal.woff2"),
+    ("JetBrains Mono", "400", "jetbrains-mono-latin-400-normal.woff2"),
+    ("JetBrains Mono", "500", "jetbrains-mono-latin-500-normal.woff2"),
+]
+
+
+@cache
+def _font_css(vendor: str) -> str:
+    """@font-face rules: "local" links the app's static files, "inline" embeds the fonts as data URIs."""
+    rules = []
+    for family, weight, file in _FONTS:
+        if vendor == "local":
+            url = f"/static/vendor/fonts/{file}"
+        else:
+            data = base64.b64encode((VENDOR_DIR / "fonts" / file).read_bytes()).decode("ascii")
+            url = f"data:font/woff2;base64,{data}"
+        rules.append(
+            f"@font-face {{ font-family: '{family}'; font-style: normal; font-weight: {weight}; font-display: swap; "
+            f"src: url({url}) format('woff2'); unicode-range: {_LATIN}; }}"
+        )
+    return "\n".join(rules)
 
 
 _env = Environment(
@@ -74,6 +105,7 @@ def render_dashboard(
         snapshot=snapshot,
         diagrams_js=DIAGRAMS_JS,
         vendor=vendor,
+        font_css=_font_css(vendor),
         **(_vendor_inline() if vendor == "inline" else {}),
     )
 
