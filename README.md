@@ -314,6 +314,7 @@ chronicle/
   report.py        Bericht zu einem Topic aus der Datenbank
   templates/       Jinja2-Vorlagen für Oberfläche und Dashboard
   static/          input.css (Quelle) und app.css (gebaut, nicht versioniert)
+  static/vendor/   vis-timeline und vis-network, unverändert mitgeliefert (Herkunft in der README dort)
 data/              Beispiel-YAML und Platzhalter-Evidence
 docs/adr/          Architekturentscheidungen
 tests/             pytest

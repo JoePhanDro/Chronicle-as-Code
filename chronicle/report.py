@@ -59,6 +59,7 @@ def make_dashboard(conn: sqlite3.Connection, topic_key: str) -> str:
         inline_css=STYLESHEET.read_text(encoding="utf-8"),
         src_for=lambda item: f"/api/v1/evidence/{evidence_ids[item.file]}",
         snapshot=False,
+        vendor="local",
     )
 
 

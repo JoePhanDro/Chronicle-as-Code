@@ -24,6 +24,7 @@ ADR 0001 sieht einen eigenständigen HTML-Bericht für Post-Mortems vor, ohne Se
 - Die Datei ist eine vollständige Kopie des Topics. Wer sie hat, sieht alles. Das bleibt das Risiko des Berichts und steht in der Oberfläche.
 - Ein Bericht kann groß werden, weil Evidence eingebettet ist (bis 10 MiB je Datei). Der Download lädt die Datei komplett.
 - Die Einbindung der CDN-Skripte (vis-timeline, vis-network, DOMPurify) bleibt. Der Bericht braucht dafür eine Internetverbindung beim Öffnen.
+  - Aktualisierung: In der Anwendung liefert der Server vis-timeline und vis-network selbst aus (`/static/vendor/`, Herkunft und Hashes in der README dort). Der Bericht und die statischen Seiten laden sie weiterhin vom CDN, bis sie eingebettet werden. Die Schriften kommen noch von Google Fonts.
 
 ## Offene Punkte
 
