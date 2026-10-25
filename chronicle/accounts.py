@@ -30,7 +30,7 @@ def now() -> int:
 
 
 def validate_username(username: str) -> None:
-    if not USERNAME_PATTERN.match(username):
+    if not USERNAME_PATTERN.fullmatch(username):
         raise ValueError("Benutzername: 3 bis 64 Zeichen, nur Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich")
 
 

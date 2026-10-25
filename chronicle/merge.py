@@ -30,6 +30,8 @@ import io
 import sys
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from .models import Event, Timeline, Topic
 from .store import (
     StoreError,
@@ -42,6 +44,7 @@ from .store import (
     _atomic_write,
     _yaml,
 )
+from .yamlscan import describe_validation_error
 
 TOPIC_FIELDS = ("title", "kind", "summary")
 EVENT_FIELDS = tuple(name for name in Event.model_fields if name != "key")
@@ -133,8 +136,8 @@ def merge_timelines(base: Timeline | None, ours: Timeline, theirs: Timeline) -> 
         raise MergeConflict(problems)
     try:
         return Timeline(topic=topic, events=events, refs=refs)
-    except ValueError as exc:
-        raise MergeConflict([str(exc)]) from exc
+    except ValidationError as exc:
+        raise MergeConflict([describe_validation_error(exc)]) from exc
 
 
 def _apply(document, ours: Timeline, merged: Timeline) -> None:

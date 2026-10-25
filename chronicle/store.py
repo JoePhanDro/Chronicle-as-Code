@@ -23,12 +23,14 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
-from .loader import _YAML_LOADER, TimelineError, link_below
+from .loader import TimelineError, link_below
 from .models import Event, Evidence, Timeline, Topic
 from .schema import SCHEMA_URL
+from .yamlscan import YAML_LOADER, YamlRejected, describe_validation_error, load_yaml, scan
 
 LOCK_FILE = ".chronicle.lock"
 HEADER = f"# yaml-language-server: $schema={SCHEMA_URL}\n"  # only for new files; existing files keep their header
@@ -110,7 +112,11 @@ def _entry_span(text: str, key: str, name: str) -> tuple[int, int]:
 
     The YAML composer gives the positions, so the file is not loaded into objects to find the entry.
     """
-    root = yaml.compose(text, Loader=_YAML_LOADER)
+    try:
+        scan(text)  # the file may come from Git, and the C composer crashes on deep input
+        root = yaml.compose(text, Loader=YAML_LOADER)
+    except (YamlRejected, yaml.YAMLError) as exc:
+        raise StoreError(f"{name}: {exc}") from exc
     fields = root.value if isinstance(root, yaml.MappingNode) else []
     events = next((value for field, value in fields if field.value == "events"), None)
     for entry in events.value if events is not None else []:
@@ -140,10 +146,13 @@ def _line_end(text: str, position: int) -> int:
 def _entry_event(entry: str) -> Event:
     """The event of one entry text, validated with the same model as a whole topic file."""
     try:
-        document = yaml.load("events:\n  - " + entry, Loader=_YAML_LOADER)
+        document = load_yaml("events:\n  - " + entry)
         return Timeline.model_validate({"topic": {"key": "entry", "title": "entry"}, "events": document["events"]}).events[0]
-    except (yaml.YAMLError, ValueError) as exc:
+    except YamlRejected as exc:
         raise StoreError(f"Die Datei ist nach der Änderung nicht lesbar, deshalb wird nichts geschrieben: {exc}") from exc
+    except ValidationError as exc:
+        raise StoreError("Die Datei ist nach der Änderung nicht lesbar, deshalb wird nichts geschrieben: "
+                         f"{describe_validation_error(exc)}") from exc
 
 
 def _verify_read_back_entry(entry: str, expected: Event) -> None:
@@ -391,9 +400,12 @@ def _check_version(path: Path, expected_version: str | None) -> None:
 
 def _read_model(text: str) -> Timeline:
     try:
-        return Timeline.model_validate(yaml.load(text, Loader=_YAML_LOADER))
-    except (yaml.YAMLError, ValueError) as exc:
+        return Timeline.model_validate(load_yaml(text))
+    except YamlRejected as exc:
         raise StoreError(f"Die Datei ist nach der Änderung nicht lesbar, deshalb wird nichts geschrieben: {exc}") from exc
+    except ValidationError as exc:
+        raise StoreError("Die Datei ist nach der Änderung nicht lesbar, deshalb wird nichts geschrieben: "
+                         f"{describe_validation_error(exc)}") from exc
 
 
 def _verify_read_back(text: str, expected: Timeline) -> None:

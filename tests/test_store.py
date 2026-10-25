@@ -6,8 +6,9 @@ import pytest
 import yaml
 
 from chronicle.check import check_folder
-from chronicle.loader import _YAML_LOADER, find_topic_files, load_timeline
+from chronicle.loader import find_topic_files, load_timeline
 from chronicle.models import Event, Timeline
+from chronicle.yamlscan import YAML_LOADER
 from chronicle.store import LOCK_FILE, VersionConflict, dump_timeline, file_version, write_timeline
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -26,15 +27,15 @@ def timeline(*, details="", key="a1"):
 
 def test_dump_reads_back_as_the_same_timeline():
     original = Timeline.model_validate(yaml.load((DATA_DIR / "timeline.yaml").read_text(encoding="utf-8"),
-                                                 Loader=_YAML_LOADER))
+                                                 Loader=YAML_LOADER))
     text = dump_timeline(original)
-    assert Timeline.model_validate(yaml.load(text, Loader=_YAML_LOADER)) == original
+    assert Timeline.model_validate(yaml.load(text, Loader=YAML_LOADER)) == original
 
 
 def test_markdown_and_special_characters_survive_the_round_trip():
     details = "**fett**\n\n- Liste\n- mit `code` und Umlauten äöü\n```\nblock\n```"
     text = dump_timeline(timeline(details=details))
-    assert Timeline.model_validate(yaml.load(text, Loader=_YAML_LOADER)).events[0].details == details
+    assert Timeline.model_validate(yaml.load(text, Loader=YAML_LOADER)).events[0].details == details
 
 
 def test_empty_optional_fields_are_left_out():

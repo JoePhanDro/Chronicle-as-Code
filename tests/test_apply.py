@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from chronicle import loader
+from chronicle import yamlscan
 from chronicle.cli import main
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -34,7 +34,7 @@ def test_a_failed_check_leaves_no_database_behind(tmp_path, capsys):
 
 def test_the_fast_loader_reads_the_same_data_as_the_safe_loader():
     text = (DATA_DIR / "timeline.yaml").read_text(encoding="utf-8")
-    assert yaml.load(text, Loader=loader._YAML_LOADER) == yaml.load(text, Loader=yaml.SafeLoader)
+    assert yaml.load(text, Loader=yamlscan.YAML_LOADER) == yaml.load(text, Loader=yaml.SafeLoader)
 
 
 def test_unchanged_reimport_keeps_versions_and_only_a_real_change_bumps(tmp_path):
