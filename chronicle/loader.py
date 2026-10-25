@@ -5,11 +5,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import yaml
 from pydantic import ValidationError
 
 from .evidence import MAX_EVIDENCE_BYTES, Blob, EvidenceRejected, check_file
 from .models import Timeline
+from .yamlscan import MAX_YAML_BYTES, YamlRejected, describe_validation_error, load_yaml, one_line
 
 # Evidence is copied next to index.html, so these names must not be overwritten.
 RESERVED_OUTPUT_NAMES = {"index.html", "index.html.tmp"}
@@ -88,25 +88,30 @@ def link_below(base: Path, path: Path) -> Path | None:
     return None
 
 
-# The C loader (libyaml) reads the same safe subset about eight times faster than the pure-Python one (issue #96).
-_YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
-
-
 def parse_timeline(text: str, where: str) -> Timeline:
     """A topic file from its text. `where` names the file in the error messages."""
+    where = one_line(where)
     try:
-        raw = yaml.load(text, Loader=_YAML_LOADER)
-    except yaml.YAMLError as exc:
-        raise TimelineError(f"YAML-Syntaxfehler in {where}: {exc}") from exc
+        raw = load_yaml(text)
+    except YamlRejected as exc:
+        raise TimelineError(f"{where}: {exc}") from exc
 
     try:
         return Timeline.model_validate(raw)
     except ValidationError as exc:
-        raise TimelineError(f"Schema-Validierung fehlgeschlagen für {where}:\n{exc}") from exc
+        raise TimelineError(f"Schema-Validierung fehlgeschlagen für {where}: {describe_validation_error(exc)}") from exc
 
 
 def load_timeline(path: Path) -> Timeline:
-    return parse_timeline(path.read_text(encoding="utf-8"), str(path))
+    with path.open("rb") as handle:
+        data = handle.read(MAX_YAML_BYTES + 1)  # one byte more than the limit shows that the file is too large
+    if len(data) > MAX_YAML_BYTES:
+        raise TimelineError(f"{one_line(str(path))}: Datei größer als {MAX_YAML_BYTES // 1024} KiB")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise TimelineError(f"{one_line(str(path))}: Datei ist kein gültiges UTF-8 (Byte {exc.start})") from exc
+    return parse_timeline(text, str(path))
 
 
 def load_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Blob]:

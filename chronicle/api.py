@@ -32,7 +32,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 
 class UserCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     username: str
     password: str
@@ -40,13 +40,13 @@ class UserCreate(BaseModel):
 
 
 class TopicLink(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     event: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
 
 class UserUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     role: Literal["admin", "analyst", "viewer"] | None = None
     active: bool | None = None

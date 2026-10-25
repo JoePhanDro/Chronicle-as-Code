@@ -48,7 +48,7 @@ EvidenceType = Literal["screenshot", "log", "report", "other"]
 
 
 class Evidence(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     file: str = Field(min_length=1, description="Path relative to the timeline.yaml folder")
     type: EvidenceType
@@ -59,12 +59,12 @@ class Evidence(BaseModel):
     def _relative_path_only(cls, value: str) -> str:
         path = PurePosixPath(value.replace("\\", "/"))
         if path.is_absolute() or ".." in path.parts or ":" in path.parts[0]:
-            raise ValueError(f"evidence path must be relative and stay inside the data folder: {value!r}")
+            raise ValueError("evidence path must be relative and stay inside the data folder")
         return path.as_posix()
 
 
 class Event(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     key: str = Field(
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
@@ -113,7 +113,7 @@ TopicKind = Literal["incident", "vulnerability", "project", "special", "other"]
 
 
 class Topic(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
     title: str = Field(min_length=1)
@@ -124,7 +124,7 @@ class Topic(BaseModel):
 class Timeline(BaseModel):
     """One topic file: the topic, the events it defines and references to events defined elsewhere."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     topic: Topic
     events: list[Event] = Field(default_factory=list)
