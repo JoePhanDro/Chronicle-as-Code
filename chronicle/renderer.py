@@ -34,9 +34,12 @@ def render_dashboard(
     src_for: Callable[[Evidence], str] | None = None,
     generated_at: str | None = None,
     snapshot: bool = True,
+    vendor: str = "cdn",
 ) -> str:
     """`inline_css` replaces the stylesheet link, `src_for` gives the image URL of each evidence item.
-    `snapshot` marks the page as a report snapshot; the app's live view turns that off."""
+    `snapshot` marks the page as a report snapshot; the app's live view turns that off.
+    `vendor` says where vis-timeline and vis-network come from: "local" is /static/vendor/ of the app,
+    "cdn" is jsdelivr (checked by integrity hash)."""
     events = sorted(timeline.events, key=lambda event: event.t0)
     nodes, edges = _build_graph(events)
 
@@ -56,6 +59,7 @@ def render_dashboard(
         generated_at=generated_at,
         snapshot=snapshot,
         diagrams_js=DIAGRAMS_JS,
+        vendor=vendor,
     )
 
 
