@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import posixpath
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -20,6 +20,7 @@ from . import repository
 from .db import connect
 from .evidence import display_name
 from .schema import SCHEMA_URL
+from .yamlscan import MAX_YAML_BYTES
 
 EVIDENCE_DIR = "evidence"
 HEADER = f"# yaml-language-server: $schema={SCHEMA_URL}\n# Exportiert aus Chronicle. Evidence liegt daneben unter evidence/.\n"
@@ -45,6 +46,7 @@ class ExportReport:
     topics: int = 0
     events: int = 0
     evidence: int = 0
+    too_large: list[str] = field(default_factory=list)  # files the app would refuse to read back (size limit)
 
 
 def export_database(db_path: str | Path, out_dir: str | Path, data_dir: str | Path | None = None) -> ExportReport:
@@ -75,6 +77,8 @@ def _build(conn, data_dir: Path | None = None) -> tuple[dict[str, bytes], Export
         document, evidence = _topic_document(conn, topic, report, data_dir=data_dir)
         files.update(evidence)
         files[f"{topic['key']}.yaml"] = _yaml_bytes(document)
+        if len(files[f"{topic['key']}.yaml"]) > MAX_YAML_BYTES:
+            report.too_large.append(f"{topic['key']}.yaml")
         report.topics += 1
     return files, report
 
@@ -197,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"Export nach {args.out}: {report.topics} Topics, {report.events} Events, {report.evidence} Evidence-Dateien")
+    for name in report.too_large:
+        print(f"Warnung: {name} ist größer als {MAX_YAML_BYTES // 2**20} MiB. Chronicle liest sie nicht wieder ein.", file=sys.stderr)
     return 0
 
 

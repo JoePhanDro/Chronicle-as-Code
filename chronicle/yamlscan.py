@@ -1,4 +1,4 @@
-"""Reading YAML that does not come from the app itself (ADR 0021, points 19 and 24).
+"""Reading YAML that does not come from the app itself.
 
 Files from the data folder, from Git and from a remote are foreign content. Before PyYAML builds objects from them,
 the event stream is scanned and anything the schema never uses is refused: deep nesting (the C loader crashes with
@@ -22,11 +22,17 @@ from yaml.resolver import Resolver
 # It only ever sees input the scan has passed: its crash is in the recursion of the composer, which depth 12 rules out.
 YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
-MAX_YAML_BYTES = 256 * 1024  # a topic file; the schema has no use for more
+# One topic is one file (ADR 0005), and a long incident has thousands of events: 1,200 events of 15 to 17 nodes and
+# 250 bytes are 300 KB and 18,000 to 20,000 nodes. The limits bound the memory and the scan (about 40 ms per 20,000
+# nodes), not the time of a change: writers other than update_event_in_file load the whole file with ruamel, which
+# takes seconds near the limits.
+MAX_YAML_BYTES = 4 * 1024 * 1024
+MAX_NODES = 100_000  # scalars, mappings and sequences together
 MAX_DEPTH = 12  # a topic file needs 6 levels
-MAX_NODES = 20_000  # scalars, mappings and sequences together; a file of 256 KiB with ordinary events has fewer
+MAX_CACHED_KEY = 64  # longer keys are resolved again, so that a file of long keys cannot fill the cache
 MAX_MESSAGE_CHARS = 200
 MAX_LISTED_ERRORS = 3
+TOO_LARGE = f"Datei größer als {MAX_YAML_BYTES // 2**20} MiB (Grenze für eine Topic-Datei)"
 
 _STR_TAG = "tag:yaml.org,2002:str"
 _RESOLVER = Resolver()
@@ -50,7 +56,7 @@ def load_yaml(text: str):
 def scan(text: str) -> None:
     """Raises YamlRejected if the text uses anything the schema does not need. Builds no objects."""
     if len(text.encode("utf-8", "replace")) > MAX_YAML_BYTES:
-        raise YamlRejected(f"Datei größer als {MAX_YAML_BYTES // 1024} KiB")
+        raise YamlRejected(TOO_LARGE)
     stack: list[list] = []  # one entry per open collection: [keys seen (None for a sequence), nodes seen]
     nodes = documents = 0
     for event in yaml.parse(text, Loader=YAML_LOADER):  # lazy: stops at the first refusal, deep input is never read
@@ -83,6 +89,10 @@ def scan(text: str) -> None:
 
 @lru_cache(maxsize=1024)  # the keys of a folder are the same few field names
 def _is_text(value: str, implicit: tuple[bool, bool]) -> bool:
+    return _resolves_to_text(value, implicit)
+
+
+def _resolves_to_text(value: str, implicit: tuple[bool, bool]) -> bool:
     return _RESOLVER.resolve(yaml.ScalarNode, value, implicit) == _STR_TAG
 
 
@@ -90,7 +100,8 @@ def _check_key(event: yaml.NodeEvent, seen: set[str]) -> None:
     """A key must be a text (the resolved value, so `a` and "a" are the same key and `1` or `no` are no text)."""
     if type(event) is yaml.ScalarEvent and event.value == "<<":
         raise _rejected("Merge-Schlüssel (<<) ist nicht erlaubt", event)
-    if type(event) is not yaml.ScalarEvent or not _is_text(event.value, tuple(event.implicit)):
+    resolves = _is_text if type(event) is yaml.ScalarEvent and len(event.value) <= MAX_CACHED_KEY else _resolves_to_text
+    if type(event) is not yaml.ScalarEvent or not resolves(event.value, tuple(event.implicit)):
         raise _rejected("Schlüssel müssen Text sein", event)
     if event.value in seen:
         raise _rejected("doppelter Schlüssel", event)
@@ -101,8 +112,8 @@ def _rejected(rule: str, event: yaml.Event) -> YamlRejected:
     return YamlRejected(f"{rule} (Zeile {event.start_mark.line + 1})")
 
 
-def describe_yaml_error(exc: yaml.YAMLError) -> str:
-    """Where and what, from a syntax error of the parser. PyYAML's own text quotes the lines of the file."""
+def describe_yaml_error(exc: Exception) -> str:
+    """Where and what, from a syntax error of a parser (PyYAML or ruamel). Their own text quotes the lines of the file."""
     mark = getattr(exc, "problem_mark", None)
     where = f" (Zeile {mark.line + 1}, Spalte {mark.column + 1})" if mark is not None else ""
     if isinstance(exc, yaml.reader.ReaderError):
@@ -120,5 +131,5 @@ def describe_validation_error(exc: ValidationError) -> str:
 
 def one_line(text: str) -> str:
     """The text without control and format characters (line breaks, escape, bidi), cut to a length for a message."""
-    clean = "".join(" " if char.isspace() else char for char in text if unicodedata.category(char) not in ("Cc", "Cf") or char.isspace())
+    clean = "".join(" " if char.isspace() else char for char in text if unicodedata.category(char) not in ("Cc", "Cf", "Cs") or char.isspace())
     return clean if len(clean) <= MAX_MESSAGE_CHARS else clean[:MAX_MESSAGE_CHARS - 1] + "…"

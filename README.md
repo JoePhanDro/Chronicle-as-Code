@@ -98,7 +98,7 @@ Die Werte im Compose-Stack kommen aus `.env` (Vorlage: `.env.example`). `.env` w
 
 ## Datenformat (`timeline.yaml`)
 
-Eine Datei beschreibt ein Topic und die Events, die es definiert. Ein Beispiel liegt in `data/timeline.yaml`. Der Importer liest jede `*.yaml` im Datenordner, eine Datei je Topic. Verweise zwischen Dateien (`triggered_by`, `refs`) sind in beide Richtungen erlaubt ([ADR 0005](docs/adr/0005-export-and-backup.md)).
+Eine Datei beschreibt ein Topic und die Events, die es definiert. Ein Beispiel liegt in `data/timeline.yaml`. Der Importer liest jede `*.yaml` im Datenordner, eine Datei je Topic. Verweise zwischen Dateien (`triggered_by`, `refs`) sind in beide Richtungen erlaubt ([ADR 0005](docs/adr/0005-export-and-backup.md)). Jede Datei ist Fremdinhalt und wird vor dem Laden geprüft: höchstens 4 MiB und 100.000 Knoten, Verschachtelung höchstens 12 Ebenen, keine Anker, Aliase, Tags, doppelten Schlüssel (Regeln in [docs/notation.md](docs/notation.md), Abschnitt 7). Das reicht für mehr als 1.000 Events je Datei.
 
 ```yaml
 topic:

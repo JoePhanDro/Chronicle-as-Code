@@ -25,12 +25,23 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError as RuamelError
 from ruamel.yaml.scalarstring import LiteralScalarString
 
-from .loader import TimelineError, link_below
+from .loader import TimelineError, link_below, read_topic_text
 from .models import Event, Evidence, Timeline, Topic
 from .schema import SCHEMA_URL
-from .yamlscan import YAML_LOADER, YamlRejected, describe_validation_error, load_yaml, scan
+from .yamlscan import (
+    MAX_YAML_BYTES,
+    TOO_LARGE,
+    YAML_LOADER,
+    YamlRejected,
+    describe_validation_error,
+    describe_yaml_error,
+    load_yaml,
+    one_line,
+    scan,
+)
 
 LOCK_FILE = ".chronicle.lock"
 HEADER = f"# yaml-language-server: $schema={SCHEMA_URL}\n"  # only for new files; existing files keep their header
@@ -56,8 +67,20 @@ def require_no_link(root: Path, path: Path) -> None:
 
 
 def file_version(path: Path) -> str:
-    """The version of a topic file: the SHA-256 of its bytes."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """The version of a topic file: the SHA-256 of its bytes. Read in pieces, so any size is hashed in constant memory."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_text(path: Path) -> str:
+    """The text of a topic file for a change. A file over the size limit or without UTF-8 is a StoreError."""
+    try:
+        return read_topic_text(path)
+    except TimelineError as exc:
+        raise StoreError(str(exc)) from exc
 
 
 def dump_timeline(timeline: Timeline) -> str:
@@ -87,7 +110,7 @@ def update_event_in_file(path: Path, key: str, event: Event, *, expected_version
     """
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         start, end = _entry_span(text, key, path.name)
         entry = text[start:end]
         old = _entry_event(entry)
@@ -95,7 +118,7 @@ def update_event_in_file(path: Path, key: str, event: Event, *, expected_version
         # Only the entry of this event goes through the round trip. Parsing the whole file here took seconds for a
         # file of 10,000 events (issue #125); the rest of the file stays as it is, byte for byte.
         prefix = "events:\n  - "
-        item = _yaml().load(prefix + entry)["events"][0]
+        item = _load_document(prefix + entry)["events"][0]
         _set_changed_fields(item, old, event)
         stream = io.StringIO()
         _yaml().dump({"events": [item]}, stream)
@@ -103,7 +126,14 @@ def update_event_in_file(path: Path, key: str, event: Event, *, expected_version
             raise StoreError("Der geänderte Eintrag hat eine andere Form als erwartet, deshalb wird nichts geschrieben.")
         new_entry = stream.getvalue()[len(prefix):]
         _verify_read_back_entry(new_entry, event.model_copy(update={"evidence": old.evidence}))
-        _atomic_write(path, (text[:start] + new_entry + text[end:]).encode("utf-8"))
+        new_text = text[:start] + new_entry + text[end:]
+        _check_size(new_text)
+        try:
+            scan(new_text)  # the entry was checked alone; the node limit is the file's
+        except YamlRejected as exc:
+            raise StoreError(f"Die Datei würde mit dieser Änderung die Grenzen überschreiten: {exc}. "
+                             "Es wird nichts geschrieben.") from exc
+        _atomic_write(path, new_text.encode("utf-8"))
     return file_version(path)
 
 
@@ -115,8 +145,10 @@ def _entry_span(text: str, key: str, name: str) -> tuple[int, int]:
     try:
         scan(text)  # the file may come from Git, and the C composer crashes on deep input
         root = yaml.compose(text, Loader=YAML_LOADER)
-    except (YamlRejected, yaml.YAMLError) as exc:
-        raise StoreError(f"{name}: {exc}") from exc
+    except YamlRejected as exc:
+        raise StoreError(f"{one_line(name)}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise StoreError(f"{one_line(name)}: {describe_yaml_error(exc)}") from exc
     fields = root.value if isinstance(root, yaml.MappingNode) else []
     events = next((value for field, value in fields if field.value == "events"), None)
     for entry in events.value if events is not None else []:
@@ -169,12 +201,12 @@ def update_topic_in_file(path: Path, topic: Topic, *, expected_version: str) -> 
     """Change the title, kind and summary of the topic a file defines. The key does not change. Returns the new version."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if current.topic.key != topic.key:
             raise StoreError(f"{path.name} gehört zum Topic {current.topic.key!r}, nicht zu {topic.key!r}.")
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         section = document["topic"]
         section["title"] = topic.title
         section["kind"] = topic.kind
@@ -191,12 +223,12 @@ def add_event_to_file(path: Path, event: Event, *, expected_version: str) -> str
     """Append a new event to a topic file. Returns the new version of the file."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if any(known.key == event.key for known in current.events):
             raise StoreError(f"Event {event.key!r} steht bereits in {path.name}.")
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         document.setdefault("events", []).append(_event_document(event))
         stream = io.StringIO()
         _yaml().dump(document, stream)
@@ -210,12 +242,12 @@ def remove_event_from_file(path: Path, key: str, *, expected_version: str) -> st
     """Remove one event from a topic file. Its lines go with it; everything else stays. Returns the new version."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if not any(known.key == key for known in current.events):
             raise EventNotInFile(f"Event {key!r} steht nicht in {path.name}.")
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         document["events"] = [entry for entry in document["events"] if entry["key"] != key]
         if not document["events"]:
             del document["events"]
@@ -236,12 +268,12 @@ def set_ref_in_file(path: Path, key: str, *, present: bool, expected_version: st
     """
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if present == (key in current.refs):
             return file_version(path)
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         if present:
             document.setdefault("refs", []).append(key)
             refs = [*current.refs, key]
@@ -262,13 +294,13 @@ def add_evidence_to_file(path: Path, event_key: str, item: dict, *, expected_ver
     """Add one evidence entry (file, type, description) to an event in its topic file. Returns the new version."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         event = next((known for known in current.events if known.key == event_key), None)
         if event is None:
             raise EventNotInFile(f"Event {event_key!r} steht nicht in {path.name}.")
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         entry = next(entry for entry in document["events"] if entry["key"] == event_key)
         entry.setdefault("evidence", []).append(item)
         stream = io.StringIO()
@@ -287,13 +319,13 @@ def remove_evidence_from_file(path: Path, event_key: str, file: str, *, expected
     """Remove the evidence entry for one file from an event. The file on disk is not touched here."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         event = next((known for known in current.events if known.key == event_key), None)
         if event is None or not any(item.file == file for item in event.evidence):
             raise StoreError(f"Der Beleg {file!r} steht nicht bei {event_key!r} in {path.name}.")
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         entry = next(entry for entry in document["events"] if entry["key"] == event_key)
         entry["evidence"] = [item for item in entry["evidence"] if item["file"] != file]
         if not entry["evidence"]:
@@ -398,6 +430,23 @@ def _check_version(path: Path, expected_version: str | None) -> None:
     raise VersionConflict(f"{path.name} wurde inzwischen geändert. Bitte neu laden, bevor du speicherst.")
 
 
+def _load_document(text: str):
+    """The round-trip document of a text that passed the scan. ruamel (YAML 1.2) can still refuse what libyaml read
+    (a tab after a value, a Unicode line break): the message names the place, not the content."""
+    try:
+        return _yaml().load(text)
+    except RuamelError as exc:
+        raise StoreError(f"Die Datei lässt sich nicht bearbeiten: {describe_yaml_error(exc)}") from exc
+    except RecursionError as exc:
+        raise StoreError("Die Datei lässt sich nicht bearbeiten: zu tief verschachtelt") from exc
+
+
+def _check_size(text: str) -> None:
+    """A topic file over the limit could not be read back by the next load, so it is not written."""
+    if len(text.encode("utf-8")) > MAX_YAML_BYTES:
+        raise StoreError(f"Die Datei würde mit dieser Änderung zu groß: {TOO_LARGE}. Es wird nichts geschrieben.")
+
+
 def _read_model(text: str) -> Timeline:
     try:
         return Timeline.model_validate(load_yaml(text))
@@ -410,6 +459,7 @@ def _read_model(text: str) -> Timeline:
 
 def _verify_read_back(text: str, expected: Timeline) -> None:
     """The text must read back as exactly the timeline it should hold. Otherwise nothing is written."""
+    _check_size(text)
     if _read_model(text) != expected:
         raise StoreError("Die geänderte Datei würde sich beim Lesen anders verhalten als geplant, deshalb wird nichts geschrieben.")
 

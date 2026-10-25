@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from .evidence import MAX_EVIDENCE_BYTES, Blob, EvidenceRejected, check_file
 from .models import Timeline
-from .yamlscan import MAX_YAML_BYTES, YamlRejected, describe_validation_error, load_yaml, one_line
+from .yamlscan import MAX_YAML_BYTES, TOO_LARGE, YamlRejected, describe_validation_error, load_yaml, one_line
 
 # Evidence is copied next to index.html, so these names must not be overwritten.
 RESERVED_OUTPUT_NAMES = {"index.html", "index.html.tmp"}
@@ -103,15 +103,24 @@ def parse_timeline(text: str, where: str) -> Timeline:
 
 
 def load_timeline(path: Path) -> Timeline:
+    return parse_timeline(read_topic_text(path), str(path))
+
+
+def read_topic_text(path: Path) -> str:
+    """The text of a topic file. At most one byte more than the limit is read, so a huge file never fills the memory."""
     with path.open("rb") as handle:
-        data = handle.read(MAX_YAML_BYTES + 1)  # one byte more than the limit shows that the file is too large
+        data = handle.read(MAX_YAML_BYTES + 1)
+    return decode_topic_bytes(data, str(path))
+
+
+def decode_topic_bytes(data: bytes, where: str) -> str:
+    """The text of a topic file read from disk or from Git. Refuses what is too large or no UTF-8, without its content."""
     if len(data) > MAX_YAML_BYTES:
-        raise TimelineError(f"{one_line(str(path))}: Datei größer als {MAX_YAML_BYTES // 1024} KiB")
+        raise TimelineError(f"{one_line(where)}: {TOO_LARGE}")
     try:
-        text = data.decode("utf-8")
+        return data.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise TimelineError(f"{one_line(str(path))}: Datei ist kein gültiges UTF-8 (Byte {exc.start})") from exc
-    return parse_timeline(text, str(path))
+        raise TimelineError(f"{one_line(where)}: Datei ist kein gültiges UTF-8 (Byte {exc.start})") from exc
 
 
 def load_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Blob]:
