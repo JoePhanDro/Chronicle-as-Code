@@ -104,7 +104,7 @@ Die Prüfung (`chronicle check`, ohne Schreibzugriff) verlangt:
 4. `refs:` und `triggered_by` verweisen auf existierende Events.
 5. Ein Event löst nicht sich selbst aus, und Auslösungen bilden keinen Zyklus.
 6. Evidence-Dateien existieren, liegen innerhalb des Datenordners und sind zulässig.
-7. Die YAML-Datei ist Fremdinhalt und wird vor dem Laden gescannt (`yamlscan.py`). Abgelehnt werden: Dateien über 4 MiB, mehr als 100.000 Knoten, Verschachtelung tiefer als 12 Ebenen, Anker, Aliase, Tags, der Merge-Key `<<`, doppelte Schlüssel, Schlüssel, die kein Text sind, und mehrere Dokumente in einer Datei. Die App schreibt keine Datei über dieser Größe; ein Topic mit mehr Events passt nicht in eine Datei und muss geteilt werden.
+7. Die YAML-Datei ist Fremdinhalt und wird vor dem Laden gescannt (`yamlscan.py`). Abgelehnt werden: Dateien über 4 MiB, mehr als 100.000 Knoten, Verschachtelung tiefer als 12 Ebenen, Anker, Aliase, Tags, der Merge-Key `<<`, doppelte Schlüssel, Schlüssel, die kein Text sind, und mehrere Dokumente in einer Datei. Der Editor und die Synchronisation schreiben keine Datei über diesen Grenzen, der Export warnt nur bei der Größe (Knoten prüft er nicht). Ein Topic mit mehr Events passt nicht in eine Datei und muss geteilt werden.
 
 Topic-Keys gelten nach derselben Regel wie Event-Keys: Ein Topic-Key ist in genau einer Datei definiert. `chronicle check` in `check.py` meldet eine zweite Definition als Fehler (#85).
 

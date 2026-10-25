@@ -28,7 +28,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError as RuamelError
 from ruamel.yaml.scalarstring import LiteralScalarString
 
-from .loader import TimelineError, link_below
+from .loader import TimelineError, link_below, read_topic_text
 from .models import Event, Evidence, Timeline, Topic
 from .schema import SCHEMA_URL
 from .yamlscan import (
@@ -67,8 +67,20 @@ def require_no_link(root: Path, path: Path) -> None:
 
 
 def file_version(path: Path) -> str:
-    """The version of a topic file: the SHA-256 of its bytes."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """The version of a topic file: the SHA-256 of its bytes. Read in pieces, so any size is hashed in constant memory."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_text(path: Path) -> str:
+    """The text of a topic file for a change. A file over the size limit or without UTF-8 is a StoreError."""
+    try:
+        return read_topic_text(path)
+    except TimelineError as exc:
+        raise StoreError(str(exc)) from exc
 
 
 def dump_timeline(timeline: Timeline) -> str:
@@ -98,7 +110,7 @@ def update_event_in_file(path: Path, key: str, event: Event, *, expected_version
     """
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         start, end = _entry_span(text, key, path.name)
         entry = text[start:end]
         old = _entry_event(entry)
@@ -116,7 +128,11 @@ def update_event_in_file(path: Path, key: str, event: Event, *, expected_version
         _verify_read_back_entry(new_entry, event.model_copy(update={"evidence": old.evidence}))
         new_text = text[:start] + new_entry + text[end:]
         _check_size(new_text)
-        scan(new_text)  # the entry was checked alone; the node limit is the file's
+        try:
+            scan(new_text)  # the entry was checked alone; the node limit is the file's
+        except YamlRejected as exc:
+            raise StoreError(f"Die Datei würde mit dieser Änderung die Grenzen überschreiten: {exc}. "
+                             "Es wird nichts geschrieben.") from exc
         _atomic_write(path, new_text.encode("utf-8"))
     return file_version(path)
 
@@ -185,7 +201,7 @@ def update_topic_in_file(path: Path, topic: Topic, *, expected_version: str) -> 
     """Change the title, kind and summary of the topic a file defines. The key does not change. Returns the new version."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if current.topic.key != topic.key:
             raise StoreError(f"{path.name} gehört zum Topic {current.topic.key!r}, nicht zu {topic.key!r}.")
@@ -207,7 +223,7 @@ def add_event_to_file(path: Path, event: Event, *, expected_version: str) -> str
     """Append a new event to a topic file. Returns the new version of the file."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if any(known.key == event.key for known in current.events):
             raise StoreError(f"Event {event.key!r} steht bereits in {path.name}.")
@@ -226,7 +242,7 @@ def remove_event_from_file(path: Path, key: str, *, expected_version: str) -> st
     """Remove one event from a topic file. Its lines go with it; everything else stays. Returns the new version."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if not any(known.key == key for known in current.events):
             raise EventNotInFile(f"Event {key!r} steht nicht in {path.name}.")
@@ -252,7 +268,7 @@ def set_ref_in_file(path: Path, key: str, *, present: bool, expected_version: st
     """
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if present == (key in current.refs):
             return file_version(path)
@@ -278,7 +294,7 @@ def add_evidence_to_file(path: Path, event_key: str, item: dict, *, expected_ver
     """Add one evidence entry (file, type, description) to an event in its topic file. Returns the new version."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         event = next((known for known in current.events if known.key == event_key), None)
         if event is None:
@@ -303,7 +319,7 @@ def remove_evidence_from_file(path: Path, event_key: str, file: str, *, expected
     """Remove the evidence entry for one file from an event. The file on disk is not touched here."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         event = next((known for known in current.events if known.key == event_key), None)
         if event is None or not any(item.file == file for item in event.evidence):

@@ -59,13 +59,12 @@ def _git(data_dir: Path, *args: str) -> str:
     return result.stdout
 
 
-def _blob(data_dir: Path, ref: str, name: str) -> bytes:
-    """The bytes of a file at ref. The size is asked first, so that a huge blob is never read into memory."""
-    where = f"{ref}: {name}"
-    size = _git(data_dir, "cat-file", "-s", f"{ref}:{name}").strip()
+def _blob(data_dir: Path, commit: str, name: str, where: str) -> bytes:
+    """The bytes of a file at a commit. The size is asked first, so that a huge blob is never read into memory."""
+    size = _git(data_dir, "cat-file", "-s", f"{commit}:{name}").strip()
     if not size.isdigit() or int(size) > MAX_YAML_BYTES:
         raise TimelineError(f"{one_line(where)}: {TOO_LARGE}")
-    result = _run(data_dir, "show", f"{ref}:{name}", text=False)
+    result = _run(data_dir, "show", f"{commit}:{name}", text=False)
     if result.returncode != 0:
         raise SyncError(f"Git meldet einen Fehler beim Lesen von {one_line(where)}")
     return result.stdout
@@ -105,12 +104,13 @@ def base_timelines(data_dir: Path) -> dict[str, Timeline]:
     ref = base_ref(data_dir)
     if ref is None:
         return {}
-    names = [path for mode, path in _tree(data_dir, ref) if mode not in LINK_MODES and path.endswith(TOPIC_SUFFIXES)]
+    commit = _git(data_dir, "rev-parse", "--verify", ref).strip()  # @{u} may move between two calls of git
+    names = [path for mode, path in _tree(data_dir, commit) if mode not in LINK_MODES and path.endswith(TOPIC_SUFFIXES)]
     timelines = {}
     for name in names:
         try:
             where = f"{ref}: {name}"
-            timelines[name] = parse_timeline(decode_topic_bytes(_blob(data_dir, ref, name), where), where)
+            timelines[name] = parse_timeline(decode_topic_bytes(_blob(data_dir, commit, name, where), where), where)
         except TimelineError as exc:
             raise SyncError(f"Der Stand {ref} enthält eine Datei, die nicht lesbar ist: {exc}") from exc
     return timelines

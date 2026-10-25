@@ -103,9 +103,14 @@ def parse_timeline(text: str, where: str) -> Timeline:
 
 
 def load_timeline(path: Path) -> Timeline:
+    return parse_timeline(read_topic_text(path), str(path))
+
+
+def read_topic_text(path: Path) -> str:
+    """The text of a topic file. At most one byte more than the limit is read, so a huge file never fills the memory."""
     with path.open("rb") as handle:
-        data = handle.read(MAX_YAML_BYTES + 1)  # one byte more than the limit shows that the file is too large
-    return parse_timeline(decode_topic_bytes(data, str(path)), str(path))
+        data = handle.read(MAX_YAML_BYTES + 1)
+    return decode_topic_bytes(data, str(path))
 
 
 def decode_topic_bytes(data: bytes, where: str) -> str:

@@ -1,4 +1,4 @@
-"""Reading YAML that does not come from the app itself (ADR 0021, points 19 and 24).
+"""Reading YAML that does not come from the app itself.
 
 Files from the data folder, from Git and from a remote are foreign content. Before PyYAML builds objects from them,
 the event stream is scanned and anything the schema never uses is refused: deep nesting (the C loader crashes with
@@ -22,8 +22,10 @@ from yaml.resolver import Resolver
 # It only ever sees input the scan has passed: its crash is in the recursion of the composer, which depth 12 rules out.
 YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
-# One topic is one file (ADR 0005), and a long incident has thousands of events: 1,200 events of 17 nodes and 250 bytes
-# are 300 KB and 20,000 nodes. The limits stop abuse, not use. The scan costs about 40 ms per 20,000 nodes.
+# One topic is one file (ADR 0005), and a long incident has thousands of events: 1,200 events of 15 to 17 nodes and
+# 250 bytes are 300 KB and 18,000 to 20,000 nodes. The limits bound the memory and the scan (about 40 ms per 20,000
+# nodes), not the time of a change: writers other than update_event_in_file load the whole file with ruamel, which
+# takes seconds near the limits.
 MAX_YAML_BYTES = 4 * 1024 * 1024
 MAX_NODES = 100_000  # scalars, mappings and sequences together
 MAX_DEPTH = 12  # a topic file needs 6 levels

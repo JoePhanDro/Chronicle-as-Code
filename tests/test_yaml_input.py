@@ -339,29 +339,38 @@ def test_adding_an_event_over_the_limit_names_the_limit(tmp_path):
 
 # --- ruamel reads what libyaml accepted (the editor and the merge driver) ---------------------------------------------
 
-@pytest.mark.parametrize("tail", ["\t", "\x85x", "\u2028x"])
-def test_an_editor_error_of_ruamel_holds_no_content(tmp_path, tail):
+def test_an_editor_error_of_ruamel_holds_no_content(tmp_path):
     path = tmp_path / "a.yaml"
-    path.write_text(TOPIC.replace("title: A", f"title: {SECRET}{tail}"), encoding="utf-8", newline="")
+    path.write_text(TOPIC.replace("title: A", f"title: {SECRET}\t"), encoding="utf-8")  # libyaml reads it, ruamel does not
     event = parse_timeline(TOPIC, "a.yaml").events[0].model_copy(update={"key": "a2"})
 
-    try:
+    with pytest.raises(StoreError, match="Zeile") as caught:
         add_event_to_file(path, event, expected_version=file_version(path))
-    except StoreError as exc:  # ruamel reads it differently from libyaml: a message about the file, not its content
-        assert SECRET not in str(exc)
-        assert "\n" not in str(exc)
+
+    assert SECRET not in str(caught.value)
+    assert "\n" not in str(caught.value)
 
 
-@pytest.mark.parametrize("tail", ["\t", "\x85x", "\u2028x"])
-def test_a_merge_error_of_ruamel_holds_no_content(tail):
-    text = TOPIC.replace("title: A", f"title: {SECRET}{tail}")
+def test_a_merge_error_of_ruamel_holds_no_content():
+    with pytest.raises(StoreError, match="Zeile") as caught:
+        merge.merge_texts(TOPIC, TOPIC.replace("title: A", f"title: {SECRET}\t"), TOPIC)
 
-    try:
-        merge.merge_texts(TOPIC, text, TOPIC)
-    except StoreError as exc:
-        assert SECRET not in str(exc)
-    except merge.MergeConflict as exc:
-        assert SECRET not in str(exc)
+    assert SECRET not in str(caught.value)
+
+
+def test_the_editor_translates_a_recursion_error_of_ruamel(tmp_path, monkeypatch):
+    path = tmp_path / "a.yaml"
+    path.write_text(TOPIC, encoding="utf-8")
+    event = parse_timeline(TOPIC, "a.yaml").events[0].model_copy(update={"key": "a2"})
+
+    class Broken:
+        def load(self, text):
+            raise RecursionError
+
+    monkeypatch.setattr(store, "_yaml", Broken)
+
+    with pytest.raises(StoreError, match="tief"):
+        add_event_to_file(path, event, expected_version=file_version(path))
 
 
 def test_the_editor_translates_an_error_of_ruamel(tmp_path, monkeypatch):
@@ -431,6 +440,79 @@ def test_a_bad_blob_in_git_is_a_sync_error(repository, content):
 
     assert SECRET not in str(caught.value)
     assert "a.yaml" in str(caught.value)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git ist nicht installiert")
+def test_a_blob_over_the_limit_is_never_shown(repository, monkeypatch):
+    commit(repository, b"# " + b"x" * (4 * 1024 * 1024 + 10) + b"\n")
+    calls = []
+    original = sync._run
+    monkeypatch.setattr(sync, "_run", lambda data_dir, *args, **kwargs: calls.append(args[0]) or original(data_dir, *args, **kwargs))
+
+    with pytest.raises(sync.SyncError, match="MiB"):
+        sync.base_timelines(repository)
+
+    assert "show" not in calls
+
+
+# --- limits for what is read and written in one go ------------------------------------------------------------------------
+
+def test_an_edit_over_the_node_limit_is_a_store_error(tmp_path):
+    path = tmp_path / "big.yaml"
+    path.write_text(TOPIC + "refs: [" + ", ".join(["r"] * 99_950) + "]\n", encoding="utf-8")
+    before = path.read_bytes()
+    event = parse_timeline(TOPIC, "a.yaml").events[0].model_copy(update={"triggered_by": [f"t{i:03d}" for i in range(90)]})
+    with pytest.raises(StoreError, match="Knoten"):
+        update_event_in_file(path, "a1", event, expected_version=file_version(path))
+
+    assert path.read_bytes() == before
+
+
+def test_the_editor_refuses_a_file_over_the_limit_without_reading_it_all(tmp_path):
+    path = tmp_path / "big.yaml"
+    path.write_text(TOPIC + "# " + "x" * (4 * 1024 * 1024) + "\n", encoding="utf-8")
+    event = parse_timeline(TOPIC, "a.yaml").events[0].model_copy(update={"key": "a2"})
+
+    with pytest.raises(StoreError, match="MiB"):
+        add_event_to_file(path, event, expected_version=file_version(path))
+
+
+def test_the_merge_driver_and_the_editor_read_files_in_a_bounded_way(tmp_path, monkeypatch):
+    path = tmp_path / "a.yaml"
+    path.write_text(TOPIC, encoding="utf-8")
+    event = parse_timeline(TOPIC, "a.yaml").events[0].model_copy(update={"key": "a2"})
+
+    def unbounded(self, *args, **kwargs):
+        raise AssertionError("read without a limit")
+
+    monkeypatch.setattr(Path, "read_text", unbounded)
+    monkeypatch.setattr(Path, "read_bytes", unbounded)
+
+    add_event_to_file(path, event, expected_version=file_version(path))
+    assert merge.main([str(path), str(path), str(path)]) == 0
+
+
+def test_the_merge_driver_refuses_a_file_over_the_limit(tmp_path, capsys):
+    base, ours, theirs = (tmp_path / name for name in ("base", "ours", "theirs"))
+    for path in (base, ours):
+        path.write_text(TOPIC, encoding="utf-8")
+    theirs.write_text(TOPIC + "# " + "x" * (4 * 1024 * 1024) + "\n", encoding="utf-8")
+
+    assert merge.main([str(base), str(ours), str(theirs)]) == 1
+
+    assert "MiB" in capsys.readouterr().err
+
+
+def test_a_merge_result_over_the_limit_says_so():
+    padding = "# " + "x" * (yamlscan.MAX_YAML_BYTES - len(events_text(5, 20).encode()) - 400) + "\n"
+    base = events_text(5, 20) + padding
+    added = "  - key: {key}\n    t0: 2026-10-14T08:00:00+02:00\n    phase: Analysis\n    actor: X\n    action: {pad}\n    status: open\n"
+
+    with pytest.raises(merge.MergeConflict) as caught:
+        merge.merge_texts(base, base + added.format(key="o1", pad="o" * 200), base + added.format(key="t1", pad="t" * 200))
+
+    assert "Grenze" in str(caught.value)
+    assert "nicht lesbar" not in str(caught.value)
 
 
 # --- characters ------------------------------------------------------------------------------------------------------------
