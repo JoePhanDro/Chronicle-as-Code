@@ -2,7 +2,7 @@
 
 - **Status:** Entwurf, überarbeitet nach Review (Sicherheit und Architektur). Nichts davon ist umgesetzt.
 - **Stand:** 2026-10-25
-- **Grundlage:** [`vault-git.md`](vault-git.md) und ADR 0011 bis 0022
+- **Grundlage:** [`vault-git.md`](vault-git.md) und ADR 0011 bis 0023
 
 ## Regeln für jeden Teil
 
@@ -61,6 +61,8 @@ Abhängigkeiten (vereinfacht): `0a,0b → 1 → 4 → 5 → 7 → 6b → 18`; `2
 | 17 | Dokumentation auf den neuen Stand | alle zuvor | S | alle | N6 | nein |
 | 19 | Incident-Branch und Live-Modus (**nach Nutzerentscheidung**) | 14b | M | 0015 | H6 | ja |
 | 20 | Berichte und Exporte aus dem freigegebenen Stand | 14b | S | 0015 | M11 | ja |
+| 8c | Audit-Log mit Hash-Kette, Verankerung in Commits (optional) | 8, 14a | S/M | 0013 | | nein |
+| 22 | Verschlüsselung: SQLCipher für `ops.db`/Index oder Vault-Verschlüsselung (**nur nach Nutzerentscheidung**) | 8, Entscheidung 11 | M bis L | 0023 | | ja |
 | 9 | Mehrere Vaults, URL-Präfix (**zurückgestellt**) | #127, 6b, 8 | M | 0018 | M15 | ja |
 
 Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs teilen). Teile mit L werden geteilt, wenn der Entwurf größer wird.
@@ -85,9 +87,11 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 - **Akzeptanz:** Je Regel ein Test; `data/` besteht unverändert.
 - **Risiko:** gering.
 
-## Teil 2a bis 2c: Datenbankmodus entfernen (Issue #123)
+## Teil 2a bis 2c: Zweiten Schreibpfad über die Datenbank entfernen (Issue #123)
 
-- **Inhalt:** Alle Zweige `if data_dir is not None` in `repository.py` entfernen, in drei PRs (Events, Topics und Verknüpfungen, Anhänge/Grabsteine/Start nur mit Datenordner). Danach streichen: `deleted_events`, `deleted_evidence`, gespeicherte Anhangs-Bytes. Ein Schritt in `db.py` entfernt die toten Tabellen idempotent. Vorher in der Migration (Teil 7) und im Export (`exporter.py`) den Weg für Datenbank-Installationen sichern.
+**Klarstellung (Entscheidung des Projektinhabers):** Die Datenbank bleibt. Sie dient weiter für Konten, Sitzungen, Audit-Log, etwaige Schlüssel-Metadaten (`ops.db`) und als Index. Entfernt wird nur der Weg, Topics, Events und Anhänge **über die Datenbank** zu schreiben und zu speichern. Die Wahrheit für Inhalte liegt im Vault.
+
+- **Inhalt:** Alle Zweige `if data_dir is not None` in `repository.py` entfernen, in drei PRs (Events, Topics und Verknüpfungen, Anhänge/Grabsteine/Start nur mit Datenordner). Danach streichen: `deleted_events`, `deleted_evidence`, gespeicherte Anhangs-Bytes im Index. Tabellen für Konten, Sitzungen, Audit und Einstellungen bleiben unberührt. Ein Schritt in `db.py` entfernt die toten Tabellen idempotent. Vorher in der Migration (Teil 7) und im Export (`exporter.py`) den Weg für Datenbank-Installationen sichern.
 - **Akzeptanz:** `repository.py` hat einen Schreibpfad. `serve` ohne `--data` endet mit klarer Meldung. Tests laufen im Dateimodus (Fixtures in `conftest.py`).
 - **Risiko:** Größter Umbau. Betreiber ohne Datenordner müssen vorher exportieren (offene Frage 6).
 
@@ -130,6 +134,8 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 ## Teil 8 und 8b: Zustandsordner und Container
 
 - **8:** `CHRONICLE_HOME` (0700), `config.toml` mit lokaler ID, Klon-Kennung, Manifest-Etikett, `origin`, Linkvorlage; `init`, `vault add` (Allowlist der `.git/config`), `list`, `remove`; `serve` liest die Registry; `ops.db` zieht um (`init --adopt-ops`); Spalten `git_name`, `git_email`, Audit `vault_id`. **`backup.py` sichert `config.toml` und `ops.db`, Wiederherstellung wird getestet.**
+- **8 (Ergänzung):** Abgrenzung der Orte nach ADR 0013, Punkt 5 (Tabelle). `ops.db` bekommt eine Tabelle `key_metadata` (Kennung, Fingerabdruck, Datum) **nur wenn** ADR 0023 (b) gewählt wird, vorher nicht.
+- **8c (optional):** Audit-Log mit `prev_hash`/`entry_hash` (SHA-256), Prüfbefehl `chronicle audit verify`, Kopfwert als Trailer `Chronicle-Audit-Head` in Commits (ab 14a). Macht Veränderungen erkennbar, verhindert sie nicht. Test: Löschen oder Ändern eines mittleren Eintrags wird gemeldet.
 - **8b:** Container mit `git`, `ssh`, beschreibbarem Vault-Volume, `/state`, Deploy Key als Datei, `read_only` und `cap_drop` wo möglich. Bis dahin liest der Container nur.
 - **Akzeptanz:** Start ohne Parameter öffnet den Vault. Doppelte Manifest-ID wird abgelehnt. Bootstrap-Wege funktionieren. Docker-Smoke-Test in der CI passt.
 - **Risiko:** `docker-compose.yml`, `Dockerfile`, CI-Job `docker` ändern sich.
@@ -141,6 +147,7 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 
 ## Teil 11: `vault init`, `vault clone`, Vorlage
 
+- **GitHub ist der Standard:** Vorlage-Repository, Ruleset-JSON, Linkvorlage und Workflow sind GitHub-Voreinstellungen; die Schicht ist ein Erweiterungspunkt, andere Hoster sind „unterstützt, nicht Standard“ (ADR 0011, Punkt 6). `vault doctor` (12b) nutzt `gh`.
 - **Inhalt:** Manifest mit **neuer** `id`, `.gitignore`, `.gitattributes` (nur Vorlagenzeilen), `.github/CODEOWNERS`, **`.github/ruleset.json`** (importierbar), Workflow-Aufruf mit SHA, PR-Vorlage, Dependabot, README mit Checkliste; `vault init --adopt`; `vault clone` mit URL-Regeln und `core.symlinks=false`.
 - **Akzeptanz:** Neuer Vault besteht `check`. Böse URLs abgelehnt. Kein Netz im Test.
 - **Risiko:** Die Checkliste kann veralten; Ersatz ist `vault doctor` (12b).
@@ -187,6 +194,10 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 
 - Bericht und Export bauen standardmäßig aus `origin/<standard>`, ungeprüfte Events nur auf ausdrücklichen Wunsch und gekennzeichnet (ADR 0015, Punkt 15).
 
+## Teil 22: Verschlüsselung (nur nach Nutzerentscheidung)
+
+- ADR 0023. Mit der Empfehlung (a)+(c) entfällt der Teil bis auf Anleitung und optionale Prüfung der Festplattenverschlüsselung in `vault doctor`. Gewählt werden könnte SQLCipher für `ops.db`/Index (kleiner Teil) oder (b) Vault-Verschlüsselung mit age (mehrere Teile, neues Format, Änderungen an Merge-Treiber, Index und CI; vorher Prototyp).
+
 ## Teil 9: Mehrere Vaults (zurückgestellt)
 
 - Erst bei Bedarf und nach #127. Standard bleibt eine Installation mit einem Vault.
@@ -215,10 +226,12 @@ Die ersten Fragen muss der Projektinhaber **wirklich entscheiden**. Zu den übri
 
 ### Entscheidung nötig
 
-1. **Anhänge in Git (ADR 0019), Hoster, Tarif.** Das ändert die bestätigte Entscheidung aus ADR 0008/0009. Vorschlag des Reviews: **Ja, aber nur unter Bedingungen:** privater Vault, Tarif mit Branch Protection und Rulesets, Vertrag zur Auftragsverarbeitung und Region geklärt, Bereinigungsverfahren am Testrepository erprobt (Teil 16b). **Dieser PR wird bis zu Ihrer Entscheidung nicht gemergt.** Zu klären sind: GitHub oder ein selbst betriebener Git-Server, und welcher Tarif (geschützte Branches und erforderliche Reviews in privaten Repositories sind bezahlt).
-6. **Datenbankmodus streichen (#123, ADR 0011).** Vorschlag: ja, mit Exportweg, nachdem Teil 7 (Migration) fertig ist. Betrifft vorhandene Installationen ohne Datenordner.
+1. **Anhänge in Git (ADR 0019), GitHub-Tarif, Vertrag, Region.** GitHub ist als Standard-Hoster entschieden; offen ist nur noch, welcher GitHub-Tarif, ob ein Vertrag zur Auftragsverarbeitung besteht und welche Region gilt. Das ändert die bestätigte Entscheidung aus ADR 0008/0009. Vorschlag des Reviews: **Ja, aber nur unter Bedingungen:** privater Vault, Tarif mit Branch Protection und Rulesets, Vertrag zur Auftragsverarbeitung und Region geklärt, Bereinigungsverfahren am Testrepository erprobt (Teil 16b). **Dieser PR wird bis zu Ihrer Entscheidung nicht gemergt.** Geschützte Branches und erforderliche Reviews in privaten Repositories sind nach unserem Kenntnisstand bezahlt (zu prüfen, Teil 12a).
+6. **Zweiten Schreibpfad über die Datenbank streichen (#123, ADR 0011): entschieden.** Die Datenbank bleibt für Login, Audit und etwaige Verschlüsselungs-Metadaten, die Wahrheit für Inhalte liegt im Vault. Offen bleibt nur der Zeitpunkt für Installationen ohne Datenordner: Exportweg und Migration (Teil 7) kommen zuerst.
 9. **Live-Dokumentation bei Vorfällen (ADR 0015, Punkte 12 bis 14).** Vorschlag: Incident-Branch `incident/<id>` ohne Review (nur Status-Check), in der Oberfläche als „ohne Freigabe“ gekennzeichnet, danach ein Sammel-Pull-Request nach `main` mit Review. Schwächt das Vier-Augen-Prinzip für die Dauer eines Vorfalls bewusst. Ohne Ihre Zustimmung bleibt es bei einem Pull Request je Person (Teil 19 entfällt).
 10. **Aufbewahrung und Löschung (ADR 0020).** Gibt es Fristen und Löschpflichten, die vor dem ersten echten Vault feststehen müssen? Vorschlag: ja, **Voraussetzung** vor dem ersten Vault mit echten Daten, zusammen mit der oder dem Datenschutzbeauftragten.
+
+11. **Verschlüsselung der Einträge (ADR 0023).** Gibt es einen konkreten Bedarf (Topics mit eingeschränktem Leserkreis, Hoster nicht vertrauenswürdig genug, Vertragsanforderung)? Empfehlung: zunächst (a) Zugriffsschutz des Hosters plus (c) lokale Verschlüsselung (Festplatte), (b) erst bei Bedarf und dann auf Dateiebene mit Klartext-Metadaten und age.
 
 ### Vorgabe gilt, außer Sie widersprechen
 

@@ -39,6 +39,20 @@ Mit Vaults (ADR 0011) liegen alle Inhalte in Git-Repositories. Lokal bleibt weni
    - `chronicle vault add <pfad>` trägt einen vorhandenen Klon ein. `chronicle vault clone <url> [<pfad>]` klont und trägt ein (URL-Regeln in ADR 0021). `chronicle vault list`, `chronicle vault remove <id>` (löscht nur den Eintrag und den Cache, nie den Ordner).
    - `chronicle serve` ohne `--db` und `--data` liest die Registry. `--vault <id|name>` wählt den Vault. `--db` und `--data` bleiben eine Übergangszeit als veraltete Optionen.
 5. **Was lokal im Login-Zustand liegt** (`ops.db`, unverändert zu ADR 0010, plus Erweiterungen aus ADR 0014): Benutzername, Argon2id-Hash (Bibliotheksvorgaben von `argon2-cffi`, Mindestlänge 12), Rolle, `must_change_password`, SHA-256 der Sitzungstokens, CSRF-Token der Sitzung, Login-Fehlversuche, Einstellungen (Hash des Sperrpassworts, ADR 0007), Audit-Log. Das Audit-Log bekommt eine Spalte `vault_id`.
+   **Abgrenzung (Entscheidung des Projektinhabers: die Datenbank bleibt für Login, Audit und etwaige Verschlüsselung):**
+
+   | Ort | Inhalt | Quelle der Wahrheit? | Wiederherstellbar aus |
+   |---|---|---|---|
+   | Vault (Git) | Topics, Events, Anhänge, Manifest | ja, für alle Inhalte | Git-Historie |
+   | `ops.db` | Konten, Sitzungen, Sperren, Einstellungen, Audit-Log, Schlüssel-Metadaten (Kennung, Empfänger-Fingerabdruck, Rotationsdatum; **nie** der private Schlüssel) | ja, für Betrieb | nur Backup |
+   | `cache/<local-id>/index.db` | Index der Inhalte | nein | Vault-Dateien |
+   | `config.toml` | Vault-Registry | ja, lokal | Backup oder neu eintragen |
+
+   **Audit-Log lokal oder Git-Historie als Audit-Quelle?** Beide dienen verschiedenen Fragen:
+   - **Git-Historie plus Review-Verlauf des Hosters** beantwortet „wer hat welchen Inhalt wann geändert und wer hat es freigegeben“. Sie ist über den Hoster gegen nachträgliches Ändern geschützt (Force-Push verboten, ADR 0015) und von mehreren Personen einsehbar. Das ist die **maßgebliche Quelle für Inhalte**.
+   - **Das lokale Audit-Log** beantwortet „wer hat sich an dieser Installation angemeldet, wer hat Konten geändert, welche Fehlversuche gab es, was hat die App gelesen oder exportiert (Berichte)“. Das steht nicht in Git. Es ist **ergänzend** und nicht manipulationssicher: Wer die Datei besitzt, kann sie ändern.
+   - **Option „Manipulationserkennung“ (empfohlen als eigener Teil, Plan Teil 8c):** Jeder Audit-Eintrag trägt `prev_hash` und `entry_hash = SHA-256(prev_hash ‖ Inhalt des Eintrags)`. Das macht Löschen oder Ändern mittendrin sichtbar, nicht verhinderbar. Der aktuelle Kopfwert kann als Trailer `Chronicle-Audit-Head: <hash>` in die Commits der App aufgenommen werden, wodurch die Kette an die Git-Historie (und damit an den Hoster) verankert wird: Eine spätere Kürzung des Logs fällt gegen die Commits auf. Das ist eine Option, kein Muss, und setzt nur SHA-256 aus der Standardbibliothek ein.
+   - Inhalte des Audit-Logs sind ohne Ereignisinhalte (wie heute), damit es keine zweite Kopie sensibler Daten gibt.
 6. **Bootstrap.** Es bleiben die drei bestehenden Wege, alle nur solange noch kein Konto existiert:
    1. `chronicle init` fragt Benutzername und Passwort auf dem Terminal ab (verdeckt). Das ist der empfohlene Weg am Arbeitsplatz.
    2. Umgebungsvariablen `CHRONICLE_ADMIN_USER` und `CHRONICLE_ADMIN_PASSWORD` (Docker). Der Admin muss das Passwort beim ersten Login ändern.

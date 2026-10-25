@@ -2,7 +2,7 @@
 
 - **Status:** Entwurf, nach Review (Sicherheit und Architektur) überarbeitet, noch nicht umgesetzt
 - **Stand:** 2026-10-25, Code auf `main` bei Commit `d68216f`
-- **Entscheidungen:** ADR 0011 bis 0022 in [`docs/adr/`](../adr/). Umsetzungsplan: [`vault-git-plan.md`](vault-git-plan.md)
+- **Entscheidungen:** ADR 0011 bis 0023 (GitHub ist Standard-Hoster, die Datenbank bleibt für Login, Audit und Schlüssel-Metadaten, Verschlüsselung der Einträge ist als Nutzerfrage in ADR 0023 beschrieben) in [`docs/adr/`](../adr/). Umsetzungsplan: [`vault-git-plan.md`](vault-git-plan.md)
 
 ## 1. Ziel in einem Absatz
 

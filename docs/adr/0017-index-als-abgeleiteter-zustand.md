@@ -16,7 +16,8 @@ Die Datenbank `chronicle.db` ist Index: Sie lässt sich aus den Dateien neu aufb
 4. **Aktualisierung: ein Mechanismus.** Maßgeblich ist der **Fingerabdruck je Datei** (Größe, Änderungszeit, bei Abweichung SHA-256), wie ihn `source_files` heute schon führt. Git dient nur als **Beschleuniger**, nicht als zweite Wahrheit: `git diff --name-status -z --no-renames <indizierter-commit> HEAD` und `git status --porcelain=v1 -z` liefern die Kandidatenmenge, die der Fingerabdruck dann bestätigt. `--no-renames` ist Pflicht (sonst erscheint eine verschobene Datei nur als eine Zeile mit zwei Pfaden). Im Zweifel wird neu gebaut. Die Teilschritte aus #125 (nur das geänderte Event schreiben, Feldänderung aktualisiert nur den Event-Eintrag) sind **bereits auf `main`** (`c7bb327`, `5c017a6`, PR #136) und bleiben. Messwert aus dem Review: 10.000 Dateien, Vollaufbau 0,63 s. Ein zweiter, an Commits gebundener Mechanismus lohnt den Aufwand nicht.
 5. **Abgeleitet heißt auch: nie Quelle.** Keine Funktion darf aus dem Index zurück in Dateien schreiben (außer über den normalen Schreibpfad mit Prüfung). Die Anzeige „freigegeben“ (ADR 0015) berechnet sich aus Git, nicht aus dem Index.
 6. **Ein Schreiber.** Nur der Serverprozess schreibt den Index (WAL-Modus). Weitere Prozesse (CLI `apply`, Tests) öffnen ihn gesperrt oder bauen auf einer Kopie.
-7. **Betriebsdaten sind getrennt.** `ops.db` ist kein Cache und wird gesichert (ADR 0013).
+7. **Betriebsdaten sind getrennt.** `ops.db` ist kein Cache und wird gesichert (ADR 0013). Sie bleibt die Datenbank für Konten, Sitzungen, Audit-Log und Schlüssel-Metadaten (Entscheidung des Projektinhabers); die Abgrenzung zum Vault und zum Index steht in der Tabelle in ADR 0013, Punkt 5.
+8. **Verschlüsselung at rest ist eine Frage für ADR 0023.** Der Index enthält den Volltext der Inhalte. Ob er (und `ops.db`) zusätzlich verschlüsselt wird, ist dort als Option (c) beschrieben. Der Index bleibt in jedem Fall verwerfbar.
 
 ## Konsequenzen
 
