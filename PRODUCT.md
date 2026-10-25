@@ -12,11 +12,11 @@ Security analysts (incident response) who maintain events during or after an inc
 
 ## Product Purpose
 
-Chronicle organises security knowledge. **Events** (time, actor, system, action, status, evidence) belong to **Topics** (incident, vulnerability, project, special). From them it builds a timeline, an entity graph and a detail view. Success: an analyst can reconstruct and document what happened, and hand over a self-contained report.
+Chronicle organises security knowledge. **Events** (time, actor, system, action, status, evidence) belong to **Topics** (incident, vulnerability, project, special). From them it builds a timeline, an entity graph and a detail view. Success: an analyst can reconstruct and document what happened, and hand over a single-file report.
 
 ## Positioning
 
-The topic files (YAML, kept in Git/OneDrive) are the source of truth; the UI, API, static pages and HTML reports are views on them. Self-hosted. A report is a single offline HTML file with timeline, graph, details and embedded evidence, needing no server or login.
+The topic files (YAML, kept in Git/OneDrive) are the source of truth; the UI, API, static pages and HTML reports are views on them. Self-hosted. A report is a single HTML file with timeline, graph, details and embedded evidence, needing no server or login. It is not offline: the timeline and graph libraries (vis-timeline, vis-network) and the dashboard fonts load from CDNs when the file is opened (ADR 0006). Whether to bundle them is an open decision.
 
 ## Operating Context
 
@@ -29,7 +29,7 @@ Server-rendered web UI (Python backend, Jinja templates, Tailwind CSS built with
 - Search (`/` shortcut), help page with shortcuts, dashboard embedded in the topic page.
 - Phase colour semantics are part of the data model: red = Identification/Exploit, yellow = Analysis, orange = Containment, green = Mitigation/Recovery, blue = Lessons Learned.
 - UI language is German (all existing copy).
-- Reports and static pages must work offline and reproducibly (stylesheet and attachments embedded).
+- Reports and static pages embed the stylesheet and attachments and are reproducible. They are not offline today: they need an internet connection to load vis-timeline, vis-network (with SRI hashes) and Google Fonts.
 - Not decided: explicit accessibility standard, keyboard-first requirement, and a ban on external requests were not confirmed by the owner.
 
 ## Evidence on Hand
@@ -41,4 +41,4 @@ Fictional demo data in `data/`, dashboard screenshot in `docs/screenshots/dashbo
 - Files are the truth; the interface is a view and must never obscure what is on disk.
 - Built for analysts under pressure: dense, scannable, precise about time, actor and system.
 - Confidential by default: reports and static pages are snapshots of sensitive data and say so.
-- Self-contained and offline-capable output.
+- Output is a single file that is shared deliberately; making it fully offline is a possible goal, not a current property.
