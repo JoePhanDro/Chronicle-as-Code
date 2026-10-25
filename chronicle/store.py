@@ -26,7 +26,7 @@ import yaml
 from ruamel.yaml import YAML
 from ruamel.yaml.scalarstring import LiteralScalarString
 
-from .loader import _YAML_LOADER, TimelineError
+from .loader import _YAML_LOADER, TimelineError, link_below
 from .models import Event, Evidence, Timeline, Topic
 from .schema import SCHEMA_URL
 
@@ -44,6 +44,13 @@ class VersionConflict(StoreError):
 
 class EventNotInFile(StoreError):
     """The event is not defined in the file it was looked up in."""
+
+
+def require_no_link(root: Path, path: Path) -> None:
+    """Refuse a path below the data folder `root` that goes through a link. `root` itself may be one (a mount)."""
+    link = link_below(root, path)
+    if link is not None:
+        raise StoreError(f"{link.relative_to(root).as_posix()} ist ein Link. Links sind im Datenordner nicht erlaubt.")
 
 
 def file_version(path: Path) -> str:
@@ -299,8 +306,12 @@ def restore_file(path: Path, data: bytes) -> None:
     _atomic_write(path, data)
 
 
-def write_new_file(path: Path, data: bytes) -> None:
-    """Write a binary file that must not exist yet (an attachment). Atomic, like the topic files."""
+def write_new_file(path: Path, data: bytes, *, root: Path) -> None:
+    """Write a binary file that must not exist yet (an attachment). Atomic, like the topic files.
+
+    `root` is the data folder. No folder between it and the file may be a link, or the file would land outside.
+    """
+    require_no_link(root, path.parent)
     if path.exists():
         raise StoreError(f"{path.name} existiert bereits.")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -341,14 +352,23 @@ def folder_lock(folder: Path) -> Iterator[None]:
 
 
 def _open_lock_file(folder: Path):
-    """The lock file, created if missing. A link under that name is an error: it would lock or create its target."""
+    """The lock file, created if missing. A link under that name is an error: it would lock or create its target.
+
+    So is anything that is not a regular file (a folder, a pipe).
+    """
     try:
-        descriptor = os.open(folder / LOCK_FILE, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o666)
+        descriptor = os.open(folder / LOCK_FILE, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o666)
     except OSError as exc:
-        if exc.errno == errno.ELOOP:
-            raise StoreError(f"{LOCK_FILE} ist ein Link. Der Datenordner wird nicht beschrieben.") from exc
+        if exc.errno in (errno.ELOOP, errno.EISDIR):
+            raise StoreError(f"{LOCK_FILE} ist ein Link oder ein Ordner. Der Datenordner wird nicht beschrieben.") from exc
         raise
-    return os.fdopen(descriptor, "r+b")
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise StoreError(f"{LOCK_FILE} ist keine gewöhnliche Datei. Der Datenordner wird nicht beschrieben.")
+        return os.fdopen(descriptor, "r+b")
+    except BaseException:
+        os.close(descriptor)
+        raise
 
 
 def _yaml() -> YAML:

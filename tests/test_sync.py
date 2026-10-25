@@ -251,8 +251,7 @@ def test_nothing_to_do_commits_and_pushes_nothing(tmp_path, folder):
     assert subjects(folder) == before
 
 
-def test_remote_changes_to_other_fields_of_an_event_are_merged_with_the_driver(tmp_path, folder, monkeypatch):
-    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+def test_remote_changes_to_other_fields_of_an_event_are_merged_with_the_driver(tmp_path, folder):
     remote = remote_of(tmp_path, folder)
     other = clone_of(tmp_path, remote, "anna")
     edit(other, "timeline.yaml", 'details: |\n      Herstellerhinweis', 'details: |\n      Anna Notiz\n      Herstellerhinweis')
@@ -268,8 +267,7 @@ def test_remote_changes_to_other_fields_of_an_event_are_merged_with_the_driver(t
     assert "Anna Notiz" in feed_cve["details"]  # the other side's change
 
 
-def test_the_same_field_changed_on_both_sides_is_a_conflict_and_nothing_is_pushed(tmp_path, folder, monkeypatch):
-    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+def test_the_same_field_changed_on_both_sides_is_a_conflict_and_nothing_is_pushed(tmp_path, folder):
     remote = remote_of(tmp_path, folder)
     other = clone_of(tmp_path, remote, "anna")
     edit(other, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Anna"')
@@ -318,8 +316,7 @@ def test_the_first_upload_creates_the_branch_on_the_remote(tmp_path, folder):
     assert git(remote, "rev-parse", "--verify", "main").strip()
 
 
-def test_the_sync_endpoint_takes_in_the_remote_and_rebuilds_the_index(tmp_path, folder, monkeypatch, api_client):
-    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+def test_the_sync_endpoint_takes_in_the_remote_and_rebuilds_the_index(tmp_path, folder, api_client):
     remote = remote_of(tmp_path, folder)
     other = clone_of(tmp_path, remote, "anna")
     edit(other, "timeline.yaml", "    details: |\n      Herstellerhinweis", "    details: |\n      Von Anna\n      Herstellerhinweis")
@@ -333,8 +330,7 @@ def test_the_sync_endpoint_takes_in_the_remote_and_rebuilds_the_index(tmp_path, 
     assert "Von Anna" in client.get("/api/v1/events/feed-cve").json()["details"]
 
 
-def test_the_sync_endpoint_reports_a_conflict_without_pushing(tmp_path, folder, monkeypatch, api_client):
-    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+def test_the_sync_endpoint_reports_a_conflict_without_pushing(tmp_path, folder, api_client):
     remote = remote_of(tmp_path, folder)
     other = clone_of(tmp_path, remote, "anna")
     edit(other, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Anna"')
@@ -355,18 +351,38 @@ def test_a_viewer_cannot_sync(tmp_path, folder, api_client):
     assert client.post("/api/v1/sync").status_code == 403
 
 
-def test_the_merge_driver_does_not_import_code_from_the_data_folder(tmp_path, folder, monkeypatch):
-    # git starts the driver with the data folder as working directory. A yaml.py there must not run.
-    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+def diverged(tmp_path, folder):
+    """The remote and the folder changed different fields of one event: the merge needs the driver."""
     remote = remote_of(tmp_path, folder)
     other = clone_of(tmp_path, remote, "anna")
     edit(other, "timeline.yaml", 'details: |\n      Herstellerhinweis', 'details: |\n      Anna Notiz\n      Herstellerhinweis')
     assert sync.synchronise(other).committed
     edit(folder, "timeline.yaml", "status: resolved\n    details: |", "status: open\n    details: |")
+    return remote, other
+
+
+def push_from(other, message, *, stage=True):
+    if stage:
+        git(other, "add", "-A")
+    git(other, "commit", "-q", "-m", message)
+    git(other, "push", "-q", "origin", "main")
+
+
+ATTACKS = {
+    "yaml.py": "yaml.py", "pydantic.py": "pydantic.py", "ruamel.py": "ruamel.py",
+    "yaml-package": "yaml/__init__.py", "chronicle-package": "chronicle/__init__.py",
+}
+
+
+@pytest.mark.parametrize("path", ATTACKS.values(), ids=ATTACKS.keys())
+def test_the_merge_driver_does_not_import_code_from_the_data_folder(tmp_path, folder, path):
+    # git starts the driver with the data folder as working directory. Code planted there must not run.
+    diverged(tmp_path, folder)
     git(folder, "commit", "-q", "-am", "lokal")
     git(folder, "fetch", "-q", "origin")
     marker = tmp_path / "marker"
-    (folder / "yaml.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
+    (folder / path).parent.mkdir(exist_ok=True)
+    (folder / path).write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
     sync._use_merge_driver(folder)
 
     merge = subprocess.run(["git", "-C", str(folder), "merge", "--no-edit", "origin/main"],
@@ -377,14 +393,54 @@ def test_the_merge_driver_does_not_import_code_from_the_data_folder(tmp_path, fo
     assert "Anna Notiz" in (folder / "timeline.yaml").read_text(encoding="utf-8")
 
 
+def test_the_merge_driver_keeps_the_environment_of_the_app(tmp_path, folder, monkeypatch):
+    # A deployment may keep its dependencies in PYTHONPATH or the user site. Only the data folder is left out.
+    extra = tmp_path / "extra"
+    extra.mkdir()
+    marker = tmp_path / "from-environment"
+    (extra / "sitecustomize.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(extra))
+    diverged(tmp_path, folder)
+
+    assert sync.synchronise(folder).merged
+    assert marker.exists()
+
+
+def test_a_crashing_merge_driver_is_an_error_and_not_a_conflict(tmp_path, folder, monkeypatch):
+    broken = tmp_path / "broken"
+    (broken / "chronicle").mkdir(parents=True)
+    (broken / "chronicle" / "__init__.py").write_text("", encoding="utf-8")
+    (broken / "chronicle" / "merge.py").write_text("raise RuntimeError('kaputt')\n", encoding="utf-8")
+    monkeypatch.setattr(sync, "PACKAGE_ROOT", broken)
+    diverged(tmp_path, folder)
+
+    with pytest.raises(sync.SyncError, match="abgestürzt.*kaputt"):
+        sync.synchronise(folder)
+
+    assert not (folder / ".git" / "MERGE_HEAD").exists()
+
+
+def test_a_percent_sign_in_the_path_of_the_app_does_not_break_the_driver_line(tmp_path, folder, monkeypatch):
+    package_root = tmp_path / "per%Acent"
+    shutil.copytree(ROOT / "chronicle", package_root / "chronicle", ignore=shutil.ignore_patterns("__pycache__", "static"))
+    monkeypatch.setattr(sync, "PACKAGE_ROOT", package_root)
+    diverged(tmp_path, folder)
+
+    result = sync.synchronise(folder)
+
+    assert result.merged and result.conflicts == []
+
+
+def link_to_remote(other, tmp_path, name="link.yaml"):
+    (tmp_path / "geheim.yaml").write_text("topic: {key: x, title: GEHEIMER-INHALT}\n", encoding="utf-8")
+    (other / name).symlink_to(tmp_path / "geheim.yaml")
+    push_from(other, "Link")
+
+
 def test_a_symlink_in_the_merged_state_is_refused_and_undone(tmp_path, folder):
     remote = remote_of(tmp_path, folder)
     other = clone_of(tmp_path, remote, "anna")
-    (tmp_path / "geheim.yaml").write_text("topic: {key: x, title: GEHEIMER-INHALT}\n", encoding="utf-8")
-    (other / "link.yaml").symlink_to(tmp_path / "geheim.yaml")
-    git(other, "add", "link.yaml")
-    git(other, "commit", "-q", "-m", "Link")
-    git(other, "push", "-q", "origin", "main")
+    link_to_remote(other, tmp_path)
     edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Neu"')
 
     result = sync.synchronise(folder)
@@ -394,3 +450,75 @@ def test_a_symlink_in_the_merged_state_is_refused_and_undone(tmp_path, folder):
     assert not (folder / "link.yaml").exists()
     assert subjects(folder)[0].startswith("Abgleich")  # the local commit stays, the merge is undone
     assert git(remote, "log", "--format=%s", "main").splitlines()[0] == "Link"  # nothing was pushed
+
+
+def test_a_submodule_and_a_path_with_a_newline_in_the_merged_state_are_refused(tmp_path, folder):
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    sha = git(other, "rev-parse", "HEAD").strip()
+    git(other, "update-index", "--add", "--cacheinfo", f"160000,{sha},sub")
+    (other / "x\ny").symlink_to(tmp_path)
+    git(other, "add", "x\ny")
+    push_from(other, "Submodul und Link", stage=False)
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Neu"')
+
+    result = sync.synchronise(folder)
+
+    assert sorted(problem.split(":")[0] for problem in result.problems) == ["sub", "x\ny"]
+
+
+def test_the_undo_of_a_refused_merge_keeps_uncommitted_changes_to_other_tracked_files(tmp_path, folder):
+    (folder / "NOTES.md").write_text("alt\n", encoding="utf-8")
+    git(folder, "add", "NOTES.md")
+    git(folder, "commit", "-q", "-m", "Notizen")
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    link_to_remote(other, tmp_path)
+    (folder / "NOTES.md").write_text("meine ungesicherte Notiz\n", encoding="utf-8")
+
+    result = sync.synchronise(folder)
+
+    assert result.problems
+    assert (folder / "NOTES.md").read_text(encoding="utf-8") == "meine ungesicherte Notiz\n"
+
+
+def test_the_undo_of_a_merge_that_fails_the_checks_keeps_uncommitted_changes_to_other_tracked_files(tmp_path, folder):
+    (folder / "NOTES.md").write_text("alt\n", encoding="utf-8")
+    git(folder, "add", "NOTES.md")
+    git(folder, "commit", "-q", "-m", "Notizen")
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    (other / "kaputt.yaml").write_text("topic: [\n", encoding="utf-8")
+    push_from(other, "Kaputt")
+    (folder / "NOTES.md").write_text("meine ungesicherte Notiz\n", encoding="utf-8")
+
+    result = sync.synchronise(folder)
+
+    assert result.problems
+    assert (folder / "NOTES.md").read_text(encoding="utf-8") == "meine ungesicherte Notiz\n"
+
+
+def test_a_link_in_the_local_base_is_an_error_with_the_name_only(folder, tmp_path):
+    (tmp_path / "geheim.txt").write_text("GEHEIMER-INHALT", encoding="utf-8")
+    (folder / "evidence" / "l.png").symlink_to(tmp_path / "geheim.txt")
+    git(folder, "add", "-A")
+    git(folder, "commit", "-q", "-m", "Link")
+
+    with pytest.raises(sync.SyncError, match="evidence/l.png") as caught:
+        sync.base_timelines(folder)
+
+    assert "GEHEIMER-INHALT" not in str(caught.value)
+
+
+def test_a_link_in_the_remote_blocks_the_preview_and_the_message_says_where_and_what_to_do(tmp_path, folder):
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    link_to_remote(other, tmp_path)
+    git(folder, "fetch", "-q", "origin")
+
+    with pytest.raises(sync.SyncError) as caught:
+        sync.preview(folder)
+
+    message = str(caught.value)
+    assert "origin/main" in message and "link.yaml" in message and "entfernen" in message
+    assert "@{u}" not in message

@@ -16,12 +16,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .check import load_named_folder
-from .loader import CheckFailed, TimelineError, parse_timeline
+from .loader import TOPIC_SUFFIXES, CheckFailed, TimelineError, parse_timeline
 from .models import Timeline
 from .store import folder_lock
 
 LINK_MODES = ("120000", "160000")  # symbolic link and submodule in a Git tree
-TOPIC_SUFFIXES = (".yaml", ".yml")  # the files the loader reads, see loader.find_topic_files
 
 
 class SyncError(Exception):
@@ -80,15 +79,21 @@ def base_ref(data_dir: Path) -> str | None:
 
 
 def base_timelines(data_dir: Path) -> dict[str, Timeline]:
-    """The topic files at the base ref. Empty when there is none yet."""
+    """The topic files at the base ref. Empty when there is none yet.
+
+    A base that holds a link or a submodule is refused. When it is the remote's state, the preview and the
+    synchronisation stay blocked until the link is removed in the remote: the app does not rewrite the remote's history.
+    """
     ref = base_ref(data_dir)
     if ref is None:
         return {}
-    linked = _linked_entries(data_dir, ref)
+    tree = _tree(data_dir, ref)
+    linked = _linked(tree)
     if linked:
-        raise SyncError(f"Der Stand {ref} enthält Links oder Submodule, die nicht erlaubt sind: {', '.join(linked)}")
-    names = [name for name in _git(data_dir, "ls-tree", "-r", "--name-only", ref).splitlines()
-             if name.endswith(TOPIC_SUFFIXES)]
+        where = _git(data_dir, "rev-parse", "--abbrev-ref", ref).strip() if ref == "@{u}" else "Der letzte Commit"
+        raise SyncError(f"{where} enthält Links oder Submodule: {', '.join(linked)}. Links sind im Datenordner nicht "
+                        "erlaubt. Bitte sie entfernen (bei einem Remote-Branch dort), dann geht der Abgleich wieder.")
+    names = [path for _, path in tree if path.endswith(TOPIC_SUFFIXES)]
     timelines = {}
     for name in names:
         try:
@@ -98,12 +103,16 @@ def base_timelines(data_dir: Path) -> dict[str, Timeline]:
     return timelines
 
 
-def _linked_entries(data_dir: Path, ref: str) -> list[str]:
-    """The paths in the tree of ref that are a symbolic link (mode 120000) or a submodule (160000). Only the names."""
+def _tree(data_dir: Path, ref: str) -> list[tuple[str, str]]:
+    """The files of the tree at ref as (mode, path). NUL-separated, so any path is read as it is."""
     entries = _git(data_dir, "ls-tree", "-r", "-z", ref).split("\0")
-    # Each entry is "<mode> <type> <sha>\t<path>"; the path may hold any character except NUL.
-    return sorted(path for meta, _, path in (entry.partition("\t") for entry in entries if entry)
-                  if meta.split(" ", 1)[0] in LINK_MODES)
+    # Each entry is "<mode> <type> <sha>\t<path>".
+    return [(meta.split(" ", 1)[0], path) for meta, _, path in (entry.partition("\t") for entry in entries if entry)]
+
+
+def _linked(tree: list[tuple[str, str]]) -> list[str]:
+    """The paths that are a symbolic link (mode 120000) or a submodule (160000). Only the names."""
+    return sorted(path for mode, path in tree if mode in LINK_MODES)
 
 
 def plan(base: Mapping[str, Timeline], current: Mapping[str, Timeline]) -> list[Change]:
@@ -150,6 +159,7 @@ def preview(data_dir: Path) -> Preview:
 
 
 REMOTE = "origin"
+DRIVER_FAILED = "CHRONICLE-TREIBERFEHLER"
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent  # the folder that holds the chronicle package
 MERGE_DRIVER = "chronicle"  # the name in .gitattributes and in the git config, see chronicle/merge.py
 
@@ -187,6 +197,10 @@ def synchronise(data_dir: Path) -> SyncResult:
         before = _git(data_dir, "rev-parse", "HEAD").strip()
         outcome = _run(data_dir, "merge", "--no-edit", remote_ref)
         if outcome.returncode != 0:
+            if DRIVER_FAILED in outcome.stderr + outcome.stdout:  # git counts a crashed driver as a conflict
+                _run(data_dir, "merge", "--abort")
+                failure = next(line for line in (outcome.stderr + outcome.stdout).splitlines() if DRIVER_FAILED in line)
+                raise SyncError(f"Der Merge-Treiber ist abgestürzt, das Zusammenführen wurde abgebrochen: {failure}")
             conflicts = _git(data_dir, "diff", "--name-only", "--diff-filter=U").splitlines()
             if not conflicts:  # refused before it started, e.g. an untracked file is in the way: nothing to abort
                 raise SyncError(f"Das Zusammenführen ist fehlgeschlagen: {outcome.stderr.strip() or outcome.stdout.strip()}")
@@ -194,29 +208,47 @@ def synchronise(data_dir: Path) -> SyncResult:
             return SyncResult(committed=committed, merged=False, conflicts=conflicts, problems=[])
 
         merged = _git(data_dir, "rev-parse", "HEAD").strip() != before
-        linked = _linked_entries(data_dir, "HEAD")
+        linked = _linked(_tree(data_dir, "HEAD"))
         if linked:  # a link in the merged state would make the app read or write outside the folder
-            _git(data_dir, "reset", "--hard", before)
+            _undo_merge(data_dir, before)
             problems = [f"{name}: Links und Submodule sind im Datenordner nicht erlaubt" for name in linked]
             return SyncResult(committed=committed, merged=False, conflicts=[], problems=problems)
         try:
             load_named_folder(data_dir, evidence=False)
         except CheckFailed as exc:
-            _git(data_dir, "reset", "--hard", before)
+            _undo_merge(data_dir, before)
             return SyncResult(committed=committed, merged=False, conflicts=[], problems=list(exc.problems))
         _push(data_dir, branch)
         return SyncResult(committed=committed, merged=merged, conflicts=[], problems=[])
 
 
-def _driver_command() -> str:
-    """The merge driver as git runs it: in isolated mode, so that the data folder, which is its working directory,
-    and the environment add nothing to the module search path. A yaml.py in the folder would run otherwise.
+def _undo_merge(data_dir: Path, before: str) -> None:
+    """Back to the commit before the merge. `--merge` keeps uncommitted changes in files the merge did not touch,
+    which `--hard` would throw away (issue #126 is the same kind of loss)."""
+    _git(data_dir, "reset", "--merge", before)
 
-    -I also drops PYTHONPATH, so the program adds the folder of the chronicle package itself.
+
+def _driver_command() -> str:
+    """The merge driver as git runs it. git's working directory for it is the data folder.
+
+    `-P` keeps that directory off the module search path, so a yaml.py in the folder does not run. The environment
+    (PYTHONPATH, the user site) stays, because a deployment may keep its dependencies there. The folder of the
+    chronicle package is added by the program itself, from the app's own location, never from the data folder.
+    A failing driver exits with a line that starts with DRIVER_FAILED, so that the synchronisation can tell it from a conflict.
     """
-    program = ("import sys; sys.path.insert(0, sys.argv[1]); from chronicle.merge import main; "
-               "raise SystemExit(main(sys.argv[2:]))")
-    return f"{shlex.quote(sys.executable)} -I -c {shlex.quote(program)} {shlex.quote(str(PACKAGE_ROOT))} %O %A %B"
+    program = (
+        "import sys\n"
+        "sys.path.insert(0, sys.argv[1])\n"
+        "try:\n"
+        "    from chronicle.merge import main\n"
+        "    code = main(sys.argv[2:])\n"
+        "except Exception as exc:\n"
+        f"    print('{DRIVER_FAILED}', type(exc).__name__, exc, file=sys.stderr)\n"
+        "    code = 70\n"
+        "raise SystemExit(code)\n"
+    )
+    command = f"{shlex.quote(sys.executable)} -P -c {shlex.quote(program)} {shlex.quote(str(PACKAGE_ROOT))}"
+    return command.replace("%", "%%") + " %O %A %B"  # git replaces %A, %B, ... in the command line
 
 
 def _use_merge_driver(data_dir: Path) -> None:

@@ -63,14 +63,14 @@ def load_named_folder(
     return items
 
 
-# Python imports these from the folder it runs in or is started with. A file or folder of this kind in the root of the
-# data folder could replace a module of the app (yaml, pydantic, chronicle) or run at start (sitecustomize).
+# Python imports these from the folder it runs in or is started with. A module or a package in the root of the data
+# folder could replace a module of the app (yaml, pydantic, chronicle) or run at start (sitecustomize). The suffix
+# decides, so a topic file `chronicle.yaml` is none of them. A tag such as `.cpython-312-darwin.so` ends in a suffix too.
 IMPORTABLE_SUFFIXES = (".py", ".pyc", ".pyw", ".pyd", ".so")
-IMPORTABLE_NAMES = ("chronicle", "sitecustomize", "usercustomize")
 
 
 def root_problems(data_dir: Path) -> list[str]:
-    """Code that Python would import from the root of the data folder: modules, extension modules, packages.
+    """Code that Python would import from the root of the data folder: modules, extension modules, regular packages.
 
     Only the root is looked at, because that is where a program started in the folder (the merge driver) finds it.
     Python files below the root are data like everything else there.
@@ -79,11 +79,16 @@ def root_problems(data_dir: Path) -> list[str]:
         return []
     problems = []
     for entry in sorted(data_dir.iterdir()):
-        is_package = entry.is_dir() and any((entry / f"__init__{suffix}").exists() for suffix in IMPORTABLE_SUFFIXES)
-        if entry.name.endswith(IMPORTABLE_SUFFIXES) or entry.name.split(".")[0] in IMPORTABLE_NAMES or is_package:
+        if entry.name.endswith(IMPORTABLE_SUFFIXES) or _is_package(entry):
             problems.append(f"{entry.name}: Code gehört nicht in den Wurzelordner des Datenordners (Python würde ihn "
                             "importieren), bitte entfernen")
     return problems
+
+
+def _is_package(entry: Path) -> bool:
+    """A folder with an __init__ module. Without one it is only a namespace package, which a regular module beats."""
+    return entry.is_dir() and any(
+        child.name.startswith("__init__.") and child.name.endswith(IMPORTABLE_SUFFIXES) for child in entry.iterdir())
 
 
 def check_folder(data_dir: Path, *, evidence: bool = True) -> list[str]:
