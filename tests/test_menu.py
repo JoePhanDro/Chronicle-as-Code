@@ -122,3 +122,10 @@ def test_account_menu_for_small_screens_holds_the_account_controls(db_path):
     panel = re.search(r'<ul id="menu-account"[^>]*>(.*?)</ul>', html, re.S).group(1)
     assert "data-open-settings" in panel and 'action="/logout"' in panel
     assert html.count("<button type=\"button\" data-open-settings") == 2  # one in the menu, one in the header for wide screens
+
+
+def test_every_page_has_a_skip_link_to_the_main_content(db_path):
+    client, _ = login(db_path, "viewer")
+    for path in ["/", "/events", "/topics", "/hilfe"]:
+        html = client.get(path).text
+        assert 'href="#main"' in html and '<main id="main"' in html, path

@@ -7,6 +7,10 @@ const PALETTES = ['slate', 'sky', 'violet', 'rose', 'amber', 'emerald', 'orange'
 const SHADES = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'];
 const INVERTED = { 50: 950, 100: 900, 200: 800, 300: 700, 400: 600, 500: 500, 600: 400, 700: 300, 800: 200, 900: 100, 950: 50 };
 
+// slate-500 carries the faint text (helper copy, placeholders, meta). Tailwind's own value reaches only 4.2:1 on the dark
+// page and 3.8:1 on slate-800 fills, so both themes use a value that gives at least 4.5:1 on the page and on cards.
+const FAINT_TEXT = { dark: '#7183a0', light: '#5c6b82' };
+
 const toRgb = hex => {
   const value = parseInt(hex.slice(1), 16);
   return `${value >> 16} ${(value >> 8) & 255} ${value & 255}`;
@@ -20,6 +24,7 @@ const tokens = theme => {
       vars[`--${name}-${shade}`] = toRgb(defaults[name][source]);
     }
   }
+  vars['--slate-500'] = toRgb(FAINT_TEXT[theme]);
   vars['--white'] = theme === 'dark' ? '255 255 255' : '15 23 42';
   return vars;
 };

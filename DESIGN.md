@@ -8,7 +8,7 @@ colors:
   text: "#e2e8f0"
   text-strong: "#f1f5f9"
   text-muted: "#94a3b8"
-  text-faint: "#64748b"
+  text-faint: "#7183a0"
   signal-sky: "#38bdf8"
   signal-sky-text: "#7dd3fc"
   dusk-violet: "#8b5cf6"
@@ -120,7 +120,7 @@ Slate neutrals do the structural work; sky is the only accent; the rainbow belon
 - **Ledger Black** (#020617): page background and input fill (at 70 %).
 - **Ledger Slate** (#0f172a): elevated surfaces: menus, dialogs, cards (login card at 60 % with blur).
 - **Hairline** (white at 10 %): every border and divider; hover tint is white at 5 %.
-- **Text** (#e2e8f0), **Text Strong** (#f1f5f9) for titles, **Text Muted** (#94a3b8) for controls and secondary info, **Text Faint** (#64748b) for helper copy.
+- **Text** (#e2e8f0), **Text Strong** (#f1f5f9) for titles, **Text Muted** (#94a3b8) for controls and secondary info, **Text Faint** (#7183a0 on dark, #5c6b82 on light; both at least 4.5:1 on the page and on cards, which Tailwind's own slate-500 is not) for helper copy, placeholders and meta lines.
 
 ### Data colours (fixed, from `chronicle/models.py` and the dashboard)
 - **Phase:** Identification and Exploit red (#ef4444), Analysis yellow (#eab308), Containment orange (#f97316), Mitigation green (#22c55e), Recovery emerald (#10b981), Lessons Learned blue (#3b82f6), neutral Activity slate (#94a3b8).
@@ -181,11 +181,11 @@ Soft but small. Controls and menu items are 8px (`rounded-lg`); lists, menus, di
 
 ### Inputs / Fields
 - **Style:** Ledger Black at 70 % fill, hairline border, 8px radius, 14px text, placeholder in Text Faint.
-- **Focus:** border becomes sky at 60 %; on forms also a 2px sky 20 % ring. Outline is removed, so the border shift is the only indicator.
+- **Focus:** every control, inputs included, gets the same 2px sky outline (`:focus-visible`, offset 2px, 0 on inputs); the border still shifts to sky at 60 % and forms add a 2px sky 20 % ring on top.
 - **Error:** inline alert block in rose (see Colors).
 
 ### Navigation
-Disclosure menus (`aria-expanded`, Escape closes and returns focus), one open at a time. Triggers are ghost buttons with a small chevron; panels are Ledger Slate, 12px radius, 4px padding, items 8px radius with white 5 % hover. The `/` key focuses search.
+Disclosure menus (`aria-expanded`, Escape closes and returns focus), one open at a time. Triggers are ghost buttons with a small chevron; panels are Ledger Slate, 12px radius, 4px padding, items 8px radius with white 5 % hover. The `/` key focuses search. A skip link ("Zum Inhalt springen") is the first focusable element and appears only on focus.
 
 ### Lists
 Hairline-divided rows inside a 12px bordered container; row hover is white at 3 %; title in Text Strong 14px medium, meta in mono 12px Text Faint, counts right-aligned in Text Muted.
@@ -215,4 +215,4 @@ A 6px circle for status (in progress pulses at 1.8s). Phases colour timeline mar
 - **Don't** put shadows on lists, tables or in-page cards.
 - **Don't** hard-code dark-theme hex values in templates; the dashboard stylesheet still does in places and should be migrated.
 - **Don't** add new external font or script requests; the dashboard's Google Fonts link already conflicts with offline reports.
-- **Don't** rely on a colour change alone to show focus (inputs currently do; fix when touched).
+- **Don't** remove or replace the focus outline; a colour change alone is not a focus indicator.
