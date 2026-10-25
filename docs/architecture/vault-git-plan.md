@@ -71,7 +71,8 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 
 ## Teil 0a: Sofort-Härtung, Treiber und Schreiben (K1, H2)
 
-- **Inhalt:** Merge-Treiber als `<python> -I -m chronicle.merge` eintragen (`sync._use_merge_driver`), Arbeitsverzeichnis des Treibers nicht die Vault-Wurzel, Start der App mit Vault als cwd verweigern. `store._atomic_write`: Temp-Datei per `mkstemp` oder `O_CREAT|O_EXCL|O_NOFOLLOW` im selben Ordner, `lstat` des Ziels. `folder_lock`: `.chronicle.lock` mit `O_NOFOLLOW` öffnen, Link ist Fehler. Modusprüfung `git ls-tree -r` auf `120000` und `160000` in `sync.preview`, `sync.synchronise` (nach dem Merge) und `base_timelines`. `find_topic_files` und `collect_evidence` weisen Links per `lstat` ab. (Die Allowlist der Vault-Wurzel kommt mit Format 1 in Teil 5.)
+- **Stand:** Wesentliche Teile dieses Teils sind mit PR #138 umgesetzt (Erkenntnisse unten). Dieser Plan hält fest, was gilt.
+- **Inhalt:** Merge-Treiber als `<python> -P -c <Start> <Paketordner> %O %A %B` eintragen (`sync._use_merge_driver`; Paketordner aus `__file__` der App, nie aus dem Vault; der Start entfernt cwd und leere Einträge aus `sys.path`; `-I` wurde verworfen, weil es `pip --user` bricht). Das Arbeitsverzeichnis des Treibers bleibt die Vault-Wurzel, der Schutz kommt vom `-P`-Start. Ein Treiberabsturz ist ein Fehler, kein Konflikt. Start der App mit Vault als cwd verweigern. **Blocklist** der Wurzel (Suffixe `.py`/`.pyc`/`.pyw`/`.pyd`/`.so` inkl. Tags, Ordner mit `__init__.*`, Namen `chronicle`/`sitecustomize`/`usercustomize`). `store._atomic_write`: Temp-Datei per `mkstemp` oder `O_CREAT|O_EXCL|O_NOFOLLOW` im selben Ordner, `lstat` des Ziels. `folder_lock`: `.chronicle.lock` mit `O_NOFOLLOW` öffnen, Link ist Fehler. Modusprüfung `git ls-tree -r` auf `120000` und `160000` **im Merge-Ergebnis** (Rücknahme mit `git reset --merge`, nicht `--hard`); `base_timelines` überspringt Links, damit ein Link im Remote den Vault nicht dauerhaft sperrt. Im Dateisystem sind Links im ganzen Baum ein Prüffehler (`os.scandir`-Durchlauf, der Datenordner selbst darf ein Link sein); `.gitmodules` wird nicht eigens abgewiesen. (Die volle Allowlist der Vault-Wurzel kommt mit Format 1 in Teil 5.)
 - **Akzeptanz:** Test: `yaml.py` im Vault-Ordner wird beim Merge **nicht** importiert (Marker-Datei wird nicht geschrieben). Test: Symlink `.ev-1.yaml.tmp` und `.chronicle.lock` führen zu Fehler, Zieldatei unverändert. Test: Link `x.yaml` auf Datei außerhalb wird mit Dateiname abgewiesen, Zielinhalt erscheint nicht in der Meldung.
 - **Risiko:** gering. Der Vault-Ordner mit Links wird unbrauchbar, was gewollt ist.
 
@@ -97,7 +98,7 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 
 ## Teil 3: Modul `git.py`
 
-- **Inhalt:** ADR 0021, Punkte 1 bis 14 und 25: Programmpfad und **Mindestversion gepatchter Stand ab 2.45.1 beziehungsweise aktuelle Wartungsversion** (Verifikation der genannten CVE-Hinweise vor der Umsetzung), `cwd`, `branch_slug()` mit `fullmatch` und `check-ref-format`, Umgebungs-Whitelist, feste `-c` (inkl. `core.sshCommand=ssh`, `core.pager=cat`, `core.autocrlf=false`), Fetch/Push nur benötigter Refs (H4), Prüfung des erwarteten `origin`, URL-Regeln, Zeitlimits, Parsing nur stabiler Formate. `sync.py` nutzt nur noch `git.py`.
+- **Inhalt:** ADR 0021, Punkte 1 bis 14 und 25 (der Treiber-Start nach Punkt 18 liegt bereits in Teil 0a und wird hier nur in `git.py` übernommen): Programmpfad und **Mindestversion gepatchter Stand ab 2.45.1 beziehungsweise aktuelle Wartungsversion** (Verifikation der genannten CVE-Hinweise vor der Umsetzung), `cwd`, `branch_slug()` mit `fullmatch` und `check-ref-format`, Umgebungs-Whitelist, feste `-c` (inkl. `core.sshCommand=ssh`, `core.pager=cat`, `core.autocrlf=false`), Fetch/Push nur benötigter Refs (H4), Prüfung des erwarteten `origin`, URL-Regeln, Zeitlimits, Parsing nur stabiler Formate. `sync.py` nutzt nur noch `git.py`.
 - **Vorab:** Test-Matrix (macOS Keychain, Linux libsecret, Git Credential Manager, `ssh-agent`, SSH- und GPG-Signierung) mit Ergebnis im PR; die Whitelist folgt der Matrix (M8).
 - **Akzeptanz:** Kein `subprocess` außerhalb von `chronicle/git.py` (Test). Zeitlimit beendet einen hängenden Prozess. Böse URLs und Branch-Namen werden abgelehnt (Tabellentest). Ein `core.sshCommand` in `.git/config` eines Testklons wird nicht ausgeführt. Hooks laufen nicht. Alle Tests in `tests/test_sync.py` bleiben grün.
 - **Risiko:** Eingeschränkte Umgebung bricht Anmeldung am Hoster. Daher die Matrix.
@@ -109,7 +110,7 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 
 ## Teil 5: Format 1 lesen und prüfen
 
-- **Inhalt:** Lader und Regeln aus ADR 0012 (inkl. **Allowlist der Wurzel**, K1) und ADR 0021; `also_in`-Hinweis an die CI (M5); JSON-Schemas; `check`, `plan`, `build`, `apply` für beide Formate. Intern dieselbe `Timeline`-Darstellung.
+- **Inhalt:** Lader und Regeln aus ADR 0012 (inkl. **voller Allowlist der Wurzel**, die die Blocklist aus Teil 0a ablöst, K1) und ADR 0021; `also_in`-Hinweis an die CI (M5); JSON-Schemas; `check`, `plan`, `build`, `apply` für beide Formate. Intern dieselbe `Timeline`-Darstellung.
 - **Akzeptanz:** Beispiel-Vault in `tests/fixtures/vault/` besteht. Jede Prüfregel hat einen Fehlertest, auch `yaml.py` in der Wurzel. Schreibweisen-Duplikate werden gemeldet.
 - **Risiko:** Gleichwertigkeit der inneren Darstellung (Heimat im Pfad). Gezielt reviewen.
 
@@ -169,7 +170,7 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 - **14a:** Arbeits-Branch `chronicle/<klon-kennung>/<datum>-<name>`, lokaler Commit je Speichern (Autor = App-Benutzer, Trailer), höchstens eine Schreibsitzung je Klon. **Hinter Funktionsschalter; nicht ohne 14b ausgeliefert.**
 - **14b:** `sync.synchronise` wird zu „Einreichen“ und „Aktualisieren“ (ADR 0015, Punkte 4 bis 8; ADR 0016): Zustandsautomat (offen, eingereicht, geändert nach Einreichen, abgeschlossen, verworfen), „Arbeitsstand verwerfen“, Remote-Branch eingeführt statt Force, Netz außerhalb der Sperre mit Zeitlimit (#131), Blob-ID-Vergleich, Abschluss über `git diff --quiet origin/<standard> HEAD`, Link aus der Registry-Vorlage. Der Merge-Treiber auf Event-Dateien vereinfacht.
 - **Akzeptanz:** Kein Push auf den Standard-Branch (Test). Squash-Merge im Testrepository führt zu „abgeschlossen“. Zwei Klone, verschiedene Felder desselben Events: feldweise zusammengeführt, gleiches Feld: Abbruch mit Dateiliste. Hängender Remote hält die Sperre nicht.
-- **Risiko:** Größter Eingriff in `sync.py`. `reset --hard` nur nach Commit aller Änderungen.
+- **Risiko:** Größter Eingriff in `sync.py`. Rücknahmen mit `git reset --merge`, nie `reset --hard` (Fehlerklasse von #126).
 
 ## Teil 15a und 15b: Oberfläche
 
