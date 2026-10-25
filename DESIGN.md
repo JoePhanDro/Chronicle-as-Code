@@ -214,5 +214,5 @@ A 6px circle for status (in progress pulses at 1.8s). Phases colour timeline mar
 - **Don't** add a second interface accent next to sky.
 - **Don't** put shadows on lists, tables or in-page cards.
 - **Don't** hard-code dark-theme hex values in templates; the dashboard stylesheet still does in places and should be migrated.
-- **Don't** add new external font or script requests; the dashboard's Google Fonts link and CDN scripts already make reports depend on the network (ADR 0006).
+- **Don't** add new external font or script requests; the dashboard's Google Fonts link already makes reports depend on the network (ADR 0006).
 - **Don't** remove or replace the focus outline; a colour change alone is not a focus indicator.

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -71,6 +72,10 @@ def test_admin_downloads_a_self_contained_report(db_path):
     assert "data:image/png;base64," in html  # evidence embedded
     assert "/api/v1/evidence" not in html  # nothing that needs the server
     assert "app.css" not in html
+    # vis-timeline and vis-network are part of the file, so the diagrams open without a network
+    assert "vis-timeline" in html and "vis-network" in html
+    assert not re.search(r'<(script|link)[^>]+(src|href)="(https:)?//cdn\.jsdelivr\.net/npm/vis-', html)
+    assert 'src="/static/vendor' not in html
 
 
 def test_report_includes_events_referenced_from_other_topics(db_path, tmp_path):

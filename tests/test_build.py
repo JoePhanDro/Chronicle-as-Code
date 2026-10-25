@@ -79,6 +79,8 @@ def test_pages_are_self_contained(folder, tmp_path):
     assert 'href="/static/' not in page and 'src="/static/' not in page  # no server assets
     assert "data:image/png;base64," in page  # evidence embedded
     assert "Berichts-Snapshot" in page  # marked as a snapshot, like the report
+    assert "vis-timeline" in page and "vis-network" in page  # the diagram libraries are part of the page
+    assert "cdn.jsdelivr.net/npm/vis-" not in page
 
 
 def test_index_lists_topics_and_escapes_titles(tmp_path):
