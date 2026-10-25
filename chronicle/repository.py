@@ -1004,15 +1004,47 @@ def _with_evidence(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[di
     return events
 
 
-def list_topics(conn: sqlite3.Connection) -> list[dict]:
+# Order of the topic list when the most pressing topic comes first.
+_STATUS_RANK = {"open": 0, "in_progress": 1, "resolved": 2, None: 3}
+
+
+def list_topics(conn: sqlite3.Connection, *, by_attention: bool = False) -> list[dict]:
+    """All topics with their event count, the time of the latest event (last_event_at, UTC) and a status.
+
+    The status is the most pressing one among the topic's events (open, then in_progress, then resolved),
+    None for a topic without events. By default the list is sorted by key; with by_attention the topics
+    with open events come first, newest event first within each group.
+    """
     rows = conn.execute(
         """
         SELECT topics.key, topics.title, topics.kind, topics.summary, topics.updated_at,
-               (SELECT COUNT(*) FROM topic_events WHERE topic_events.topic_pk = topics.pk) AS event_count
-        FROM topics ORDER BY topics.key
+               COUNT(events.pk) AS event_count,
+               MAX(events.t0) AS last_event_at,
+               COALESCE(SUM(events.status = 'open'), 0) AS open_count,
+               COALESCE(SUM(events.status = 'in_progress'), 0) AS in_progress_count
+        FROM topics
+        LEFT JOIN topic_events ON topic_events.topic_pk = topics.pk
+        LEFT JOIN events ON events.pk = topic_events.event_pk
+        GROUP BY topics.pk
+        ORDER BY topics.key
         """
     ).fetchall()
-    return [dict(row) for row in rows]
+    topics = []
+    for row in rows:
+        topic = dict(row)
+        open_count, in_progress_count = topic.pop("open_count"), topic.pop("in_progress_count")
+        if open_count:
+            topic["status"] = "open"
+        elif in_progress_count:
+            topic["status"] = "in_progress"
+        else:
+            topic["status"] = "resolved" if topic["event_count"] else None
+        topics.append(topic)
+    if by_attention:
+        # Two stable sorts: newest event first (no events last), then by status. Ties keep the key order.
+        topics.sort(key=lambda topic: topic["last_event_at"] or "", reverse=True)
+        topics.sort(key=lambda topic: _STATUS_RANK[topic["status"]])
+    return topics
 
 
 def get_topic(conn: sqlite3.Connection, key: str) -> dict | None:

@@ -371,7 +371,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
     def topics_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
         if user is None:
             return RedirectResponse("/login", status_code=303)
-        return render(request, "topics.html", user, topics=repository.list_topics(conn))
+        return render(request, "topics.html", user, topics=repository.list_topics(conn, by_attention=True))
 
     @router.get("/topics/new", response_class=HTMLResponse)
     def new_topic_page(request: Request, user: dict | None = Depends(page_user)):
