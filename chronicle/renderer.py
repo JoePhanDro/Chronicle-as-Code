@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import cache
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
@@ -19,6 +20,19 @@ TRIGGER_COLOR = "#f97316"
 # Renders ```mermaid blocks. Inlined into the dashboard, served as /static/diagrams.js on the event page.
 DIAGRAMS_JS = (Path(__file__).parent / "static" / "diagrams.js").read_text(encoding="utf-8")
 
+VENDOR_DIR = Path(__file__).parent / "static" / "vendor"
+
+
+@cache
+def _vendor_inline() -> dict[str, str]:
+    """vis-timeline and vis-network as text, for pages that must open without a server."""
+    return {
+        "vendor_css": (VENDOR_DIR / "vis-timeline-graph2d.min.css").read_text(encoding="utf-8"),
+        "vendor_timeline_js": (VENDOR_DIR / "vis-timeline-graph2d.min.js").read_text(encoding="utf-8"),
+        "vendor_network_js": (VENDOR_DIR / "vis-network.min.js").read_text(encoding="utf-8"),
+    }
+
+
 _env = Environment(
     loader=PackageLoader("chronicle", "templates"),
     autoescape=select_autoescape(["html"]),
@@ -34,12 +48,12 @@ def render_dashboard(
     src_for: Callable[[Evidence], str] | None = None,
     generated_at: str | None = None,
     snapshot: bool = True,
-    vendor: str = "cdn",
+    vendor: str = "inline",
 ) -> str:
     """`inline_css` replaces the stylesheet link, `src_for` gives the image URL of each evidence item.
     `snapshot` marks the page as a report snapshot; the app's live view turns that off.
-    `vendor` says where vis-timeline and vis-network come from: "local" is /static/vendor/ of the app,
-    "cdn" is jsdelivr (checked by integrity hash)."""
+    `vendor` says where vis-timeline and vis-network come from: "inline" embeds them in the page (reports and
+    static pages, which open without a server), "local" links /static/vendor/ of the app."""
     events = sorted(timeline.events, key=lambda event: event.t0)
     nodes, edges = _build_graph(events)
 
@@ -60,6 +74,7 @@ def render_dashboard(
         snapshot=snapshot,
         diagrams_js=DIAGRAMS_JS,
         vendor=vendor,
+        **(_vendor_inline() if vendor == "inline" else {}),
     )
 
 

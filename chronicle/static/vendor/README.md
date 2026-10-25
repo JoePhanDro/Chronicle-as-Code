@@ -1,6 +1,6 @@
 # Mitgelieferte Bibliotheken
 
-Diese Dateien sind unverändert aus den npm-Paketen übernommen und werden von der App unter `/static/vendor/` ausgeliefert. Sie ersetzen die frühere Einbindung über jsdelivr.
+Diese Dateien sind unverändert aus den npm-Paketen übernommen und werden von der App unter `/static/vendor/` ausgeliefert und von Bericht und statischen Seiten eingebettet (`renderer.py`). Sie ersetzen die frühere Einbindung über jsdelivr.
 
 | Datei | Paket | Version | SHA-384 |
 |---|---|---|---|

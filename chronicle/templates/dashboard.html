@@ -19,12 +19,9 @@
   <script src="/static/vendor/vis-timeline-graph2d.min.js"></script>
   <script src="/static/vendor/vis-network.min.js"></script>
   {% else %}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/styles/vis-timeline-graph2d.min.css"
-        integrity="sha384-N/4l0y8PNlO5uZuzP9PK3bAgJQ8ZChybZFXB2mpkZRUil/bui++mvYXPzPAHpbr6" crossorigin="anonymous">
-  <script src="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/standalone/umd/vis-timeline-graph2d.min.js"
-          integrity="sha384-MLX+7yEEPNEznaIWwQi2pBMODSBP6Qo6BOVpzjFWB0UkfEzEYsvHOo7ISLfcQeiI" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"
-          integrity="sha384-yxKDWWf0wwdUj/gPeuL11czrnKFQROnLgY8ll7En9NYoXibgg3C6NK/UDHNtUgWJ" crossorigin="anonymous"></script>
+  <style>{{ vendor_css | safe }}</style>
+  <script>{{ vendor_timeline_js | safe }}</script>
+  <script>{{ vendor_network_js | safe }}</script>
   {% endif %}
   <style>
     /* Dark is the default. Light applies by choice, or with no choice when the system prefers light. */
