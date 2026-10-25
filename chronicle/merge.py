@@ -16,7 +16,10 @@ Git setup for a data repository (per clone, git does not share it):
     *.yaml merge=chronicle
 
     git config merge.chronicle.name "Chronicle: Feldebene"
-    git config merge.chronicle.driver "python -m chronicle.merge %O %A %B"
+    git config merge.chronicle.driver "python -P -m chronicle.merge %O %A %B"
+
+The app sets this itself (sync._driver_command); `-P` keeps the data folder, where git runs the driver, off the
+module search path.
 
 On a conflict the driver exits with 1 and leaves our version in %A. Git marks the file as conflicted.
 """
@@ -36,6 +39,7 @@ from .store import (
     _read_model,
     _set_changed_fields,
     _text,
+    _atomic_write,
     _yaml,
 )
 
@@ -196,7 +200,7 @@ def main(argv: list[str]) -> int:
     except StoreError as exc:
         print(f"Chronicle: Datei nicht lesbar: {exc}", file=sys.stderr)
         return 1
-    Path(ours_path).write_text(merged, encoding="utf-8")
+    _atomic_write(Path(ours_path), merged.encode("utf-8"))
     return 0
 
 

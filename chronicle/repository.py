@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import stat
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -15,7 +16,7 @@ from pathlib import Path
 from . import accounts
 from .check import load_named_folder
 from .evidence import EVIDENCE_TYPES, MAX_DESCRIPTION_LENGTH, Blob
-from .loader import TOPIC_FILE_PATTERNS, TimelineError, find_topic_files
+from .loader import TOPIC_FILE_PATTERNS, TimelineError, find_topic_files, link_below
 from .models import Event, Timeline, Topic
 from .store import (
     EventNotInFile,
@@ -32,6 +33,7 @@ from .store import (
     set_ref_in_file,
     update_event_in_file,
     update_topic_in_file,
+    require_no_link,
     write_new_file,
 )
 
@@ -666,11 +668,19 @@ def _free_evidence_name(data_dir: Path, key: str, name: str, sha256: str) -> tup
     """
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._") or "datei"
     stem, dot, extension = safe.rpartition(".") if "." in safe else (safe, "", "")
+    try:
+        require_no_link(data_dir, data_dir / "evidence" / key)
+    except StoreError as exc:
+        raise Invalid(str(exc)) from exc
     for number in range(1, 1000):
         candidate = Path("evidence") / key / (safe if number == 1 else f"{stem}-{number}{dot}{extension}")
         target = data_dir / candidate
-        if not target.exists():
+        try:
+            found = target.lstat()
+        except FileNotFoundError:
             return candidate.as_posix(), True
+        if not stat.S_ISREG(found.st_mode):
+            raise Invalid(f"{candidate.as_posix()} ist ein Link oder keine gewöhnliche Datei.")
         if hashlib.sha256(target.read_bytes()).hexdigest() == sha256:
             return candidate.as_posix(), False
     raise Invalid("Zu viele Dateien mit demselben Namen bei diesem Event.")
@@ -699,7 +709,7 @@ def _add_evidence_in_folder(
     item = {"file": relative, "type": evidence_type, "description": description.strip()}
     with _all_or_nothing(data_dir) as created:
         if must_write:
-            write_new_file(target, blob.content)
+            write_new_file(target, blob.content, root=data_dir)
             created.append(target)
         try:
             add_evidence_to_file(data_dir / located["path"], key, item,
@@ -729,6 +739,10 @@ def _delete_evidence_in_folder(conn: sqlite3.Connection, evidence_id: int, data_
     located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (row["key"],)).fetchone()
     if located is None:
         raise Invalid(f"Event {row['key']!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    try:
+        require_no_link(data_dir, (data_dir / row["file"]).parent)
+    except StoreError as exc:
+        raise Invalid(str(exc)) from exc
     with _all_or_nothing(data_dir):
         try:
             remove_evidence_from_file(data_dir / located["path"], row["key"], row["file"],
@@ -956,7 +970,8 @@ def get_evidence_content(conn: sqlite3.Connection, evidence_id: int, data_dir: P
     if row is None:
         return None
     content = row["content"]
-    if content is None and data_dir is not None and (data_dir / row["file"]).is_file():
+    if (content is None and data_dir is not None and link_below(data_dir, data_dir / row["file"]) is None
+            and (data_dir / row["file"]).is_file()):
         content = (data_dir / row["file"]).read_bytes()
         if hashlib.sha256(content).hexdigest() != row["sha256"]:
             raise Conflict(f"{row['file']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen.")

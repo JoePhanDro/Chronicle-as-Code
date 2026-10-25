@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import yaml
@@ -29,17 +30,62 @@ class CheckFailed(TimelineError):
 
 
 TOPIC_FILE_PATTERNS = ("*.yaml", "*.yml")  # every file the loader reads as one topic
+TOPIC_SUFFIXES = tuple(pattern[1:] for pattern in TOPIC_FILE_PATTERNS)
+
+
+MAX_LISTED_LINKS = 10
 
 
 def find_topic_files(data_dir: Path) -> list[Path]:
-    """Every YAML file below the folder. Each file is one topic (ADR 0005)."""
+    """Every YAML file below the folder. Each file is one topic (ADR 0005).
+
+    The folder is walked once. A link anywhere below it (to a file or a folder) is refused, because the app would read
+    or write outside the folder through it. Only regular files count as topic files. The Git folder in the root is
+    not looked at.
+    """
     if not data_dir.is_dir():
         raise TimelineError(f"Datenordner existiert nicht: {data_dir}")
 
-    files = sorted({path for pattern in TOPIC_FILE_PATTERNS for path in data_dir.rglob(pattern)})
+    files: list[Path] = []
+    links: list[str] = []
+    pending = [data_dir]
+    while pending:
+        folder = pending.pop()
+        try:
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    if entry.is_symlink():
+                        links.append(Path(entry.path).relative_to(data_dir).as_posix())
+                    elif entry.is_dir(follow_symlinks=False):
+                        if not (folder == data_dir and entry.name == ".git"):
+                            pending.append(Path(entry.path))
+                    elif entry.name.endswith(TOPIC_SUFFIXES) and entry.is_file(follow_symlinks=False):
+                        files.append(Path(entry.path))
+        except OSError as exc:  # only the path is named: the error text of the system may hold file names
+            where = folder.relative_to(data_dir).as_posix()
+            raise TimelineError(f"Ordner nicht lesbar: {where} ({exc.strerror})") from exc
+    if links:
+        links.sort()
+        more = f" und {len(links) - MAX_LISTED_LINKS} weitere" if len(links) > MAX_LISTED_LINKS else ""
+        raise TimelineError("Links sind im Datenordner nicht erlaubt: " + ", ".join(links[:MAX_LISTED_LINKS]) + more)
     if not files:
         raise TimelineError(f"Keine YAML-Datei unterhalb von {data_dir} gefunden")
-    return files
+    return sorted(files)
+
+
+def link_below(base: Path, path: Path) -> Path | None:
+    """The first part of path below base (the path itself or a folder on the way) that is a symbolic link.
+
+    base itself may be a link: the data folder can be a mount.
+    """
+    if not path.is_relative_to(base):
+        return None
+    current = base
+    for part in path.relative_to(base).parts:
+        current = current / part
+        if current.is_symlink():
+            return current
+    return None
 
 
 # The C loader (libyaml) reads the same safe subset about eight times faster than the pure-Python one (issue #96).
@@ -83,7 +129,7 @@ def load_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Blob]:
 def collect_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Path]:
     """Map each evidence path (relative, posix) to its absolute source file.
 
-    Evidence must exist and must resolve (symlinks included) inside base_dir.
+    Evidence must exist, be no link and lie inside base_dir.
     """
     base = base_dir.resolve()
     found: dict[str, Path] = {}
@@ -92,7 +138,9 @@ def collect_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Path]:
     for event in timeline.events:
         for item in event.evidence:
             source = (base / item.file).resolve()
-            if item.file in RESERVED_OUTPUT_NAMES:
+            if link_below(base, base / item.file) is not None:
+                problems.append(f"{event.key}: '{item.file}' ist ein Link, Links sind nicht erlaubt")
+            elif item.file in RESERVED_OUTPUT_NAMES:
                 problems.append(f"{event.key}: '{item.file}' ist für die Ausgabe reserviert")
             elif not source.is_relative_to(base):
                 problems.append(f"{event.key}: '{item.file}' liegt außerhalb des Timeline-Ordners")
