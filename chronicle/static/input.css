@@ -1,3 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* One focus ring for every control, in the interface accent. The doubled :root lifts it above Tailwind's focus:outline-none (0,2,0), which is emitted after this file. */
+:root:root :focus-visible {
+  outline: 2px solid rgb(var(--sky-400));
+  outline-offset: 2px;
+}
+:root:root input:focus-visible,
+:root:root select:focus-visible,
+:root:root textarea:focus-visible {
+  outline-offset: 0;
+}

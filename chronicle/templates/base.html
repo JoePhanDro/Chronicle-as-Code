@@ -38,6 +38,7 @@
   {% block head %}{% endblock %}
 </head>
 <body class="min-h-screen bg-slate-950 font-sans text-slate-200 antialiased">
+  <a href="#main" class="sr-only rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50">Zum Inhalt springen</a>
   {% set writer = user.role in ['admin', 'analyst'] %}
   <header class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-white/10 px-4 py-2 sm:px-6 sm:py-3">
     <nav aria-label="Hauptmenü" class="flex w-full flex-wrap items-center gap-1 text-sm sm:w-auto">
@@ -90,7 +91,7 @@
       </div>
     </div>
   </header>
-  <main class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+  <main id="main" class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
     {% block content %}{% endblock %}
   </main>
 
