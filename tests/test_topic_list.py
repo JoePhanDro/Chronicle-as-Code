@@ -44,3 +44,28 @@ def test_topics_page_shows_status_in_text(api_client):
     assert "in Arbeit" in body
     assert 'title="' in body  # the full title stays readable when it is cut off
     assert "aria-label=\"Topics\"" in body
+
+
+def test_empty_topic_list_explains_itself_and_offers_one_way_to_create(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from chronicle import accounts, security
+    from chronicle.api import create_app
+    from tests.conftest import PASSWORD
+
+    path = tmp_path / "leer.db"
+    conn = connect(path)
+    accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
+    accounts.create_user(conn, "vera", security.hash_password(PASSWORD), "viewer")
+    conn.close()
+
+    def page(username):
+        client = TestClient(create_app(path))
+        assert client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD}).status_code == 200
+        return client.get("/topics").text
+
+    writer = page("anna")
+    assert "Noch keine Topics" in writer and "Erstes Topic anlegen" in writer
+    assert writer.count('href="/topics/new"') == 2  # the "Neu" menu and the empty state, not a second header button
+    viewer = page("vera")
+    assert "Topics legen Analysten und Admins an." in viewer and "/topics/new" not in viewer
