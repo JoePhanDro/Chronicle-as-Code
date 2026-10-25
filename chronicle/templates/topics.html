@@ -8,8 +8,9 @@
     <h1 class="text-xl font-semibold text-slate-100">Topics</h1>
     {% if topics %}<p class="text-sm text-slate-400">{{ topics | length }} Topics, offene zuerst, darin das neueste Event zuerst (<span data-zone-label>UTC</span>)</p>{% endif %}
   </div>
-  {% if can_write %}<a href="/topics/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Neues Topic</a>{% endif %}
+  {% if can_write and topics %}<a href="/topics/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Neues Topic</a>{% endif %}
 </div>
+{% if topics %}
 <ul class="divide-y divide-white/10 rounded-xl border border-white/10" aria-label="Topics">
   {% for topic in topics %}
   <li>
@@ -29,8 +30,17 @@
       <span class="hidden flex-none text-xs text-slate-400 sm:block">{{ topic.event_count }} Events</span>
     </a>
   </li>
-  {% else %}
-  <li class="px-4 py-3 text-sm text-slate-500">Noch keine Topics.</li>
   {% endfor %}
 </ul>
+{% else %}
+<div class="rounded-xl border border-dashed border-white/10 px-6 py-12 text-center">
+  <p class="text-sm font-medium text-slate-100">Noch keine Topics</p>
+  <p class="mx-auto mt-1 max-w-md text-sm text-slate-400">Ein Topic fasst die Events zu einem Vorfall, einer Schwachstelle oder einem Projekt zusammen.</p>
+  {% if can_write %}
+  <a href="/topics/new" class="mt-5 inline-block rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Erstes Topic anlegen</a>
+  {% else %}
+  <p class="mt-3 text-sm text-slate-400">Topics legen Analysten und Admins an.</p>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}
