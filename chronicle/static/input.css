@@ -12,3 +12,7 @@
 :root:root textarea:focus-visible {
   outline-offset: 0;
 }
+/* Rows that fill a bordered list: the ring sits inside, so it does not cover the neighbouring rows' dividers. */
+:root:root [data-list-row]:focus-visible {
+  outline-offset: -2px;
+}

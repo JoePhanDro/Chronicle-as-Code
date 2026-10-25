@@ -43,6 +43,7 @@ def test_topics_page_shows_status_in_text(api_client):
     body = client.get("/topics").text
     assert "in Arbeit" in body
     assert 'title="' in body  # the full title stays readable when it is cut off
+    assert "data-list-row" in body  # the focus ring of a row stays inside the list
     assert "aria-label=\"Topics\"" in body
 
 
