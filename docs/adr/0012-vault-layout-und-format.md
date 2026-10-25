@@ -47,13 +47,17 @@ Regeln:
 6. **Manifest `vault.yaml`:**
    ```yaml
    format: 1                     # Pflicht, ganze Zahl
-   id: 6f1c0c7e-...              # Pflicht, UUID, wird bei `vault init` erzeugt und nie geändert
-   name: "Beispiel GmbH"         # Pflicht, Anzeigename
+   id: 6f1c0c7e-...              # Pflicht, UUID, Etikett (siehe unten)
+   name: "Beispiel GmbH"         # Pflicht, Anzeigetext
+   limits:                       # optional, siehe unten
+     evidence_total_mib: 200
    ```
-   Die `id` benennt den Vault lokal (ADR 0013, ADR 0017) und trennt Mandanten (ADR 0018). Sie ist kein Geheimnis.
+   - **Die `id` im Manifest ist nur ein Etikett.** Sie steht im Vault und ist damit vom Vault kontrollierbar: Eine Kopie, ein Fork oder ein Template trägt dieselbe `id`, ein böswilliger Vault kann eine fremde `id` behaupten. Die Anwendung vergibt deshalb beim Eintragen eine **lokale Installations-ID** (ADR 0013). Sie ist Schlüssel für Cache, Audit und URL. Zwei Registry-Einträge mit gleicher Manifest-`id` werden abgelehnt (Hinweis auf Kopie oder Fork). `vault init` erzeugt immer eine neue `id`.
+   - **`name` ist reiner Anzeigetext**, Bidi- und Steuerzeichen werden abgelehnt. In der Oberfläche gilt der Name aus der Registry, nicht der aus dem Manifest.
+   - **`limits` darf die Obergrenzen der Anwendung nur senken**, nie anheben. Die harten Obergrenzen (Dateigrößen, Anzahl, Tiefe, ADR 0021) stehen im Code der App. Alles, was Verhalten auf dem Arbeitsplatz verändert (Workflow, Speicherart der Anhänge), kommt aus der lokalen Registry und nicht aus dem Manifest (ADR 0015, Punkt 16).
 7. **Unbekannte Felder bleiben Fehler** (striktes Schema), in allen drei Dateiarten. `chronicle schema` gibt je ein JSON-Schema für Topic- und Event-Datei aus.
 8. **Reihenfolge:** Events werden nach `t0`, dann `key` sortiert angezeigt. Die Dateien selbst haben keine Reihenfolge. `ruamel.yaml` bewahrt Kommentare und Layout beim Ändern, wie heute.
-9. **Prüfregeln** (Erweiterung von `docs/notation.md`, Abschnitt 7): Dateiname gleich Key, Ordner `topics/<key>/` gleich `topic.key`, Event-Keys eindeutig im Vault (ohne Beachtung der Schreibweise), `also_in` und `triggered_by` lösen auf, kein Kreis in `triggered_by`, keine symbolischen Links, keine unbekannten Dateien unter `topics/`, Dateigrößen begrenzt (ADR 0021).
+9. **Prüfregeln** (Erweiterung von `docs/notation.md`, Abschnitt 7): Dateiname gleich Key, Ordner `topics/<key>/` gleich `topic.key`, Event-Keys eindeutig im Vault (ohne Beachtung der Schreibweise), `also_in` und `triggered_by` lösen auf, kein Kreis in `triggered_by`, keine symbolischen Links und Submodule, keine unbekannten Dateien unter `topics/`, **keine unbekannten Dateien oder Ordner in der Vault-Wurzel** (erlaubt: `vault.yaml`, `topics/`, `evidence/`, `.github/`, `.gitignore`, `.gitattributes`, `README.md`, `docs/`, `.chronicle-secrets-allow`; sonst könnte eine `yaml.py` in der Wurzel ausgeführt werden, ADR 0021, Punkt 17), Dateigrößen begrenzt und strenger YAML-Vorabscan (ADR 0021). Keys, die sich nur in der Schreibweise unterscheiden, werden auch **lokal** geprüft, nicht nur in der CI (Dateisysteme von macOS und Windows).
 
 Beispiel `topics/inc-2026-042/events/exploit-2026-10-14.yaml`:
 
@@ -77,6 +81,8 @@ evidence:
 
 - Ein Pull Request, der ein Event hinzufügt oder ändert, ist ein kleiner Diff in einer Datei. Der häufige Fall (zwei Personen legen verschiedene Events an) ergibt auf GitHub keinen Konflikt mehr.
 - Zwei Personen, die denselben Key neu anlegen: im selben Topic ein Add/Add-Konflikt auf dem Pfad, in verschiedenen Topics fängt die Pflichtprüfung den Duplikat-Key vor dem Merge. Voraussetzung ist, dass die Prüfung als erforderlicher Status eingerichtet ist (ADR 0015). Zwei PRs, die je für sich grün sind, aber zusammen einen Duplikat-Key ergeben, fängt erst die Einstellung „Branch muss aktuell sein“ oder eine Merge Queue (ADR 0015).
+- **`also_in` umgeht CODEOWNERS des Ziel-Topics.** Wer ein Event in ein fremdes Topic einhängt, ändert nur die Event-Datei im eigenen Topic-Ordner, und der Besitzer des Ziel-Topics wird nicht automatisch gefragt. Das ist eine Grenze des Modells: **Vertraulichkeit und Besitz gelten pro Vault, nicht pro Topic.** Die Vault-CI meldet jede Änderung an `also_in` als Hinweis mit Ziel-Topic und dessen Code-Owner, damit der Prüfer sie hinzuziehen kann. Erzwingen kann die CI das nicht, weil sie ohne Token die Freigaben nicht abfragen darf (ADR 0021, Punkt 26).
+- Nach einem Wechsel der Heimat ändern sich die Anhangs-Pfade nicht, weil sie unter `evidence/<event-key>/` liegen und nicht unter dem Topic. Nur die Event-Datei zieht um.
 - Der Merge-Treiber vereinfacht sich: Es gibt nur noch ein Event je Datei und das Topic, keine Listen von Events mehr (ADR 0016).
 - Index und Sync, die heute Dateien pro Topic annehmen (`source_files`, `event_files`, `topic_files`), arbeiten je Event-Datei. Das passt zum inkrementellen Index (#125).
 - Eine Änderung schreibt eine kleine Datei und nicht die Datei mit allen Events (Kern von Issue #125).

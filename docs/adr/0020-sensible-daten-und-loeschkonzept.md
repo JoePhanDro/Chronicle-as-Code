@@ -1,6 +1,6 @@
 # ADR 0020: Sensible Daten in Git, Geheimnisse und Löschkonzept
 
-- **Status:** Vorgeschlagen (zu bestätigen). Rechtliche Punkte (Datenschutz) sind **keine Rechtsberatung** und müssen mit der oder dem Datenschutzbeauftragten geklärt werden.
+- **Status:** Vorgeschlagen (zu bestätigen). Wird **nicht** „Angenommen“, bevor der Bereinigungsablauf (Punkt 10) an einem Testrepository durchgespielt wurde (Plan Teil 16b). Rechtliche Punkte (Datenschutz) sind **keine Rechtsberatung** und müssen mit der oder dem Datenschutzbeauftragten geklärt werden.
 - **Datum:** 2026-10-25
 - **Bezug:** ADR 0008 (Konsequenzen: Bereinigung der Historie), ADR 0014, ADR 0019, Issue #98, `CONTRIBUTING.md` (Sicherheit)
 
@@ -38,7 +38,7 @@ Gilt, wenn ein **Geheimnis** oder **Daten, die nicht hätten gespeichert werden 
 10. **Ablauf** (technisch, als Skript `scripts/vault-purge.sh` mit Trockenlauf, im Testrepository durchgespielt):
     1. Alle Beteiligten stoppen Pushes. Pull Requests werden geschlossen, offene Arbeits-Branches gesichert.
     2. Spiegel-Klon (`git clone --mirror`) und `git filter-repo --path <pfad> --invert-paths` oder `--replace-text` auf dem Spiegel.
-    3. Branch Protection für den Standard-Branch kurzzeitig lockern (Notfallweg, ADR 0015), `git push --force --mirror`, danach Schutz wieder einschalten.
+    3. Das Regelwerk des Hosters wird durch einen Organisationsinhaber **vorübergehend ausgeschaltet** (kein Bypass, siehe ADR 0015, Punkt 11), dann `git push --force` der bereinigten Branches und Tags, danach wird das Regelwerk wieder eingeschaltet. **Achtung:** `git push --mirror` überträgt auch Refs, die der Hoster nicht annimmt oder ausblendet (`refs/pull/*` sind schreibgeschützt), und kann scheitern. Ein Push je Branch und Tag ist verlässlicher. `git filter-repo` entfernt außerdem den Remote `origin` aus der Konfiguration des Spiegels; er muss danach neu gesetzt werden.
     4. **Pull-Request-Referenzen** (`refs/pull/*`) und Hoster-Caches lassen sich nicht per Push entfernen. Der Hoster-Support wird um das Entfernen zwischengespeicherter Sichten und der Referenzen gebeten. Ist das nicht möglich oder nicht schnell genug, bleibt als Ausweg ein **neues Repository** aus der bereinigten Historie; der alte Vault wird gelöscht.
     5. **Alle Klone werden neu geklont**, nicht aktualisiert (ein `pull` bringt die alten Objekte zurück). Die Indexe (`cache/`) werden gelöscht. Forks und Backups werden bereinigt oder vernichtet.
     6. Die Prüfung `git log --all -S<muster>` auf dem frischen Klon bestätigt das Ergebnis.
@@ -48,8 +48,9 @@ Gilt, wenn ein **Geheimnis** oder **Daten, die nicht hätten gespeichert werden 
 
 12. **Aufbewahrungsfrist je Vault** legt der Betreiber fest und trägt sie in `README` des Vaults ein. Für abgelaufene Topics gibt es zwei Wege: Löschen im Arbeitsstand (Punkt 7) mit anschließender Bereinigung nach Punkt 10, wenn die Frist das verlangt, oder Verzicht auf personenbezogene Inhalte von Anfang an (Punkt 2). **Empfohlen ist der zweite Weg**, weil Punkt 10 aufwendig ist und Kopien nicht sicher erfasst.
 13. **Auskunft und Löschung** auf Verlangen betroffener Personen: Die Suche der Anwendung findet Inhalte im Arbeitsstand, die Git-Suche (`git log -S`) in der Historie. Das Löschen folgt Punkt 10.
+    **Spannung zwischen Löschpflicht und Dokumentationspflicht** (zur Klärung mit der oder dem Datenschutzbeauftragten, keine Rechtsberatung): Das Recht auf Löschung (Art. 17 DSGVO) steht gegen die Pflicht, Datenschutzverletzungen zu dokumentieren (Art. 33 Abs. 5 DSGVO), und gegen berechtigte Aufbewahrungszwecke. Ein Sicherheitsvorfall-Vault kann genau diese Dokumentation sein. Die Vorgabe ist deshalb Datenminimierung (Punkt 2) und eine Einzelfallentscheidung, kein automatisches Löschen.
 14. **Hoster und Auftragsverarbeitung.** Mit GitHub (oder einem anderen Hoster) liegen Vorfallsdaten bei einem Dritten, gegebenenfalls außerhalb der EU. Ob ein Vertrag zur Auftragsverarbeitung besteht und welcher Standort gilt (z. B. GitHub Enterprise Cloud mit Datenresidenz in der EU), entscheidet der Betreiber. Der Kern der Anwendung ist hoster-neutral (ADR 0011) und läuft mit einem selbst betriebenen Git-Server (Gitea, GitLab).
-15. **E-Mail-Adressen von Autoren.** Commits tragen Namen und Adresse (ADR 0014). Empfohlen sind Pseudonym-Adressen des Hosters (`…@users.noreply.github.com`). Die App belegt `git_email` nicht aus einer privaten Adresse vor, ohne zu fragen.
+15. **E-Mail-Adressen von Autoren.** Commits tragen Namen und Adresse (ADR 0014). Vorgabe sind Pseudonym-Adressen des Hosters (`…@users.noreply.github.com`). Die App belegt `git_email` **nie** aus einer privaten Adresse vor (ADR 0014, Punkt 2).
 
 ## Konsequenzen
 

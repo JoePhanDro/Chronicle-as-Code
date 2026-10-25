@@ -46,7 +46,7 @@ Beides soll in Vaults (Format 1) übergehen. Vorhandene Daten dürfen weder verl
 
 ## Konsequenzen
 
-- Der Server kann Format 0 nicht mehr bedienen, sobald Teil 6 des Plans umgesetzt ist. Bis dahin laufen Format 0 und Datenbankmodus unverändert (Plan: der Schreibpfad wird erst in Teil 6 getauscht, das Lesen von Format 1 kommt vorher in Teil 5).
+- Der Server kann Format 0 nicht mehr bedienen, sobald Teil 6b des Plans umgesetzt ist. **Die Migration (Teil 7) steht deshalb vor Teil 6b oder wird mit ihm zusammen ausgeliefert.** Sonst gäbe es einen Stand, in dem Format 0 abgeschaltet ist und kein Weg nach Format 1 existiert (Review H8). Das Lesen von Format 1 kommt vorher in Teil 5, `data/` wird direkt danach umgezogen (Teil 18).
 - Ein falscher Umzug fällt durch die Gleichwertigkeitsprüfung auf, nicht erst im Betrieb.
 - Zwei Lesepfade (Format 0 und Format 1) existieren eine Zeit lang. Der Lesepfad für Format 0 wird mit Teil 18 auf `vault migrate` beschränkt.
 

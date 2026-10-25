@@ -1,50 +1,93 @@
 # ADR 0015: Freigabe-Workflow mit Branch, Pull Request und Branch Protection
 
-- **Status:** Vorgeschlagen (zu bestätigen)
+- **Status:** Vorgeschlagen (zu bestätigen). Überarbeitet nach Review. Die Punkte 12 bis 14 (Live-Branch bei Vorfällen) brauchen eine Entscheidung des Projektinhabers.
 - **Datum:** 2026-10-25
-- **Bezug:** ADR 0008 Punkt 3 (Abgleichen), ADR 0012, ADR 0014, ADR 0016, `chronicle/sync.py`, `.github/CODEOWNERS`, Issues #90, #131
+- **Bezug:** ADR 0008 Punkt 3 (Abgleichen), ADR 0012, ADR 0014, ADR 0016, ADR 0020, ADR 0021, `chronicle/sync.py`, `.github/CODEOWNERS`, Issues #90, #131
 - **Ändert:** ADR 0008 Punkt 3: „Abgleichen“ schreibt nicht mehr auf den gemeinsamen Branch, sondern auf einen Arbeits-Branch.
 
 ## Kontext
 
-Heute committet `sync.synchronise` Änderungen und pusht sie direkt auf den Branch, der ausgecheckt ist (`HEAD:refs/heads/<branch>`). Das ist für eine Person gedacht. Mehrere Personen sollen Änderungen gegenseitig freigeben. Gleichzeitig muss während eines Vorfalls schnell dokumentiert werden können, ohne dass jemand auf eine Freigabe wartet.
+Heute committet `sync.synchronise` Änderungen und pusht sie direkt auf den ausgecheckten Branch (`HEAD:refs/heads/<branch>`). Das ist für eine Person gedacht. Mehrere Personen sollen Änderungen gegenseitig freigeben. Gleichzeitig muss während eines Vorfalls schnell dokumentiert werden können.
 
 ## Optionen
 
 1. **Direkt auf `main` pushen** (heutiger Stand). Keine Freigabe.
-2. **Pull Request je Änderung, Freigabe auf dem Hoster.** Bewährt, Review-Werkzeuge sind da, Historie bleibt nachvollziehbar.
-3. **Eigener Freigabe-Status in den Dateien** (`approved_by:` im Event). Fälschbar, weil jede Person die Datei ändern kann. Verworfen.
-4. **Eigene Freigabe-Oberfläche in der App.** Doppelt gebaut, vertrauenswürdig nur, wenn der Hoster sie erzwingt. Verworfen.
+2. **Pull Request je Änderung, Freigabe auf dem Hoster.** Bewährt, Review-Werkzeuge sind da, Historie nachvollziehbar.
+3. **Eigener Freigabe-Status in den Dateien** (`approved_by:`). Fälschbar, weil jede Person die Datei ändern kann. Verworfen.
+4. **Eigene Freigabe-Oberfläche in der App.** Doppelt gebaut, nur vertrauenswürdig, wenn der Hoster sie erzwingt. Verworfen.
 
 ## Entscheidung
 
-**Option 2.** Im Einzelnen:
+**Option 2**, mit einem Zustandsautomaten für den Arbeitsstand, einem Live-Zweig für Vorfälle (Punkte 12 bis 14, Entscheidung offen) und ausdrücklichen Voraussetzungen auf dem Hoster.
 
-1. **Die App committet nie auf den Standard-Branch.** Sie arbeitet auf einem **Arbeits-Branch** `chronicle/<benutzername>/<datum>-<kurzname>`. Es gibt je Benutzer und Vault zu einem Zeitpunkt einen offenen Arbeits-Branch („Arbeitsstand“). Fehlt er, legt die App ihn beim ersten Speichern von `origin/<standard-branch>` aus an.
-2. **Jedes Speichern ist ein lokaler Commit** (Autor siehe ADR 0014). Das gibt Rückgängig-Möglichkeit und passt zu „alles oder nichts“ (ADR 0008). Die Nachricht nennt Aktion und Key, zum Beispiel `Event exploit-2026-10-14: Status geändert`.
-3. **Die Oberfläche liest den Arbeitsstand**, also die ausgecheckte Arbeitskopie. Wer dokumentiert, sieht das Ergebnis sofort, ohne Freigabe abzuwarten. Ein Merkmal je Event zeigt **„freigegeben“** oder **„wartet auf Freigabe“**: Die Datei steht (mit gleichem Inhalt) auf `origin/<standard-branch>` oder nicht. Das berechnet `git diff --name-status origin/<standard-branch> HEAD`, ohne Netzzugriff nach einem `fetch`.
-4. **„Zur Freigabe einreichen“ ersetzt „Abgleichen“.** Es prüft die Dateien (`check`), holt `origin` (ohne Sperre, ADR 0016, Issue #131), führt `origin/<standard-branch>` in den Arbeits-Branch ein, pusht **nur den Arbeits-Branch** (`push -u origin <branch>`, nie `--force`) und zeigt den Link zum Pull Request (`…/compare/<standard>...<branch>?expand=1`). Die App legt in der ersten Ausbaustufe **keinen Pull Request über die API** an und braucht damit **keinen Token** des Hosters. Eine Anbindung über `gh` ist später möglich (offene Frage 5).
-5. **Aktualisieren:** „Aktualisieren“ holt `origin`, setzt den lokalen Standard-Branch per `merge --ff-only` auf den Stand des Remotes und führt ihn in den Arbeits-Branch ein. Nach einem Merge des Pull Requests auf dem Hoster beginnt der nächste Arbeitsstand von vorn. Der alte Branch wird lokal entfernt, wenn er im Standard-Branch enthalten ist. Auf dem Remote löscht GitHub ihn auf Wunsch (Einstellung „Automatically delete head branches“).
-6. **Einstellungen auf dem Hoster** (der Vault-Administrator richtet sie ein; die App prüft sie nicht, ein Hinweis steht in der Vorlage). Pflicht:
-   - Standard-Branch geschützt, Änderungen nur über Pull Request,
-   - mindestens eine Freigabe, **Freigabe der Code-Owner** verlangt, veraltete Freigaben bei neuen Commits verwerfen, Freigabe des letzten Pushs durch eine andere Person,
-   - der Status `Chronicle prüfen` (Workflow, ADR 0021) ist erforderlich,
-   - Force-Push und Löschen des Branches verboten, Administratoren eingeschlossen.
+### Arbeitsstand
 
-   Empfohlen: Branch muss aktuell sein oder eine Merge Queue (verhindert, dass zwei einzeln grüne PRs zusammen einen Duplikat-Key ergeben, ADR 0012), signierte Commits (ADR 0014), Squash-Merge (ein Commit je Pull Request, Datei-Historie bleibt über `git log -- <datei>`).
-7. **CODEOWNERS im Vault** (aus der Vorlage): `/vault.yaml`, `/.github/` und `/topics/*/topic.yaml` gehören dem Vault-Team; `/topics/<topic>/` kann einem Team je Topic zugeordnet werden; `/evidence/` gehört den Prüfern allgemein. Das ist unkritisch, weil Anhänge ohne Änderung der Event-Datei (Prüfsumme dort) nicht hinzukommen können und verwaiste Anhänge die Prüfung fehlschlagen lässt (ADR 0019). Eine Änderung an Event-Datei und Anhang wird damit immer vom Besitzer des Topics gesehen.
-8. **Der Notfallweg.** Der Vault-Administrator darf einen Pull Request selbst freigeben und zusammenführen (Regel „Umgehen erlauben“ für eine kleine Gruppe, nicht für alle). Das Ereignis steht im Protokoll des Hosters. Für Vaults mit einer einzigen Person (kein Prüfer) ist die Freigabeanzahl 0 eine bewusste Einstellung.
-9. **Direkt-Modus als Ausnahme.** Wer auf dem Standard-Branch arbeiten will (Einzelperson, privater Vault), setzt `workflow: direct` in der lokalen Registry (ADR 0013). Dann verhält sich die App wie heute. Der Modus steht nicht in `vault.yaml`, weil ein Vault ihn sonst allen Klonen vorschreiben könnte.
+1. **Die App committet nie auf den Standard-Branch.** Sie arbeitet auf einem **Arbeits-Branch** `chronicle/<klon-kennung>/<datum>-<kurzname>`. Die **Klon-Kennung** ist eine zufällige Kurzkennung, die `vault add`/`vault clone` für diesen Klon erzeugt und in der Registry ablegt (nicht der Benutzername). Es gibt je Klon einen offenen Arbeits-Branch. Wer mehrere Benutzer an einer Installation hat, schreibt trotzdem auf diesen einen Branch; **der Autor jedes Commits ist der angemeldete App-Benutzer** (ADR 0014). Es ist **höchstens eine Schreibsitzung** je Klon aktiv. Eine zweite Sitzung kann lesen, aber nicht schreiben, bis die erste endet (Sperre mit Kennung der Sitzung, nicht nur Dateisperre).
+2. **Jedes Speichern ist ein lokaler Commit.** Das gibt Rückgängig-Möglichkeit und passt zu „alles oder nichts“ (ADR 0008). Die Nachricht nennt Aktion und Key.
+3. **Die Oberfläche liest den Arbeitsstand** (ausgecheckte Arbeitskopie). Wer dokumentiert, sieht das Ergebnis sofort.
+4. **Freigabestatus je Event über die Blob-ID.** Ein Event ist **„freigegeben“**, wenn seine Datei in `origin/<standard>` mit **gleicher Blob-ID** (und gleichem Pfad) steht wie im Arbeitsstand. Berechnet aus `git ls-tree -r -z` beider Stände, ohne Netz nach einem `fetch`. Dieser Vergleich ist unabhängig davon, wie der Pull Request zusammengeführt wurde (Squash, Rebase, Merge-Commit). Ein Vergleich über Commits oder `git diff origin/main HEAD` allein trägt nach einem Squash-Merge nicht, weil der Arbeits-Branch dann nicht als „gemergt“ gilt (im Review belegt).
+
+### Lebenszyklus eines Change-Sets (Zustandsautomat)
+
+5. Ein Change-Set ist der Arbeits-Branch mit seinen Commits seit `origin/<standard>`.
+
+   | Zustand | Bedeutung | Übergang |
+   |---|---|---|
+   | **offen** | lokale Commits, nichts gepusht | „Einreichen“ → eingereicht |
+   | **eingereicht** | Remote-Branch hat denselben Stand wie lokal | neuer Commit → geändert nach Einreichen; PR auf dem Hoster gemergt und „Aktualisieren“ ergibt gleichen Inhalt → abgeschlossen |
+   | **geändert nach Einreichen** | lokaler Stand ≠ Remote-Branch | „Einreichen“ → eingereicht |
+   | **abgeschlossen** | nach „Aktualisieren“ gilt `git diff --quiet origin/<standard> HEAD` für alle Pfade des Change-Sets (inhaltlich enthalten, **nicht** „Commit ist Vorfahr“) | Arbeits-Branch wird lokal entfernt, nächster Arbeitsstand beginnt von `origin/<standard>` |
+   | **verworfen** | Benutzer wählt „Arbeitsstand verwerfen“ | lokaler Branch wird auf `origin/<standard>` zurückgesetzt (nach Bestätigung, mit Liste der verlorenen Commits; Sicherung als Reflog-Eintrag und Tag `chronicle-discarded/<datum>`), Remote-Branch bleibt für den Hoster unberührt |
+6. **Remote-Branch ist weitergewandert** (zweiter Klon desselben Benutzers, Änderungsvorschlag eines Prüfers): Der Push würde nicht schnell vorspulen. Die App holt den Remote-Branch, **führt ihn in den lokalen Arbeits-Branch ein** (Merge, mit Treiber, ADR 0016) und pusht erneut. Es gibt **nie `--force`**.
+7. **„Aktualisieren“** holt nur die benötigten Refs (`+refs/heads/<standard>:refs/remotes/origin/<standard>` und den eigenen Arbeits-Branch, ADR 0021 Punkt 8), setzt den lokalen Standard-Branch per `merge --ff-only` vor und führt `origin/<standard>` in den Arbeits-Branch ein.
+8. **„Zur Freigabe einreichen“** prüft die Dateien (`check`), aktualisiert wie Punkt 7, pusht **nur den Arbeits-Branch** (`push -u origin <branch>`) und zeigt den Link zum Pull Request. Die Linkvorlage steht je Vault in der Registry (`compare_url = "https://github.com/{org}/{repo}/compare/{base}...{head}?expand=1"`), damit sie bei anderen Hostern anpassbar ist. Die App legt in der ersten Ausbaustufe **keinen Pull Request über die API** an und braucht **keinen Token**.
+
+### Voraussetzungen und Einstellungen auf dem Hoster
+
+9. **Pflicht** (der Vault-Administrator richtet sie ein):
+   - Standard-Branch geschützt, Änderungen nur über Pull Request, Force-Push und Löschen verboten,
+   - mindestens eine Freigabe (Vorgabe der Vorlage; 0 nur bei Einzelpersonen, siehe offene Frage 3), Freigabe der Code-Owner verlangt, veraltete Freigaben bei neuen Commits verwerfen, Freigabe des letzten Pushs durch eine andere Person,
+   - der Status `Chronicle prüfen` ist erforderlich; der Workflow läuft für `pull_request` **und `merge_group`**, wird nie durch `paths-ignore` oder `if:` übersprungen (ein übersprungener Job zählt als bestanden),
+   - **„Branch muss aktuell sein“ ist Pflicht** (oder eine Merge Queue). Nur so entsteht kein Duplikat-Key aus zwei einzeln grünen PRs (ADR 0012),
+   - Änderungen an `.github/` gehören einer kleinen Gruppe (CODEOWNERS), zusätzlich ein Regelwerk der Organisation, das ein Vault-Repository nicht selbst aufweichen kann,
+   - keine Secrets im Vault-Repository (Actions-Secrets leer), die Vorlage enthält Dependabot für die Aktionen,
+   - Squash-Merge ist erlaubt und üblich (Punkt 4 trägt dafür).
+
+   **Kosten und Voraussetzungen, die nicht im Code liegen** (zu prüfen gegen die aktuellen GitHub-Bedingungen, bevor der Vault angelegt wird): Geschützte Branches, Rulesets und erforderliche Reviews gibt es bei **privaten** Repositories nur in bezahlten Tarifen (nicht im kostenlosen Tarif). CODEOWNERS mit Teams setzt eine Organisation voraus; Besitzer brauchen Schreibrechte. Secret Scanning mit Push Protection für private Repositories ist ebenfalls tarifabhängig. Ohne diese Voraussetzungen gibt es kein erzwungenes Vier-Augen-Prinzip, und die App darf es nicht so darstellen (Punkt 10).
+10. **Prüfung statt Vertrauen.** Die Einstellungen lassen sich nicht im Repository ablegen. Deshalb liefert die Vorlage:
+    - eine **importierbare Ruleset-Datei** (`.github/ruleset.json`, in den Einstellungen importierbar),
+    - einen **lesenden** Befehl `chronicle vault doctor`, der über das `gh` des Benutzers (`gh api`, mit dessen eigener Anmeldung, **ohne gespeichertes Token**) den Schutz des Standard-Branches abfragt und fehlende Punkte meldet,
+    - die Anzeige in der Oberfläche: „Schutz des Hosters nicht bestätigt“, solange `doctor` nicht grün war. „Freigegeben“ in der Oberfläche heißt nur „im Standard-Branch“, nicht „von einer zweiten Person geprüft“.
+11. **Notfall und Bypass, in sich widerspruchsfrei.** Drei Fälle mit einer **dokumentierten Bypass-Liste** (Datei `docs/bypass.md` im Vault, benennt Personen oder Team):
+    - *Normalbetrieb:* niemand darf umgehen, auch Administratoren nicht („eingeschlossen“).
+    - *Notfall-Freigabe:* die benannte Bypass-Gruppe darf einen PR selbst freigeben und zusammenführen. Jeder Gebrauch wird nachträglich im Protokoll des Hosters geprüft.
+    - *Bereinigung der Historie (ADR 0020):* braucht Force-Push. Das ist kein Bypass, sondern ein **vorübergehendes Ausschalten des Regelwerks durch einen Organisationsinhaber**, das im Protokoll des Hosters steht und danach wieder eingeschaltet wird.
+
+### Vorfälle: Live-Dokumentation (Entscheidung des Projektinhabers nötig)
+
+12. **Problem.** Mit einem Pull Request je Person ist die Live-Dokumentation bei einem Vorfall nicht erreichbar: Jede Person sieht nur ihren eigenen Stand, bis die Freigabe da ist. Für aktive Vorfälle wird das zum Hindernis.
+13. **Vorschlag: Incident-Branch.** Für ein Topic vom Typ `incident` kann ein Vault-Administrator einen geteilten Branch `incident/<topic-key>` einrichten. Auf ihn pushen berechtigte Personen **direkt**, die Regel verlangt dort **nur den Status-Check**, **kein Review**. Die App schaltet in einen **Live-Modus**: Jedes Speichern wird committet und sofort in diesen Branch gepusht (nach Holen und Einführen des Standes, nie `--force`), „Aktualisieren“ läuft zyklisch. Die Oberfläche kennzeichnet alle Inhalte, die nur im Incident-Branch stehen, deutlich als **„ohne Freigabe“**. Nach dem Vorfall entsteht **ein Sammel-Pull-Request** vom Incident-Branch nach `main` mit normalem Review. Erst danach gelten die Inhalte als freigegeben.
+14. **Diese Entscheidung trifft der Projektinhaber** (offene Frage 9). Sie schwächt das Vier-Augen-Prinzip für die Dauer eines Vorfalls bewusst. Ohne Zustimmung bleibt es bei Punkt 1 bis 8. Die Umsetzung ist ein eigener Teil des Plans (Teil 19) und hängt nicht an den übrigen.
+
+### Berichte und Exporte
+
+15. **Berichte und Exporte werden standardmäßig aus dem freigegebenen Stand (`origin/<standard>`) gebaut.** Enthält die Auswahl ungeprüfte Events (Arbeitsstand, Incident-Branch), muss der Aufrufer das ausdrücklich verlangen, und der Bericht kennzeichnet sie. Das verhindert, dass ein Bericht an Dritte ungeprüfte Inhalte als geprüft ausgibt.
+
+### Einzelpersonen
+
+16. Für einen Vault mit einer einzigen Person gilt: **Pull Request mit 0 erforderlichen Freigaben und erforderlicher CI** (der Standardfall der Vorlage für diese Gruppe). Der Direkt-Modus (`workflow = "direct"` in der Registry, nicht im Manifest) bleibt eine Ausnahme für Tests und Entwicklung. Er wird in der Oberfläche als „ohne Freigabe“ gekennzeichnet. Der Modus steht nicht im Manifest, weil ein Vault ihn sonst allen Klonen vorschreiben könnte. Dasselbe Prinzip gilt allgemein: **Alles, was das Verhalten der App auf dem Arbeitsplatz festlegt (Workflow, Limits über die Obergrenzen hinaus, Speicherart der Anhänge), kommt aus der lokalen Registry oder den Obergrenzen der App, nicht aus dem Vault** (ADR 0012, Punkt 6).
 
 ## Konsequenzen
 
 - Freigabe hängt am Hoster, nicht an der App (ADR 0014). Das ist der einzige Weg, der nicht umgangen werden kann, indem jemand die Dateien direkt ändert.
-- Der Link-Ansatz kostet einen Klick, spart aber ein Geheimnis (kein Token in der App).
-- Nach dem Merge auf dem Hoster sehen andere den neuen Stand erst nach „Aktualisieren“. Das ist der Preis eines Offline-fähigen Modells (ADR 0008).
-- Aufwand: `sync.synchronise` wird umgebaut (Branch-Verwaltung, kein Push auf den Standard-Branch), die Oberfläche bekommt den Freigabe-Status.
-- Zwei Arbeits-Branches auf demselben Klon (zwei Benutzer der gleichen Installation) sind nicht vorgesehen. Die App hält einen Arbeits-Branch je Benutzer-Name im Klon und wechselt beim Benutzerwechsel nicht stillschweigend (Plan Teil 13 beschreibt das; Risiko).
+- Der Link-Ansatz kostet einen Klick, spart aber ein Geheimnis.
+- Nach dem Merge auf dem Hoster sehen andere den neuen Stand erst nach „Aktualisieren“.
+- Aufwand: `sync.synchronise` wird umgebaut (Teile 14a und 14b), die Oberfläche bekommt den Status (Teile 15a und 15b), der Zustandsautomat braucht eigene Tests.
+- Teil 14a (Commit je Speichern auf Arbeits-Branch) wird nicht ohne Teil 14b (Einreichen) ausgeliefert: Bis dahin bleibt `workflow = "direct"` oder ein Funktionsschalter aus.
+- Die Annahmen zu GitHub (kein eigener Merge-Treiber auf dem Server, Verhalten von Squash und Signaturen, Sichtbarkeit von `refs/pull/*`) werden vor Teil 14b in einem Testrepository geprüft (Plan Teil 12a).
 
 ## Offene Punkte
 
 - Anzahl der Freigaben als Vorgabe der Vorlage (1 oder 2).
-- Zeit bis zur Freigabe für Vorfälle: Nutzer entscheiden, ob der Notfallweg genügt.
+- Entscheidung zu Punkt 12 bis 14 (Incident-Branch).
+- Hoster-Tarif (Punkt 9), Entscheidung des Betreibers.

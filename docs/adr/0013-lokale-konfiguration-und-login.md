@@ -16,18 +16,23 @@ Mit Vaults (ADR 0011) liegen alle Inhalte in Git-Repositories. Lokal bleibt weni
    $CHRONICLE_HOME/
      config.toml            Registry der Vaults (kein Geheimnis, aber Pfade)
      ops.db                 Konten, Sitzungen, Login-Sperren, Einstellungen, Audit-Log
-     cache/<vault-id>/      abgeleiteter Index (ADR 0017), jederzeit löschbar
+     cache/<local-id>/      abgeleiteter Index (ADR 0017), jederzeit löschbar
    ```
 2. **Die Registry nennt Vaults, sonst nichts.**
    ```toml
    [[vault]]
-   id   = "6f1c0c7e-…"      # aus vault.yaml, wird bei jedem Start verglichen
-   name = "Beispiel GmbH"
-   path = "/Users/anna/vaults/beispiel-gmbh"
-   # optional: workflow = "direct"        (ADR 0015, Punkt 9; Standard ist "review")
-   # optional: allowed_hosts = ["github.com"]   (ADR 0021, Punkt 6)
+   local_id    = "c3a9…"          # von der Installation vergeben (Zufall), Schlüssel für Cache, Audit, URL
+   clone_id    = "k7f2"           # Kurzkennung des Klons, steht im Namen des Arbeits-Branches (ADR 0015)
+   name        = "Beispiel GmbH"  # Anzeigename, gilt in der Oberfläche
+   path        = "/Users/anna/vaults/beispiel-gmbh"
+   manifest_id = "6f1c0c7e-…"     # Etikett aus vault.yaml, wird beim Start verglichen
+   origin      = "git@github.com:beispiel/vault.git"   # erwartete URL von origin (ADR 0021, Punkt 7)
+   compare_url = "https://github.com/{org}/{repo}/compare/{base}...{head}?expand=1"
+   # optional: workflow = "direct"              (ADR 0015, Punkt 16; Standard ist "review")
+   # optional: allowed_hosts = ["github.com"]   (ADR 0021, Punkt 10)
    ```
-   Beim Start prüft die Anwendung für jeden Eintrag, dass `path` ein Git-Repository ist, dessen Wurzel gleich `path` ist (wie `sync._is_repository_root`), dass `vault.yaml` existiert und die `id` übereinstimmt. Bei Abweichung wird der Vault nicht geöffnet. Das verhindert, dass ein vertauschter oder ersetzter Ordner unter dem Namen eines anderen Einsatzortes erscheint.
+   Beim Start prüft die Anwendung für jeden Eintrag, dass `path` ein Git-Repository ist, dessen Wurzel gleich `path` ist (wie `sync._is_repository_root`), dass `vault.yaml` existiert und die `manifest_id` übereinstimmt. Bei Abweichung wird der Vault nicht geöffnet. Das fängt vertauschte oder ersetzte Ordner ab, ist aber **kein Sicherheitsmerkmal**: Die Manifest-ID steht im Vault und ist vom Vault kontrollierbar (ADR 0012). Zwei Einträge mit gleicher Manifest-ID werden abgelehnt. Maßgeblich für Trennung ist die `local_id`, die nie aus dem Vault kommt.
+   Vor jedem `fetch` und `push` vergleicht `git.py` `origin` aus der Konfiguration des Klons mit dem Registry-Eintrag und bricht bei Abweichung ab. Beim Eintragen eines vorhandenen Klons wird dessen `.git/config` gegen eine Allowlist geprüft (ADR 0021, Punkt 7).
 3. **Keine Geheimnisse in der Konfiguration.** Weder Zugangsdaten für Git noch Tokens des Hosters. Git holt sie selbst (SSH-Agent, Credential Helper des Betriebssystems). Die Anwendung ruft nie `git credential` auf und liest keine Credential-Dateien.
 4. **Befehle für die Verwaltung** (CLI, nicht in der Weboberfläche; die Oberfläche zeigt nur den Stand):
    - `chronicle init` legt den Zustandsordner an, erzeugt `ops.db` und fragt den ersten Admin ab (Bootstrap, siehe 6).
@@ -44,7 +49,8 @@ Mit Vaults (ADR 0011) liegen alle Inhalte in Git-Repositories. Lokal bleibt weni
 
 ## Konsequenzen
 
-- Ein Backup des Zustandsordners (ohne `cache/`) sichert die Konten. Die Inhalte sichert Git.
+- Ein Backup des Zustandsordners (ohne `cache/`) sichert die Konten und die Registry. `chronicle/backup.py` kopiert heute nur Index und `ops.db` und wird um `config.toml` erweitert; Wiederherstellung und Test (Plan Teil 8). Die Inhalte sichert Git.
+- **Container-Betrieb.** Das Image (`python:3.12-slim`, ohne `git` und `ssh`, `read_only`, `cap_drop: ALL`) kann ohne Änderung nur **lesen**. Schreiben und Sync im Container verlangt Git, SSH, ein beschreibbares Vault-Volume, den Zustandsordner als Volume (`/state`) und Zugangsdaten für den Hoster (Deploy Key als Datei, nicht im Image). Das ist ein eigener Teil im Plan (Teil 8b). Bis dahin gilt: der Container ist ein Lese-Betrieb für einen bereits geklonten Vault.
 - Die Betriebsdatei ist nicht mehr im Daten- oder Vault-Ordner und kann nie versehentlich committet werden.
 - Ein Vault-Verzeichnis ohne `vault.yaml` wird abgelehnt statt still geöffnet.
 - **Ehrlicher Schutzumfang:** Wer Lesezugriff auf das Vault-Verzeichnis hat, liest alle Inhalte, unabhängig vom Login der Anwendung. Der Login schützt die Oberfläche (Browser, API, Schreibvorgänge über die App), nicht die Dateien. Vertraulichkeit der Daten kommt aus der Festplattenverschlüsselung, den Benutzerrechten des Betriebssystems und dem Zugriff auf das Remote-Repository.

@@ -1,6 +1,6 @@
 # ADR 0019: Anhänge im Vault
 
-- **Status:** Vorgeschlagen (zu bestätigen). **Ändert eine bestätigte Entscheidung** und braucht deshalb ausdrücklich die Zustimmung des Projektinhabers.
+- **Status:** Vorgeschlagen (zu bestätigen). **Ändert eine bestätigte Entscheidung** und braucht deshalb ausdrücklich die Zustimmung des Projektinhabers. Empfehlung des Reviews: Ja, aber **nur unter Bedingungen**: privater Vault, Hoster-Tarif mit Branch Protection (ADR 0015, Punkt 9), Auftragsverarbeitung und Region geklärt (ADR 0020), Bereinigungsverfahren am Testrepository erprobt (ADR 0020, Punkt 10). Der PR mit diesen ADRs wird vor der Entscheidung nicht gemergt.
 - **Datum:** 2026-10-25
 - **Bezug:** ADR 0004 (Evidence), ADR 0008 Punkt 6, ADR 0009 (Abschnitt Anhänge), ADR 0012, ADR 0020, `chronicle/evidence.py`
 - **Ändert:** ADR 0008 Punkt 6 und ADR 0009, Abschnitt „Anhänge“ („außerhalb von Git, im Sync-Ordner“).
@@ -31,7 +31,8 @@ Dagegen steht: Was in Git liegt, bleibt in der Historie (ADR 0020), und Anhänge
 3. **Regeln aus ADR 0004 gelten unverändert:** Endung und Inhalt passen zusammen, SVG und HTML verboten, höchstens 10 MiB je Datei. Zusätzlich:
    - **Verwaiste Dateien** (unter `evidence/`, von keinem Event genannt) und **fehlende Dateien** sind Prüffehler.
    - **Gleicher Inhalt zweimal** ist erlaubt (Git speichert Blobs einmal).
-   - Die Prüfung warnt ab 200 MiB Gesamtgröße von `evidence/` und meldet einen Fehler ab 1 GiB. Die Werte stehen im Manifest (`limits`) und sind Vorschläge.
+   - Die Prüfung warnt ab 200 MiB Gesamtgröße von `evidence/` und meldet einen Fehler ab 1 GiB. Das Manifest darf diese Werte nur senken (ADR 0012), die Obergrenzen stehen im Code. Die Zahlen sind Vorschläge.
+   - **Git darf Anhänge nicht verändern.** Zeilenenden-Umwandlung, `.gitattributes` mit `text=auto`, `eol`, `ident` oder `filter` ändern die Bytes und damit `sha256`. Gegenmaßnahmen: pro Aufruf `core.autocrlf=false`, `core.eol=lf`, `core.safecrlf=false`, in `.git/info/attributes` `evidence/** -text -ident -filter binary`, und `.gitattributes` im Vault enthält nur die Zeilen der Vorlage (ADR 0021, Punkte 6 und 22).
 4. **Anhänge werden nicht verändert.** Eine neue Fassung ist eine neue Datei (Nummer im Namen, wie heute) und eine neue Prüfsumme. Das Entfernen eines Anhangs entfernt die Datei und den Eintrag.
 5. **Der Ausweg:** Das Manifest darf später `evidence.storage: lfs` nennen. Dann steht in `.gitattributes` `evidence/** filter=lfs …`, und die Anwendung verlangt `git-lfs`. Der Umstieg ist eine Formatänderung (ADR 0022) und wird nicht beiläufig eingeführt. Bis dahin ist LFS nicht Teil des Plans.
 6. **Cloud-Sync-Ordner entfallen** als Weg für Anhänge. Wer sie weiter verwendet, tut es außerhalb von Chronicle. Der Hinweis in ADR 0008 zu Konfliktkopien (`waf-block (1).png`) gilt nur noch für Altbestand.

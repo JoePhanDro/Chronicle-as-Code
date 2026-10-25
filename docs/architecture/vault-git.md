@@ -1,6 +1,6 @@
 # Architektur: Chronicle mit Vault-Repositories in Git
 
-- **Status:** Entwurf zur Prüfung (Sicherheit und Architektur), noch nicht umgesetzt
+- **Status:** Entwurf, nach Review (Sicherheit und Architektur) überarbeitet, noch nicht umgesetzt
 - **Stand:** 2026-10-25, Code auf `main` bei Commit `d68216f`
 - **Entscheidungen:** ADR 0011 bis 0022 in [`docs/adr/`](../adr/). Umsetzungsplan: [`vault-git-plan.md`](vault-git-plan.md)
 
@@ -45,7 +45,7 @@ flowchart LR
     subgraph HOME["CHRONICLE_HOME (0700)"]
       CFG["config.toml<br/>Vault-Registry"]
       OPS["ops.db<br/>Konten, Sitzungen, Audit"]
-      IDX["cache/&lt;vault-id&gt;/index.db<br/>abgeleitet"]
+      IDX["cache/&lt;local-id&gt;/index.db<br/>abgeleitet"]
     end
     CLONE["Klon des Vaults<br/>(Dateien auf Platte)"]
     SRV["Server (FastAPI)<br/>Oberfläche + API"]
@@ -126,11 +126,11 @@ flowchart TD
   S2 -- ja --> S3[Registry lesen]
   S3 --> S4{Vault eingetragen?}
   S4 -- nein --> S4a["Seite: Kein Vault verbunden<br/>(CLI: vault add / vault clone)"]
-  S4 -- ja --> S5["je Vault prüfen: Git-Wurzel gleich Pfad,<br/>vault.yaml vorhanden, id stimmt, format bekannt"]
+  S4 -- ja --> S5["je Vault prüfen: Git-Wurzel gleich Pfad,<br/>vault.yaml vorhanden, Manifest-Etikett stimmt,<br/>origin wie in der Registry, .git/config nur Allowlist, format bekannt"]
   S5 -- Abweichung --> S5a[Vault nicht öffnen, Grund anzeigen]
   S5 -- ok --> S6[Index prüfen: gültig? sonst bauen]
   S6 --> S7[Anmeldung /login]
-  S7 --> S8[Vault wählen, Sitzung gilt für /v/id/...]
+  S7 --> S8[Vault öffnen: Standard ein Vault,<br/>Umschalter bei mehreren zurückgestellt]
 ```
 
 Eine Anmeldung erlaubt keinen Zugriff auf die Dateien. Sie erlaubt nur den Zugang zur Oberfläche und zur API. Wer die Dateien lesen kann, liest sie ohnehin (ADR 0013).
@@ -156,7 +156,7 @@ flowchart LR
 | Grenze | Was überschreitet sie | Schutz |
 |---|---|---|
 | TB1 Browser zu Server | HTTP, Formulare, Uploads | Login, Sitzungscookie (`HttpOnly`, `SameSite=Strict`), CSRF, Rollen, Drosselung (ADR 0001); neu: Vault-Kennung in jeder Anfrage (ADR 0018) |
-| TB2 Server zu Vault-Dateien | YAML, Markdown, Anhänge von **anderen Personen** | strenge Prüfung vor dem Lesen: keine Links, Größen, kein YAML-Alias, keine doppelten Schlüssel, Bidi-Zeichen, Pfadregeln (ADR 0021); bereinigtes Markdown; Anhänge mit Sandbox-CSP |
+| TB2 Server zu Vault-Dateien | YAML, Markdown, Anhänge von **anderen Personen**; auch das Verzeichnis selbst (Python-Suchpfad) | strenge Prüfung vor dem Lesen: Allowlist der Wurzel, keine Links, Größen, Ereignisstrom-Scan (Tiefe, Alias, Duplikate), Bidi-Zeichen, Pfadregeln (ADR 0021); bereinigtes Markdown; Anhänge mit Sandbox-CSP |
 | TB3 Server zu `git` | Argumente, Umgebung, Ausgabe | ein Modul, Muster für Branch und Key, `--`, feste `-c`, Zeitlimits (ADR 0021) |
 | TB4 `git` zu Remote | Objekte, Zugangsdaten | https/ssh nur, `fsckObjects`, keine Zugangsdaten in URLs, Zugangsdaten bei Git/SSH-Agent, nicht in der App |
 | TB5 Server zu Zustandsordner | Hashes, Sitzungen, Registry | Rechte `0700`/`0600`, Registry mit Vault-`id`, kein Geheimnis im Vault |
@@ -168,7 +168,7 @@ flowchart LR
 |---|---|---|---|---|
 | T1 | Eine Person ändert Dateien lokal und umgeht damit die App-Rollen | Elevation | Rollen sind nur Oberfläche. Entscheidend ist der Hoster: Schutz des Standard-Branches, Pull Request, Freigabe (ADR 0014, 0015) | Wer Schreibrechte auf dem Hoster hat, kann Vorschläge machen. Prüfer müssen prüfen |
 | T2 | Commit unter fremdem Namen | Spoofing | Pull-Request-Autor ist der Hoster-Account. Signierte Commits optional bis Pflicht (ADR 0014) | Ohne Signatur sind Name und Adresse Eigenangaben |
-| T3 | Kompromittiertes Konto schleust Inhalte ein (bösartiges YAML, Link auf `~/.ssh`, riesige Datei) | Tampering, Info Disclosure, DoS | Prüfung vor dem Lesen (ADR 0021, Punkte 11 bis 15), Vault-CI mit denselben Regeln | Neue Angriffsarten in YAML-Bibliothek oder Markdown-Bereinigung |
+| T3 | Kompromittiertes Konto schleust Inhalte ein (bösartiges YAML, Link auf `~/.ssh`, riesige Datei) | Tampering, Info Disclosure, DoS | Prüfung vor dem Lesen (ADR 0021, Punkte 15 bis 24), Vault-CI mit denselben Regeln | Neue Angriffsarten in YAML-Bibliothek oder Markdown-Bereinigung |
 | T4 | Täuschung im Review: doppelter Schlüssel, Bidi-Zeichen, Unicode-Gleichaussehende in Keys | Spoofing der Prüfung | Strikter Lader, Zeichenregeln, Keys nur ASCII-Muster (ADR 0021, 0012) | Gleich aussehende ASCII-Keys (`l` und `1`) |
 | T5 | Befehlseinschleusung über URL, Branch-Name oder Pfad beim Aufruf von Git | Tampering | Argumentliste, `--`, feste Muster, `protocol.ext.allow=never`, URL-Regeln (ADR 0021) | Fehler in Git selbst: Mindestversion, Updates |
 | T6 | Bösartiger Klon (Hooks, Submodule, Filter, Attribute) | Elevation | Hooks aus Vorlage nicht geklont, `core.hooksPath` leer, Submodule aus, Treiber nur aus lokaler Konfiguration (ADR 0021, 17) | Git-Schwachstellen im Checkout (Mindestversion, `fsckObjects`) |
@@ -181,7 +181,16 @@ flowchart LR
 | T13 | Pull Request aus Fork führt CI mit Secrets aus | Elevation | `pull_request`, keine Secrets, `contents: read`, SHA-Pins (ADR 0021, 18) | Fehlkonfiguration im Vault |
 | T14 | Streit über Verlauf: jemand löscht oder verändert Historie | Repudiation | Force-Push verboten, Administratoren eingeschlossen; Review-Verlauf beim Hoster; Audit der App als Ergänzung (ADR 0014, 0015) | Ein Hoster-Administrator kann Regeln ändern |
 | T15 | Race: zwei Schreiber im selben Ordner (App und Editor) | Tampering | Dateisperre, Versionsvergleich (SHA-256 der Datei) vor dem Schreiben, atomares Schreiben (ADR 0008; `store.py`) | Externe Editoren ohne Sperre |
-| T16 | Abfluss über Fehlermeldungen oder Logs (Tokens in URLs) | Info Disclosure | Keine Zugangsdaten in URLs, Bereinigung der Meldungen (ADR 0021, 6, 10) | — |
+| T16 | Abfluss über Fehlermeldungen oder Logs (Tokens in URLs, Dateiinhalt in Pydantic-Meldungen) | Info Disclosure | Keine Zugangsdaten in URLs, `hide_input_in_errors`, gekürzte Meldungen (ADR 0021, 10, 24) | — |
+| T17 | **Code aus dem Vault:** `yaml.py` oder `chronicle/` in der Vault-Wurzel wird vom Merge-Treiber (`python -m`, Vault als cwd) importiert. **Belegt auf `main`** | Elevation | Treiber mit `-I`, App nie mit Vault als cwd, Allowlist der Vault-Wurzel in `check` und CI (ADR 0021, 2, 17, 18); Plan Teil 0 | Weitere Importwege über Umgebungsvariablen: Treiber setzt die Umgebung |
+| T18 | **Absturz durch YAML:** tief verschachtelte `[` (ca. 120 KB) lassen den C-Lader mit SIGSEGV abstürzen. **Belegt auf `main`** | DoS | Ereignisstrom-Vorabscan (Tiefe, Anker, Alias, Tags, Duplikate, Knotenzahl), reiner Python-Lader für Fremdinhalt (ADR 0021, 19) | Neue Parser-Fehler |
+| T19 | **Symlink beim Schreiben:** `.ev-1.yaml.tmp` oder `.chronicle.lock` als Link, die App schreibt durch den Link. **Belegt auf `main`** | Tampering | `O_NOFOLLOW`/`O_EXCL`/`mkstemp`, `lstat`, Modusprüfung `ls-tree -r` bei jedem `check` und Merge-Ergebnis (ADR 0021, 15, 16) | — |
+| T20 | **`.git/config` eines vorhandenen Klons** (`core.sshCommand` u. ä.) wird ausgeführt. **Belegt** | Elevation | Allowlist beim `vault add`, erwartete `origin`-URL in der Registry, `-c core.sshCommand=ssh` (ADR 0021, 6, 7) | Nach `vault add` geänderte Konfiguration: Prüfung vor jedem Fetch/Push |
+| T21 | **Ambient Authority:** der SSH-Agent des Benutzers bietet alle Schlüssel an, ein Fetch/Push kann mehr als nötig | Elevation | Nur benötigte Refs, Empfehlung eigener Deploy Key je Vault mit `IdentitiesOnly=yes` (ADR 0021, 8) | Betrieb |
+| T22 | Bericht oder Export enthält ungeprüfte Events als „geprüft“ | Spoofing | Berichte standardmäßig aus `origin/<standard>`, Kennzeichnung (ADR 0015, 15) | — |
+| T23 | DNS-Rebinding gegen den lokalen Server auf `127.0.0.1` | Elevation | Host-Prüfung, `Origin`-Prüfung zusätzlich zu CSRF (ADR 0021, 27) | — |
+| T24 | Manifest-Etikett (`id`) wird kopiert oder behauptet | Spoofing | Lokale ID als Schlüssel, Duplikate abgelehnt (ADR 0012, 0013) | — |
+| T25 | `.gitattributes`/Zeilenenden verändern Anhänge, Prüfsumme bricht oder täuscht | Tampering | Feste Konfiguration und Attribute, Allowlist für `.gitattributes` (ADR 0021, 22) | — |
 
 Nicht Teil dieses Modells: Angriffe auf das Betriebssystem des Arbeitsplatzes, Schwachstellen in Browser und Hoster, Insider mit Administratorrechten auf dem Hoster.
 
@@ -192,7 +201,7 @@ Nicht Teil dieses Modells: Angriffe auf das Betriebssystem des Arbeitsplatzes, S
 | Git ist nicht installiert oder zu alt | Server startet, zeigt Hinweis, Schreiben und Abgleich gesperrt, Lesen aus dem Index möglich |
 | Remote nicht erreichbar | `fetch`/`push` melden Zeitüberschreitung, lokal bleibt alles erhalten, Einreichen lässt sich später wiederholen |
 | `push` abgewiesen (Branch Protection, keine Rechte) | Meldung des Hosters (bereinigt) wird gezeigt, Arbeits-Branch bleibt lokal |
-| Konflikt beim Einführen von `origin/main` | Merge wird abgebrochen, Dateien werden genannt, Auflösung in der Oberfläche (Plan Teil 15) oder im Terminal |
+| Konflikt beim Einführen von `origin/main` | Merge wird abgebrochen, Dateien werden genannt, Auflösung in der Oberfläche (Plan Teil 15b) oder im Terminal |
 | Merge-Ergebnis besteht `check` nicht | Zurücksetzen auf den Stand vor dem Merge, Probleme werden angezeigt |
 | Vault-Ordner fehlt, `id` stimmt nicht, `format` unbekannt | Vault wird nicht geöffnet, andere Vaults bleiben nutzbar |
 | Index fehlt oder ist beschädigt | Neuaufbau aus den Dateien, kein Datenverlust |
@@ -200,7 +209,11 @@ Nicht Teil dieses Modells: Angriffe auf das Betriebssystem des Arbeitsplatzes, S
 | Zwei Instanzen auf demselben Klon | Dateisperre; wer sie nicht bekommt, bekommt einen Fehler statt Datenverlust |
 | Anhang fehlt oder Prüfsumme stimmt nicht | Anzeige mit Warnung, Lieferung verweigert (Konflikt), `check` schlägt fehl |
 | Angriffsmuster in Inhalten (Link, Alias, Bidi) | Datei wird abgelehnt, Vault bleibt mit dem letzten gültigen Index lesbar, Fehler mit Dateiname |
-| Pull Request wurde auf dem Hoster verworfen | Arbeits-Branch bleibt lokal. Die Änderungen sind weiter sichtbar („wartet auf Freigabe“), bis sie verworfen werden |
+| Pull Request wurde auf dem Hoster verworfen | Arbeits-Branch bleibt lokal. Die Änderungen sind weiter sichtbar („wartet auf Freigabe“), bis sie über „Arbeitsstand verwerfen“ zurückgenommen werden (Zustandsautomat in ADR 0015, Punkt 5) |
+| Remote-Arbeits-Branch ist weitergewandert | Remote-Branch wird eingeführt (Merge, nie `--force`), dann erneut gepusht |
+| Squash-Merge auf dem Hoster | Status „freigegeben“ über Blob-ID je Pfad, „abgeschlossen“ über Inhaltsgleichheit, nicht über Commit-Verwandtschaft |
+| `origin` in der Klon-Konfiguration weicht von der Registry ab | Fetch und Push werden verweigert |
+| Git zu alt oder fehlt | siehe oben; Version laut ADR 0021, Punkt 1 |
 
 ## 10. Bewusste Grenzen
 
@@ -208,5 +221,8 @@ Nicht Teil dieses Modells: Angriffe auf das Betriebssystem des Arbeitsplatzes, S
 - **Kein Server-Modus für Teams im ersten Ausbau** (ADR 0014). Jede Person arbeitet mit eigenem Klon.
 - **Keine Pull-Request-Anlage über die API** im ersten Ausbau (ADR 0015). Link statt Token.
 - **Kein Windows.** `fcntl`-Sperre, Dateirechte (ADR 0013).
-- **Keine Verweise zwischen Vaults** (ADR 0018).
+- **Keine Verweise zwischen Vaults**, und mehrere Vaults in einer Oberfläche sind zurückgestellt (ADR 0018).
+- **Container.** Das heutige Image (`python:3.12-slim`, ohne `git`/`ssh`, `read_only`, `cap_drop: ALL`) liest nur. Schreiben und Sync im Container sind ein eigener Plan-Teil (ADR 0013, Teil 8b).
+- **Vertraulichkeit pro Vault, nicht pro Topic.** `also_in` umgeht Topic-CODEOWNERS (ADR 0012).
+- **„Freigegeben“ heißt „im Standard-Branch“.** Ein erzwungenes Vier-Augen-Prinzip besteht nur mit passendem Hoster-Tarif und geprüfter Schutzregel (`chronicle vault doctor`, ADR 0015, Punkt 10).
 - **Historie lässt sich nicht verlässlich aus allen Kopien tilgen** (ADR 0020).
