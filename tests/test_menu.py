@@ -111,4 +111,14 @@ def test_header_offers_search_and_settings_on_every_page(db_path):
     for path in ["/", "/events", "/topics", "/account/password"]:
         html = client.get(path).text
         assert 'role="search"' in html and 'action="/suche"' in html, path
-        assert 'id="open-settings"' in html and 'id="settings-dialog"' in html, path
+        assert "data-open-settings" in html and 'id="settings-dialog"' in html, path
+
+
+def test_account_menu_for_small_screens_holds_the_account_controls(db_path):
+    client, _ = login(db_path, "viewer")
+    html = client.get("/topics").text
+
+    assert menu_links(html, "menu-account") == ["/hilfe", "/account/password"]
+    panel = re.search(r'<ul id="menu-account"[^>]*>(.*?)</ul>', html, re.S).group(1)
+    assert "data-open-settings" in panel and 'action="/logout"' in panel
+    assert html.count("<button type=\"button\" data-open-settings") == 2  # one in the menu, one in the header for wide screens
