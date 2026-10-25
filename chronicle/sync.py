@@ -20,6 +20,7 @@ from .loader import CheckFailed, TimelineError, parse_timeline
 from .models import Timeline
 from .store import folder_lock
 
+LINK_MODES = ("120000", "160000")  # symbolic link and submodule in a Git tree
 TOPIC_SUFFIXES = (".yaml", ".yml")  # the files the loader reads, see loader.find_topic_files
 
 
@@ -83,6 +84,9 @@ def base_timelines(data_dir: Path) -> dict[str, Timeline]:
     ref = base_ref(data_dir)
     if ref is None:
         return {}
+    linked = _linked_entries(data_dir, ref)
+    if linked:
+        raise SyncError(f"Der Stand {ref} enthält Links oder Submodule, die nicht erlaubt sind: {', '.join(linked)}")
     names = [name for name in _git(data_dir, "ls-tree", "-r", "--name-only", ref).splitlines()
              if name.endswith(TOPIC_SUFFIXES)]
     timelines = {}
@@ -92,6 +96,14 @@ def base_timelines(data_dir: Path) -> dict[str, Timeline]:
         except TimelineError as exc:
             raise SyncError(f"Der Stand {ref} enthält eine Datei, die nicht lesbar ist: {exc}") from exc
     return timelines
+
+
+def _linked_entries(data_dir: Path, ref: str) -> list[str]:
+    """The paths in the tree of ref that are a symbolic link (mode 120000) or a submodule (160000). Only the names."""
+    entries = _git(data_dir, "ls-tree", "-r", "-z", ref).split("\0")
+    # Each entry is "<mode> <type> <sha>\t<path>"; the path may hold any character except NUL.
+    return sorted(path for meta, _, path in (entry.partition("\t") for entry in entries if entry)
+                  if meta.split(" ", 1)[0] in LINK_MODES)
 
 
 def plan(base: Mapping[str, Timeline], current: Mapping[str, Timeline]) -> list[Change]:
@@ -132,10 +144,13 @@ def preview(data_dir: Path) -> Preview:
         current = {name: timeline for name, timeline, _ in load_named_folder(data_dir, evidence=False)}
     except CheckFailed as exc:
         return Preview(changes=[], problems=list(exc.problems))
+    except TimelineError as exc:  # e.g. a linked topic file
+        return Preview(changes=[], problems=[str(exc)])
     return Preview(changes=plan(base_timelines(data_dir), current), problems=[])
 
 
 REMOTE = "origin"
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent  # the folder that holds the chronicle package
 MERGE_DRIVER = "chronicle"  # the name in .gitattributes and in the git config, see chronicle/merge.py
 
 
@@ -179,6 +194,11 @@ def synchronise(data_dir: Path) -> SyncResult:
             return SyncResult(committed=committed, merged=False, conflicts=conflicts, problems=[])
 
         merged = _git(data_dir, "rev-parse", "HEAD").strip() != before
+        linked = _linked_entries(data_dir, "HEAD")
+        if linked:  # a link in the merged state would make the app read or write outside the folder
+            _git(data_dir, "reset", "--hard", before)
+            problems = [f"{name}: Links und Submodule sind im Datenordner nicht erlaubt" for name in linked]
+            return SyncResult(committed=committed, merged=False, conflicts=[], problems=problems)
         try:
             load_named_folder(data_dir, evidence=False)
         except CheckFailed as exc:
@@ -188,6 +208,17 @@ def synchronise(data_dir: Path) -> SyncResult:
         return SyncResult(committed=committed, merged=merged, conflicts=[], problems=[])
 
 
+def _driver_command() -> str:
+    """The merge driver as git runs it: in isolated mode, so that the data folder, which is its working directory,
+    and the environment add nothing to the module search path. A yaml.py in the folder would run otherwise.
+
+    -I also drops PYTHONPATH, so the program adds the folder of the chronicle package itself.
+    """
+    program = ("import sys; sys.path.insert(0, sys.argv[1]); from chronicle.merge import main; "
+               "raise SystemExit(main(sys.argv[2:]))")
+    return f"{shlex.quote(sys.executable)} -I -c {shlex.quote(program)} {shlex.quote(str(PACKAGE_ROOT))} %O %A %B"
+
+
 def _use_merge_driver(data_dir: Path) -> None:
     """Make the data folder use the merge driver of chronicle/merge.py. The setting is per clone, so it is set here.
 
@@ -195,7 +226,7 @@ def _use_merge_driver(data_dir: Path) -> None:
     """
     _git(data_dir, "config", "--local", f"merge.{MERGE_DRIVER}.name", "Chronicle: Feldebene")
     _git(data_dir, "config", "--local", f"merge.{MERGE_DRIVER}.driver",
-         f"{shlex.quote(sys.executable)} -m chronicle.merge %O %A %B")
+         _driver_command())
     attributes = data_dir / _git(data_dir, "rev-parse", "--git-path", "info/attributes").strip()
     existing = attributes.read_text(encoding="utf-8") if attributes.exists() else ""
     wanted = [f"*{suffix} merge={MERGE_DRIVER}" for suffix in TOPIC_SUFFIXES]

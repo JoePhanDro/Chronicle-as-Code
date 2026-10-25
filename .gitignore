@@ -11,3 +11,4 @@ __pycache__/
 # Write lock and temporary files of the topic writer (issue #89)
 .chronicle.lock
 .*.yaml.tmp
+.*.yaml.*.tmp

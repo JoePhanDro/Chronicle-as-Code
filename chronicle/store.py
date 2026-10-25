@@ -10,10 +10,13 @@ changed are touched (ruamel.yaml round trip).
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import hashlib
 import io
 import os
+import secrets
+import stat
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -327,7 +330,7 @@ def folder_lock(folder: Path) -> Iterator[None]:
     if key in _held.folders:
         yield
         return
-    with _thread_lock(key), (folder / LOCK_FILE).open("a") as handle:
+    with _thread_lock(key), _open_lock_file(folder) as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         _held.folders.add(key)
         try:
@@ -335,6 +338,17 @@ def folder_lock(folder: Path) -> Iterator[None]:
         finally:
             _held.folders.discard(key)
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _open_lock_file(folder: Path):
+    """The lock file, created if missing. A link under that name is an error: it would lock or create its target."""
+    try:
+        descriptor = os.open(folder / LOCK_FILE, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o666)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise StoreError(f"{LOCK_FILE} ist ein Link. Der Datenordner wird nicht beschrieben.") from exc
+        raise
+    return os.fdopen(descriptor, "r+b")
 
 
 def _yaml() -> YAML:
@@ -401,12 +415,32 @@ def _text(value: str):
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("wb") as handle:
-        handle.write(data)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    """Write path atomically: a new temporary file next to it, then rename. Never follows a link.
+
+    The temporary name is random and the file is created exclusively (O_EXCL, O_NOFOLLOW), so a link that
+    sits in the folder under any name is not written through. A target that is a link is refused. The file keeps its
+    mode; a new file gets the mode the umask gives it (the open call applies it).
+    """
+    try:
+        existing = path.lstat()
+    except FileNotFoundError:
+        existing = None
+    if existing is not None and stat.S_ISLNK(existing.st_mode):
+        raise StoreError(f"{path.name} ist ein Link und wird nicht beschrieben.")
+
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            if existing is not None:
+                os.fchmod(handle.fileno(), stat.S_IMODE(existing.st_mode))
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def _document(timeline: Timeline) -> dict:

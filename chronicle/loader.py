@@ -37,9 +37,24 @@ def find_topic_files(data_dir: Path) -> list[Path]:
         raise TimelineError(f"Datenordner existiert nicht: {data_dir}")
 
     files = sorted({path for pattern in TOPIC_FILE_PATTERNS for path in data_dir.rglob(pattern)})
+    linked = sorted(path.relative_to(data_dir).as_posix() for path in files if _link_below(data_dir, path))
+    if linked:
+        raise TimelineError("Links sind im Datenordner nicht erlaubt (nur die Namen, nie der Inhalt): " + ", ".join(linked))
     if not files:
         raise TimelineError(f"Keine YAML-Datei unterhalb von {data_dir} gefunden")
     return files
+
+
+def _link_below(base: Path, path: Path) -> Path | None:
+    """The first part of path below base (the path itself or a folder on the way) that is a symbolic link."""
+    if not path.is_relative_to(base):
+        return None
+    current = base
+    for part in path.relative_to(base).parts:
+        current = current / part
+        if current.is_symlink():
+            return current
+    return None
 
 
 # The C loader (libyaml) reads the same safe subset about eight times faster than the pure-Python one (issue #96).
@@ -83,7 +98,7 @@ def load_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Blob]:
 def collect_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Path]:
     """Map each evidence path (relative, posix) to its absolute source file.
 
-    Evidence must exist and must resolve (symlinks included) inside base_dir.
+    Evidence must exist, be no link and lie inside base_dir.
     """
     base = base_dir.resolve()
     found: dict[str, Path] = {}
@@ -92,7 +107,9 @@ def collect_evidence(timeline: Timeline, base_dir: Path) -> dict[str, Path]:
     for event in timeline.events:
         for item in event.evidence:
             source = (base / item.file).resolve()
-            if item.file in RESERVED_OUTPUT_NAMES:
+            if _link_below(base, base / item.file) is not None:
+                problems.append(f"{event.key}: '{item.file}' ist ein Link, Links sind nicht erlaubt")
+            elif item.file in RESERVED_OUTPUT_NAMES:
                 problems.append(f"{event.key}: '{item.file}' ist für die Ausgabe reserviert")
             elif not source.is_relative_to(base):
                 problems.append(f"{event.key}: '{item.file}' liegt außerhalb des Timeline-Ordners")

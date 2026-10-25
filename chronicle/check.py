@@ -31,9 +31,15 @@ def load_named_folder(
     database). With `evidence=False` the attachments are not required, which the CI needs because they are not in git.
     Raises CheckFailed with all problems found.
     """
-    problems: list[str] = []
+    problems = root_problems(data_dir)
     loaded: list[tuple[str, Timeline]] = []
-    for path in find_topic_files(data_dir):
+    try:
+        paths = find_topic_files(data_dir)
+    except TimelineError as exc:
+        if problems:
+            raise CheckFailed([*problems, str(exc)]) from exc
+        raise
+    for path in paths:
         name = path.relative_to(data_dir).as_posix()
         try:
             loaded.append((name, load_timeline(path)))
@@ -55,6 +61,29 @@ def load_named_folder(
     if problems:
         raise CheckFailed(problems)
     return items
+
+
+# Python imports these from the folder it runs in or is started with. A file or folder of this kind in the root of the
+# data folder could replace a module of the app (yaml, pydantic, chronicle) or run at start (sitecustomize).
+IMPORTABLE_SUFFIXES = (".py", ".pyc", ".pyw", ".pyd", ".so")
+IMPORTABLE_NAMES = ("chronicle", "sitecustomize", "usercustomize")
+
+
+def root_problems(data_dir: Path) -> list[str]:
+    """Code that Python would import from the root of the data folder: modules, extension modules, packages.
+
+    Only the root is looked at, because that is where a program started in the folder (the merge driver) finds it.
+    Python files below the root are data like everything else there.
+    """
+    if not data_dir.is_dir():
+        return []
+    problems = []
+    for entry in sorted(data_dir.iterdir()):
+        is_package = entry.is_dir() and any((entry / f"__init__{suffix}").exists() for suffix in IMPORTABLE_SUFFIXES)
+        if entry.name.endswith(IMPORTABLE_SUFFIXES) or entry.name.split(".")[0] in IMPORTABLE_NAMES or is_package:
+            problems.append(f"{entry.name}: Code gehört nicht in den Wurzelordner des Datenordners (Python würde ihn "
+                            "importieren), bitte entfernen")
+    return problems
 
 
 def check_folder(data_dir: Path, *, evidence: bool = True) -> list[str]:

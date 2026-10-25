@@ -353,3 +353,44 @@ def test_a_viewer_cannot_sync(tmp_path, folder, api_client):
     client = api_client(role="viewer")
 
     assert client.post("/api/v1/sync").status_code == 403
+
+
+def test_the_merge_driver_does_not_import_code_from_the_data_folder(tmp_path, folder, monkeypatch):
+    # git starts the driver with the data folder as working directory. A yaml.py there must not run.
+    monkeypatch.setenv("PYTHONPATH", str(ROOT))
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    edit(other, "timeline.yaml", 'details: |\n      Herstellerhinweis', 'details: |\n      Anna Notiz\n      Herstellerhinweis')
+    assert sync.synchronise(other).committed
+    edit(folder, "timeline.yaml", "status: resolved\n    details: |", "status: open\n    details: |")
+    git(folder, "commit", "-q", "-am", "lokal")
+    git(folder, "fetch", "-q", "origin")
+    marker = tmp_path / "marker"
+    (folder / "yaml.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
+    sync._use_merge_driver(folder)
+
+    merge = subprocess.run(["git", "-C", str(folder), "merge", "--no-edit", "origin/main"],
+                           capture_output=True, text=True, check=False)
+
+    assert not marker.exists()
+    assert merge.returncode == 0, merge.stdout + merge.stderr
+    assert "Anna Notiz" in (folder / "timeline.yaml").read_text(encoding="utf-8")
+
+
+def test_a_symlink_in_the_merged_state_is_refused_and_undone(tmp_path, folder):
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    (tmp_path / "geheim.yaml").write_text("topic: {key: x, title: GEHEIMER-INHALT}\n", encoding="utf-8")
+    (other / "link.yaml").symlink_to(tmp_path / "geheim.yaml")
+    git(other, "add", "link.yaml")
+    git(other, "commit", "-q", "-m", "Link")
+    git(other, "push", "-q", "origin", "main")
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Neu"')
+
+    result = sync.synchronise(folder)
+
+    assert result.problems and "link.yaml" in result.problems[0]
+    assert "GEHEIMER-INHALT" not in " ".join(result.problems)
+    assert not (folder / "link.yaml").exists()
+    assert subjects(folder)[0].startswith("Abgleich")  # the local commit stays, the merge is undone
+    assert git(remote, "log", "--format=%s", "main").splitlines()[0] == "Link"  # nothing was pushed
