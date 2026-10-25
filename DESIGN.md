@@ -139,7 +139,7 @@ Slate neutrals do the structural work; sky is the only accent; the rainbow belon
 **Body and Display Font:** Inter (with system-ui, sans-serif)
 **Mono Font:** JetBrains Mono (with ui-monospace)
 
-**Character:** A neutral grotesk for reading and a monospace for anything that is an identifier or a point in time. Fonts are loaded from Google Fonts on the dashboard page only; elsewhere they fall back to system fonts. This conflicts with the offline report goal and is unresolved (see Don'ts).
+**Character:** A neutral grotesk for reading and a monospace for anything that is an identifier or a point in time. Fonts are loaded from Google Fonts on the dashboard page only; elsewhere they fall back to system fonts. The external request conflicts with the aim of fully self-contained reports (ADR 0006 accepts CDN scripts for now) and is unresolved (see Don'ts).
 
 ### Hierarchy
 - **Title** (600, 1.25rem, 1.75rem): page headings (`h1`), always `text-strong`.
@@ -214,5 +214,5 @@ A 6px circle for status (in progress pulses at 1.8s). Phases colour timeline mar
 - **Don't** add a second interface accent next to sky.
 - **Don't** put shadows on lists, tables or in-page cards.
 - **Don't** hard-code dark-theme hex values in templates; the dashboard stylesheet still does in places and should be migrated.
-- **Don't** add new external font or script requests; the dashboard's Google Fonts link already conflicts with offline reports.
+- **Don't** add new external font or script requests; the dashboard's Google Fonts link and CDN scripts already make reports depend on the network (ADR 0006).
 - **Don't** remove or replace the focus outline; a colour change alone is not a focus indicator.
