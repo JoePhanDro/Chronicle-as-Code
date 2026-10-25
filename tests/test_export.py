@@ -225,3 +225,13 @@ def test_backup_cli_writes_a_timestamped_file_into_a_folder(source_db, tmp_path,
     assert len(written) == 1  # the index copy; the operations copy sits beside it as chronicle-*.ops.db
     assert len(list(folder.glob("chronicle-*.ops.db"))) == 1
     assert str(written[0]) in capsys.readouterr().out
+
+
+def test_a_topic_file_over_the_size_limit_is_reported(source_db, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("chronicle.exporter.MAX_YAML_BYTES", 3000)  # the sample topic is bigger, the project topic is not
+
+    code = export_main(["--db", str(source_db), "--out", str(tmp_path / "export")])
+
+    assert code == 0
+    assert (tmp_path / "export" / "inc-2026-042.yaml").exists()  # the export is written all the same
+    assert "Warnung: inc-2026-042.yaml ist größer als" in capsys.readouterr().err

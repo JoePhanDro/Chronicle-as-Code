@@ -37,6 +37,7 @@ from .store import (
     StoreError,
     _event_document,
     _evidence_document,
+    _load_document,
     _put,
     _read_model,
     _set_changed_fields,
@@ -179,7 +180,7 @@ def merge_texts(base_text: str, ours_text: str, theirs_text: str) -> str:
     theirs = _read_model(theirs_text)
     merged = merge_timelines(base, ours, theirs)
 
-    document = _yaml().load(ours_text)
+    document = _load_document(ours_text)
     _apply(document, ours, merged)
     stream = io.StringIO()
     _yaml().dump(document, stream)

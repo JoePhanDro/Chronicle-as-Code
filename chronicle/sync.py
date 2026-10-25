@@ -19,9 +19,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .check import load_named_folder
-from .loader import TOPIC_SUFFIXES, CheckFailed, TimelineError, parse_timeline
+from .loader import TOPIC_SUFFIXES, CheckFailed, TimelineError, decode_topic_bytes, parse_timeline
 from .models import Timeline
 from .store import StoreError, folder_lock
+from .yamlscan import MAX_YAML_BYTES, TOO_LARGE, one_line
 
 LINK_MODES = ("120000", "160000")  # symbolic link and submodule in a Git tree
 
@@ -43,10 +44,10 @@ class Preview:
     problems: list[str]  # not empty: the files fail the checks, so no plan can be made
 
 
-def _run(data_dir: Path, *args: str) -> subprocess.CompletedProcess:
-    """Run git in the data folder. The exit code is the caller's to read."""
+def _run(data_dir: Path, *args: str, text: bool = True) -> subprocess.CompletedProcess:
+    """Run git in the data folder. The exit code is the caller's to read. With text=False the output stays bytes."""
     try:
-        return subprocess.run(["git", "-C", str(data_dir), *args], capture_output=True, text=True, check=False)
+        return subprocess.run(["git", "-C", str(data_dir), *args], capture_output=True, text=text, check=False)
     except FileNotFoundError as exc:
         raise SyncError("Git ist auf diesem Rechner nicht installiert.") from exc
 
@@ -55,6 +56,18 @@ def _git(data_dir: Path, *args: str) -> str:
     result = _run(data_dir, *args)
     if result.returncode != 0:
         raise SyncError(f"Git meldet einen Fehler: {result.stderr.strip() or result.returncode}")
+    return result.stdout
+
+
+def _blob(data_dir: Path, ref: str, name: str) -> bytes:
+    """The bytes of a file at ref. The size is asked first, so that a huge blob is never read into memory."""
+    where = f"{ref}: {name}"
+    size = _git(data_dir, "cat-file", "-s", f"{ref}:{name}").strip()
+    if not size.isdigit() or int(size) > MAX_YAML_BYTES:
+        raise TimelineError(f"{one_line(where)}: {TOO_LARGE}")
+    result = _run(data_dir, "show", f"{ref}:{name}", text=False)
+    if result.returncode != 0:
+        raise SyncError(f"Git meldet einen Fehler beim Lesen von {one_line(where)}")
     return result.stdout
 
 
@@ -96,7 +109,8 @@ def base_timelines(data_dir: Path) -> dict[str, Timeline]:
     timelines = {}
     for name in names:
         try:
-            timelines[name] = parse_timeline(_git(data_dir, "show", f"{ref}:{name}"), f"{ref}: {name}")
+            where = f"{ref}: {name}"
+            timelines[name] = parse_timeline(decode_topic_bytes(_blob(data_dir, ref, name), where), where)
         except TimelineError as exc:
             raise SyncError(f"Der Stand {ref} enthält eine Datei, die nicht lesbar ist: {exc}") from exc
     return timelines
