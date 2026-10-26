@@ -1148,6 +1148,24 @@ def get_event(conn: sqlite3.Connection, key: str) -> dict | None:
     return event
 
 
+def get_event_links(conn: sqlite3.Connection, key: str) -> dict[str, list[dict]]:
+    """The events that caused this one (its triggered_by) and the events it triggered, by time.
+
+    Each entry has key, action, t0, phase and status; an unknown key gives two empty lists."""
+    fields = "key, action, t0, phase, status"
+    own = conn.execute("SELECT triggered_by FROM events WHERE key = ?", (key,)).fetchone()
+    cause_keys = _triggers_from_db(own["triggered_by"]) if own else []
+    causes = []
+    if cause_keys:
+        marks = ",".join("?" * len(cause_keys))
+        causes = [dict(row) for row in conn.execute(
+            f"SELECT {fields} FROM events WHERE key IN ({marks}) ORDER BY t0, key", cause_keys)]
+    effects = [dict(row) for row in conn.execute(
+        f"SELECT {fields} FROM events WHERE EXISTS "
+        "(SELECT 1 FROM json_each(events.triggered_by) WHERE json_each.value = ?) ORDER BY t0, key", (key,))]
+    return {"causes": causes, "effects": effects}
+
+
 def search_actors(conn: sqlite3.Connection, text: str, limit: int = 20) -> list[str]:
     """Actor names that contain `text`, not case-sensitive, alphabetically."""
     rows = conn.execute(

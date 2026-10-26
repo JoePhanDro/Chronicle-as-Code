@@ -38,12 +38,16 @@ def test_analyst_creates_edits_and_deletes_an_event(login, app_url):
     assert page.url == f"{app_url}/events/{key}"
 
     edit_form = page.locator(f'form[action="/events/{key}/edit"]')
+    expect(edit_form.locator("input[name=action]")).to_be_hidden()  # the edit panel starts closed
+    page.get_by_role("link", name="Bearbeiten").click()
+    expect(edit_form.locator("input[name=action]")).to_be_focused()
     edit_form.locator("input[name=action]").fill("UI-Test Ereignis geändert")
     edit_form.get_by_role("button", name="Speichern").click()
     expect(page.get_by_role("heading", name="UI-Test Ereignis geändert")).to_be_visible()
 
+    page.get_by_role("link", name="Bearbeiten").click()  # saving closes the panel again; delete sits inside it
     page.on("dialog", lambda dialog: dialog.accept())  # the delete button asks for confirmation
-    page.get_by_role("button", name="Löschen").click()
+    page.get_by_role("button", name="Event löschen").click()
 
     expect(page).to_have_url(f"{app_url}/events")
     expect(page.get_by_role("link", name="UI-Test Ereignis geändert")).to_have_count(0)

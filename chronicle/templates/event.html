@@ -38,23 +38,67 @@
   </form>
 
 {% else %}
-  <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-    <div>
-      <div class="font-mono text-xs text-slate-500">{{ event.key }} · Version {{ event.version }} · {{ 'manuell bearbeitet' if event.source == 'manual' else 'aus Import' }}</div>
-      <h1 class="mt-1 text-xl font-semibold text-slate-100">{{ event.action }}</h1>
-      <p class="mt-1 text-sm text-slate-400">{{ event.t0[:16].replace('T', ' ') }} UTC · {{ event.phase }} · {{ event.actor }}{% if event.system %} · {{ event.system }}{% endif %}</p>
+  {% set status_text = {'open': 'offen', 'in_progress': 'in Arbeit', 'resolved': 'abgeschlossen'} %}
+  {% set status_dot = {'open': 'bg-rose-500', 'in_progress': 'bg-amber-500 motion-safe:animate-pulse', 'resolved': 'bg-emerald-500'} %}
+  {% set causes = links.causes if links else [] %}
+  {% set effects = links.effects if links else [] %}
+  <header class="mb-8">
+    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <div class="font-mono text-xs text-slate-400">{{ event.key }} · Version {{ event.version }} · {{ 'manuell bearbeitet' if event.source == 'manual' else 'aus Import' }}</div>
+      {% if editing %}<a href="#bearbeiten" id="edit-link" class="text-sm text-sky-300 hover:underline max-sm:flex max-sm:min-h-11 max-sm:items-center">Bearbeiten</a>{% endif %}
     </div>
-    {% if can_write %}
-    <form method="post" action="/events/{{ event.key }}/delete" onsubmit="return confirm('Event wirklich löschen?');">
-      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-      <button type="submit" class="rounded-lg border border-rose-400/30 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-500/10">Löschen</button>
-    </form>
+    <h1 class="mt-1 text-xl font-semibold text-slate-100">{{ event.action }}</h1>
+    <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-y border-white/10 py-4 text-sm sm:grid-cols-4">
+      <div>
+        <dt class="text-xs text-slate-400">Zeit (<span data-zone-label>UTC</span>)</dt>
+        <dd class="mt-0.5 font-mono text-slate-100"><time data-utc="{{ event.t0 }}">{{ event.t0[:16].replace('T', ' ') }}</time></dd>
+      </div>
+      <div>
+        <dt class="text-xs text-slate-400">Phase</dt>
+        <dd class="mt-0.5 flex items-center gap-2 text-slate-100"><span class="h-2 w-2 flex-none rounded-full" style="background: {{ phase_color(event.phase) }}" aria-hidden="true"></span>{{ event.phase }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs text-slate-400">Status</dt>
+        <dd class="mt-0.5 flex items-center gap-2 text-slate-100"><span class="h-2 w-2 flex-none rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>{{ status_text[event.status] if event.status in status_text else event.status }}</dd>
+      </div>
+      <div>
+        <dt class="text-xs text-slate-400">Akteur{% if event.system %} und System{% endif %}</dt>
+        <dd class="mt-0.5 text-slate-100">
+          <a href="/events?actor={{ event.actor | urlencode }}" class="hover:underline">{{ event.actor }}</a>
+          {% if event.system %}<a href="/events?system={{ event.system | urlencode }}" class="block font-mono text-xs text-slate-400 hover:underline">{{ event.system }}</a>{% endif %}
+        </dd>
+      </div>
+    </dl>
+  </header>
+
+  {% if causes or effects %}
+  <div class="mb-8 grid gap-6 sm:grid-cols-2">
+    {% for heading, items in (('Ausgelöst durch', causes), ('Löste aus', effects)) %}
+    {% if items %}
+    <section>
+      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{{ heading }}</h2>
+      <ul class="divide-y divide-white/10 rounded-xl border border-white/10">
+        {% for other in items %}
+        <li>
+          <a href="/events/{{ other.key }}" data-list-row class="flex items-start gap-3 px-3 py-2 hover:bg-white/5">
+            <span class="mt-1.5 h-2 w-2 flex-none rounded-full" style="background: {{ phase_color(other.phase) }}" aria-hidden="true"></span>
+            <span class="min-w-0">
+              <span class="block text-sm text-slate-100">{{ other.action }}</span>
+              <span class="block font-mono text-xs text-slate-400"><time data-utc="{{ other.t0 }}">{{ other.t0[:16].replace('T', ' ') }}</time> · {{ other.phase }}</span>
+            </span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
     {% endif %}
+    {% endfor %}
   </div>
+  {% endif %}
 
   {% if event.details %}
   <section class="mb-8 rounded-xl border border-white/10 bg-white/[.02] p-5">
-    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Details</h2>
+    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Beschreibung</h2>
     <div class="prose prose-chronicle max-w-none text-sm prose-a:text-sky-300">{{ event | event_details }}</div>
   </section>
   {% endif %}
@@ -62,7 +106,7 @@
   <section class="mb-8">
     <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence</h2>
     {% if event.evidence %}
-    <ul class="grid gap-4 sm:grid-cols-2">
+    <ul class="grid gap-4 {{ 'sm:grid-cols-2' if event.evidence | length > 1 }}">
       {% for item in event.evidence %}
       <li class="flex flex-col rounded-xl border border-white/10 bg-white/[.02] p-3">
         {% if item.mime %}
@@ -77,7 +121,7 @@
           <span class="break-all text-sm text-slate-300">{{ item.file }}</span>
           <span class="mt-1 text-xs text-amber-300">Inhalt fehlt. Bitte den Import erneut ausführen.</span>
         {% endif %}
-        <div class="mt-1 text-xs text-slate-500"><span class="font-mono">{{ item.type }}</span>{% if item.description %} · {{ item.description }}{% endif %}</div>
+        <div class="mt-1 text-xs text-slate-400"><span class="font-mono">{{ item.type }}</span>{% if item.description %} · {{ item.description }}{% endif %}</div>
         {% if can_write %}
         <form method="post" action="/events/{{ event.key }}/evidence/{{ item.id }}/delete" class="mt-auto pt-3"
               onsubmit="return confirm('Evidence wirklich löschen?');">
@@ -89,7 +133,7 @@
       {% endfor %}
     </ul>
     {% else %}
-    <p class="text-sm text-slate-500">Noch keine Evidence.</p>
+    <p class="text-sm text-slate-400">Noch keine Evidence.{% if can_write %} Screenshot, Log oder PDF lassen sich unten hochladen.{% endif %}</p>
     {% endif %}
 
     {% if can_write %}
@@ -118,20 +162,41 @@
 
   <section class="mb-8 text-sm text-slate-400">
     <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Topics</h2>
-    {% for topic in event.topics %}<span class="mr-2 rounded-md bg-white/5 px-2 py-0.5 font-mono text-xs text-slate-300">{{ topic }}</span>{% endfor %}
+    {% for topic in event.topics %}<a href="/topics/{{ topic }}" class="mr-2 inline-block rounded-md bg-white/5 px-2 py-0.5 font-mono text-xs text-slate-300 hover:bg-white/10 hover:text-white">{{ topic }}</a>{% endfor %}
   </section>
 
   {% if editing %}
-  <section>
-    <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Bearbeiten</h2>
-    {% set f = edit_form(event) %}
-    <form method="post" action="/events/{{ event.key }}/edit" class="space-y-6">
-      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-      <input type="hidden" name="version" value="{{ event.version }}">
-      {% include "_event_fields.html" %}
-      <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Speichern</button>
-    </form>
-  </section>
+  <details id="bearbeiten" class="rounded-xl border border-white/10" {{ 'open' if errors }}>
+    <summary class="cursor-pointer select-none rounded-xl px-5 py-3 text-sm font-medium text-slate-200 hover:bg-white/5">Bearbeiten</summary>
+    <div class="border-t border-white/10 p-5">
+      {% set f = edit_form(event) %}
+      <form method="post" action="/events/{{ event.key }}/edit" class="space-y-6">
+        <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+        <input type="hidden" name="version" value="{{ event.version }}">
+        {% include "_event_fields.html" %}
+        <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Speichern</button>
+      </form>
+
+      <div class="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
+        <p class="max-w-md text-sm text-slate-400">Das Event wird mit seinen {{ event.evidence | length }} Evidence-Dateien entfernt. {% if effects %}Es löst {{ effects | length }} weitere{{ 's' if effects | length == 1 }} Event{{ 's' if effects | length != 1 }} aus: Der Server lehnt das Löschen ab, bis dort der Verweis entfernt ist.{% endif %}</p>
+        <form method="post" action="/events/{{ event.key }}/delete"
+              onsubmit='return confirm({{ ("Event „" ~ event.action ~ "“ (" ~ event.key ~ ") wirklich löschen?") | tojson }});'>
+          <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+          <button type="submit" class="rounded-lg border border-rose-400/30 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-500/10">Event löschen</button>
+        </form>
+      </div>
+    </div>
+  </details>
+  <script>
+    // The "Bearbeiten" link in the header opens the panel and moves the focus to it.
+    document.getElementById('edit-link')?.addEventListener('click', event => {
+      event.preventDefault();
+      const panel = document.getElementById('bearbeiten');
+      panel.open = true;
+      panel.scrollIntoView({ block: 'start' });
+      panel.querySelector('input:not([type=hidden]):not([readonly]), select, textarea')?.focus();
+    });
+  </script>
   {% endif %}
 {% endif %}
 {% endblock %}

@@ -1,0 +1,69 @@
+"""Event page, read view: the facts, what caused the event and what it caused, editing and deleting out of the way."""
+
+from pathlib import Path
+
+import pytest
+
+from chronicle import repository
+from chronicle.pages import TEMPLATES
+
+INPUT_CSS = (Path(__file__).resolve().parent.parent / "chronicle" / "static" / "input.css").read_text(encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def insecure_cookies(monkeypatch):
+    monkeypatch.setenv("CHRONICLE_COOKIE_SECURE", "0")
+
+
+def test_links_give_causes_and_effects_by_time(conn):
+    links = repository.get_event_links(conn, "exploit")
+    assert [event["key"] for event in links["causes"]] == ["feed-cve"]
+    assert [event["key"] for event in links["effects"]] == ["analysis"]
+    # an event with two effects lists both, earliest first
+    assert [event["key"] for event in repository.get_event_links(conn, "feed-cve")["effects"]] == ["siem-alert", "exploit"]
+    assert repository.get_event_links(conn, "gibt-es-nicht") == {"causes": [], "effects": []}
+
+
+def test_phase_colour_has_a_neutral_fallback_for_old_data():
+    colour = TEMPLATES.env.globals["phase_color"]
+    assert colour("Exploit") == "#ef4444"
+    assert colour("Phase aus alten Daten") == "#94a3b8"
+
+
+def test_read_view_shows_phase_status_time_and_the_neighbouring_events(api_client):
+    html = api_client("viewer").get("/events/exploit").text
+    assert "Ausgelöst durch" in html and "Löste aus" in html
+    assert 'href="/events/feed-cve"' in html and 'href="/events/analysis"' in html
+    assert 'style="background: #ef4444"' in html  # the phase colour dot of Exploit
+    assert "in Arbeit" in html  # status in words, not only in the edit form
+    assert '<time data-utc="2026-10-14T06:40:00' in html  # honours the zone setting
+    assert 'href="/events?actor=' in html and 'href="/events?system=wp-portal-01"' in html
+    assert 'href="/topics/inc-2026-042"' in html
+
+
+def test_viewers_see_neither_edit_panel_nor_delete(api_client):
+    html = api_client("viewer").get("/events/exploit").text
+    assert 'id="bearbeiten"' not in html and "Event löschen" not in html and 'id="edit-link"' not in html
+
+
+def test_analysts_get_a_closed_edit_panel_with_delete_at_its_end(api_client):
+    html = api_client("analyst").get("/events/exploit").text
+    assert '<details id="bearbeiten" class="rounded-xl border border-white/10" >' in html  # closed
+    assert html.index('id="bearbeiten"') < html.index("Event löschen")  # delete is inside the panel, last
+    assert 'id="edit-link"' in html
+    # the confirmation names the event and its key
+    assert "Event " + chr(92) + "u201eRemote Code Execution erfolgreich" + chr(92) + "u201c (exploit) wirklich l" + chr(92) + "u00f6schen?" in html
+    assert "Es löst 1 weiteres Event aus" in html  # an event that others depend on says so before the click
+
+
+def test_a_failed_edit_opens_the_panel_again(api_client):
+    client = api_client("analyst")
+    token = client.get("/api/v1/auth/me").json()["csrf_token"]
+    response = client.post("/events/exploit/edit", data={"csrf_token": token, "version": "999"})
+    assert response.status_code in (409, 422, 200)
+    assert '<details id="bearbeiten" class="rounded-xl border border-white/10" open>' in response.text
+    assert 'role="alert"' in response.text
+
+
+def test_markdown_headings_in_details_stay_below_the_page_title():
+    assert ":root:root .prose-chronicle h1 { font-size: 1.25em; }" in INPUT_CSS  # 17.5px under a 20px title
