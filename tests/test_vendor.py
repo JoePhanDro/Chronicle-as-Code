@@ -58,3 +58,41 @@ def test_a_rendered_dashboard_embeds_the_libraries_without_requests():
     for name in ("vis-timeline-graph2d.min.js", "vis-network.min.js"):
         assert (VENDOR / name).read_text(encoding="utf-8") in html
     assert "/static/vendor" not in html and "cdn.jsdelivr.net/npm/vis-" not in html
+
+
+FONTS = [
+    "inter-latin-wght-normal.woff2",
+    "jetbrains-mono-latin-400-normal.woff2",
+    "jetbrains-mono-latin-500-normal.woff2",
+]
+
+
+@pytest.mark.parametrize("name", FONTS)
+def test_font_matches_the_hash_in_its_readme(name):
+    readme = (VENDOR / "README.md").read_text(encoding="utf-8")
+    row = next(line for line in readme.splitlines() if f"`{name}`" in line)
+    assert sha384(VENDOR / "fonts" / name) in row
+
+
+def test_font_licenses_are_shipped():
+    assert {"Inter.LICENSE-OFL.txt", "JetBrainsMono.LICENSE-OFL.txt"} <= {path.name for path in (VENDOR / "fonts").iterdir()}
+
+
+def test_the_app_dashboard_links_the_fonts_and_asks_no_font_service(api_client):
+    client = api_client("viewer")
+    html = client.get("/topics/inc-2026-042/dashboard").text
+    for name in FONTS:
+        assert f"/static/vendor/fonts/{name}" in html
+        assert client.get(f"/static/vendor/fonts/{name}").status_code == 200
+    assert "googleapis" not in html and "gstatic" not in html
+
+
+def test_a_report_embeds_the_fonts_as_data():
+    from chronicle.loader import load_timeline
+    from chronicle.renderer import render_dashboard
+
+    from tests.conftest import DATA_DIR
+
+    html = render_dashboard(load_timeline(DATA_DIR / "timeline.yaml"))
+    assert html.count("data:font/woff2;base64,") == 3
+    assert "googleapis" not in html and "gstatic" not in html and "/static/vendor" not in html
