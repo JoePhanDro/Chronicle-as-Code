@@ -18,10 +18,8 @@ def js(text):
 
 
 def create_empty_topic(client, key="leer"):
-    token = client.headers["X-CSRF-Token"]
-    response = client.post("/topics/new", data={"key": key, "title": "Leeres Topic", "kind": "project", "csrf_token": token},
-                           follow_redirects=False)
-    assert response.status_code == 303, response.text
+    response = client.post("/api/v1/topics", json={"key": key, "title": "Leeres Topic", "kind": "project"})
+    assert response.status_code == 201, response.text
 
 
 def test_most_pressing_status():

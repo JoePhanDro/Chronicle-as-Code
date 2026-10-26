@@ -24,10 +24,10 @@ from .admin_pages import make_admin_pages
 from .auth import PasswordChangeRequired, SetupState, client_ip, make_auth, parse_trusted_proxies
 from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
-from .models import Phase, Status, Topic
+from .models import Phase, Status, Topic, TopicCreate
 from .pages import make_pages, not_found_page
 from .report import make_report, report_headers
-from .event_input import EventCreate, EventUpdate, event_of, new_event_key, topic_list
+from .event_input import EventCreate, EventUpdate, event_of, new_event_key, new_topic_key, topic_list
 
 DEFAULT_DB = "/data/chronicle.db"
 STATIC_DIR = Path(__file__).parent / "static"
@@ -222,8 +222,9 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
                 "problems": result.problems}
 
     @app.post("/api/v1/topics", status_code=201)
-    def create_topic(body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
-        return _write(lambda: repository.create_topic(conn, body, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
+    def create_topic(body: TopicCreate, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
+        topic = Topic.model_validate({**body.model_dump(), "key": body.key or new_topic_key()})
+        return _write(lambda: repository.create_topic(conn, topic, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
 
     @app.put("/api/v1/topics/{key}")
     def update_topic(key: str, body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:

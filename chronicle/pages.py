@@ -24,7 +24,7 @@ from .exporter import ExportError
 from .markdown import markdown_filter
 from .report import make_dashboard, make_report, report_headers
 from .models import PHASE_COLORS, STATUS_LABELS, Phase, Status, Topic, TopicKind
-from .event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
+from .event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, new_topic_key, t0_from_parts, t0_parts, topic_list
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 def _event_details(event: dict) -> Markup:
@@ -86,7 +86,6 @@ def _payload_from_form(form, topic_home: str | None = None) -> dict:
 
 def _topic_values(form) -> dict:
     return {
-        "key": (form.get("key") or "").strip(),
         "title": (form.get("title") or "").strip(),
         "kind": form.get("kind") or "other",
         "summary": form.get("summary") or "",
@@ -412,7 +411,15 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             return render(request, "forbidden.html", user, status_code=403)
         values = _topic_values(form)
         try:
-            created = repository.create_topic(conn, Topic.model_validate(values), user["id"], client_ip(request), data_dir=request.app.state.data_dir)
+            # The UI never asks for a key. A clash with an existing one is a one in four billion chance per day; try again.
+            for attempt in range(3):
+                try:
+                    created = repository.create_topic(conn, Topic.model_validate({**values, "key": new_topic_key()}),
+                                                      user["id"], client_ip(request), data_dir=request.app.state.data_dir)
+                    break
+                except repository.Conflict:
+                    if attempt == 2:
+                        raise
         except (ValidationError, repository.RepositoryError) as exc:
             status = 409 if isinstance(exc, repository.Conflict) else 422
             return render(request, "topic.html", user, status_code=status, mode="new", topic=None, events=[], addable=[],

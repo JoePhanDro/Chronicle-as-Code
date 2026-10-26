@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -50,19 +51,41 @@ def test_analyst_creates_a_topic_and_links_events_in_the_ui(db_path):
 
     created = anna.post(
         "/topics/new",
-        data={"csrf_token": csrf, "key": "projekt-x", "title": "Projekt X", "kind": "project", "summary": "Härtung"},
+        data={"csrf_token": csrf, "title": "Projekt X", "kind": "project", "summary": "Härtung"},
         follow_redirects=False,
     )
     assert created.status_code == 303
-    assert created.headers["location"] == "/topics/projekt-x"
+    location = created.headers["location"]
+    key = location.rsplit("/", 1)[-1]
+    assert re.fullmatch(r"tp-\d{8}-[0-9a-f]{8}", key)  # the UI assigns the key
 
-    linked = anna.post("/topics/projekt-x/link", data={"csrf_token": csrf, "event": "mitigation"}, follow_redirects=False)
+    linked = anna.post(f"/topics/{key}/link", data={"csrf_token": csrf, "event": "mitigation"}, follow_redirects=False)
     assert linked.status_code == 303
-    assert linked.headers["location"] == "/topics/projekt-x"
+    assert linked.headers["location"] == location
 
-    events = anna.get("/api/v1/topics/projekt-x/events").json()
+    events = anna.get(f"/api/v1/topics/{key}/events").json()
     assert [event["key"] for event in events] == ["mitigation"]
-    assert "Projekt X" in anna.get("/topics/projekt-x").text
+    assert "Projekt X" in anna.get(location).text
+
+
+def test_ui_ignores_a_key_in_the_form_and_the_form_does_not_ask_for_one(db_path):
+    anna = api_login(db_path, "anna")
+    assert 'name="key"' not in anna.get("/topics/new").text
+    created = anna.post(
+        "/topics/new",
+        data={"csrf_token": anna.headers["X-CSRF-Token"], "key": "mein-key", "title": "X", "kind": "project"},
+        follow_redirects=False,
+    )
+    assert created.headers["location"] != "/topics/mein-key" and created.headers["location"].startswith("/topics/tp-")
+    assert anna.get("/api/v1/topics/mein-key").status_code == 404
+
+
+def test_api_generates_a_key_when_none_is_given_and_keeps_a_given_one(db_path):
+    anna = api_login(db_path, "anna")
+    generated = anna.post("/api/v1/topics", json={"title": "Ohne Key", "kind": "project"})
+    assert generated.status_code == 201 and re.fullmatch(r"tp-\d{8}-[0-9a-f]{8}", generated.json()["key"])
+    assert anna.post("/api/v1/topics", json=topic_body()).json()["key"] == "projekt-x"
+    assert anna.post("/api/v1/topics", json={"title": "Y", "key": "mit leerzeichen"}).status_code == 422
 
 
 # Roles and rules
@@ -135,7 +158,7 @@ def test_html_forms_need_the_csrf_token(db_path):
     anna = api_login(db_path, "anna")
     response = anna.post(
         "/topics/new",
-        data={"csrf_token": "falsch", "key": "projekt-x", "title": "X", "kind": "project"},
+        data={"csrf_token": "falsch", "title": "X", "kind": "project"},
         follow_redirects=False,
     )
     assert response.status_code == 403
@@ -157,8 +180,8 @@ def test_html_form_shows_validation_errors(db_path):
     anna = api_login(db_path, "anna")
     response = anna.post(
         "/topics/new",
-        data={"csrf_token": anna.headers["X-CSRF-Token"], "key": "mit leerzeichen", "title": "X", "kind": "project"},
+        data={"csrf_token": anna.headers["X-CSRF-Token"], "title": "", "kind": "project"},
         follow_redirects=False,
     )
     assert response.status_code == 422
-    assert "key" in response.text
+    assert "title" in response.text

@@ -224,7 +224,7 @@ Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ers
 | `/suche` | angemeldet | Suche in Ereignissen, Akteuren und Systemen, als getrennte Treffer. Aufruf aus der Kopfzeile oder mit `/` |
 | `/hilfe` | angemeldet | Tastenkürzel und Erklärung der Einstellungen |
 | `/topics` | angemeldet | alle Topics mit Anzahl der Events |
-| `/topics/new` | analyst, admin | Topic anlegen (Key, Titel, Art, Zusammenfassung) |
+| `/topics/new` | analyst, admin | Topic anlegen (Titel, Art, Zusammenfassung). Den Key vergibt der Server |
 | `/topics/{key}` | angemeldet | Topic und seine Events; bearbeiten, löschen, Events verknüpfen und lösen für analyst und admin. Enthält das Dashboard als eingebettete Ansicht |
 | `/topics/{key}/dashboard` | angemeldet | Dashboard des Topics: Timeline, Entitäten-Graph und Details (die Ansicht auf `/topics/{key}` lädt sie als Frame) |
 | `/events/new` | analyst, admin | Event anlegen |
@@ -251,7 +251,7 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | GET | `/topics/{key}/events` | angemeldet | Events eines Topics, zeitlich sortiert |
 | GET | `/events` | angemeldet | alle Events, optional `?topic=<key>` |
 | GET | `/events/{key}` | angemeldet | ein Event mit Evidence-Metadaten und Topics |
-| POST | `/topics` | analyst, admin | Topic anlegen (`key`, `title`, `kind`, `summary`) |
+| POST | `/topics` | analyst, admin | Topic anlegen (`title`, `kind`, `summary`). `key` ist optional, ohne Key vergibt der Server einen (`tp-<Datum>-<zufällig>`) |
 | PUT | `/topics/{key}` | analyst, admin | Titel, Art oder Zusammenfassung ändern. Der Key bleibt |
 | DELETE | `/topics/{key}` | analyst, admin | Topic löschen (409, solange Heimat-Events darin liegen) |
 | POST | `/topics/{key}/events` | analyst, admin | Event mit dem Topic verknüpfen (JSON `{event}`) |

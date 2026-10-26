@@ -29,7 +29,7 @@ def test_every_column_header_has_a_scope(name):
     assert "<th " in text and text.count("<th ") == text.count('<th scope="col"')
 
 
-@pytest.mark.parametrize("name", ["_event_fields", "topic"])
+@pytest.mark.parametrize("name", ["_event_fields"])
 def test_key_pattern_escapes_the_hyphen_so_browsers_with_the_v_flag_keep_it(name):
     # "[...._-]" is a syntax error with the v flag, the browser then drops the pattern and the key is not checked
     text = (TEMPLATES / f"{name}.html").read_text(encoding="utf-8")
