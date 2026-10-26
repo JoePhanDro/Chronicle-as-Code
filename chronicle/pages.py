@@ -24,7 +24,7 @@ from .exporter import ExportError
 from .markdown import markdown_filter
 from .loader import TimelineError
 from .report import make_dashboard, make_report, report_headers
-from .models import PHASE_COLORS, Phase, Status, Topic, TopicKind
+from .models import PHASE_COLORS, STATUS_LABELS, Phase, Status, Topic, TopicKind
 from .event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -116,6 +116,11 @@ TEMPLATES.env.globals["edit_form"] = edit_form
 # Phase colour for the dot next to a phase name; a name outside the enum (old data) gets the neutral colour.
 TEMPLATES.env.globals["phase_color"] = lambda name: next(
     (color for phase, color in PHASE_COLORS.items() if phase.value == name), PHASE_COLORS[Phase.ACTIVITY])
+
+
+# One German wording for a status wherever it is shown or chosen; a value outside the enum (old data) is shown as stored.
+TEMPLATES.env.globals["status_text"] = {status.value: label for status, label in STATUS_LABELS.items()}
+TEMPLATES.env.filters["count_events"] = lambda number: f"{number} {'Event' if number == 1 else 'Events'}"
 
 
 async def _attachments_from_form(form) -> list[Blob]:
