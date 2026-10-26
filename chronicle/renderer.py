@@ -80,11 +80,13 @@ def render_dashboard(
     generated_at: str | None = None,
     snapshot: bool = True,
     vendor: str = "inline",
+    embedded: bool = False,
 ) -> str:
     """`inline_css` replaces the stylesheet link, `src_for` gives the image URL of each evidence item.
     `snapshot` marks the page as a report snapshot; the app's live view turns that off.
     `vendor` says where vis-timeline and vis-network come from: "inline" embeds them in the page (reports and
-    static pages, which open without a server), "local" links /static/vendor/ of the app."""
+    static pages, which open without a server), "local" links /static/vendor/ of the app.
+    `embedded` drops the brand, title and summary from the header, for the frame on the topic page, which shows them itself."""
     events = sorted(timeline.events, key=lambda event: event.t0)
     nodes, edges = _build_graph(events)
 
@@ -105,6 +107,7 @@ def render_dashboard(
         snapshot=snapshot,
         diagrams_js=DIAGRAMS_JS,
         vendor=vendor,
+        embedded=embedded,
         font_css=_font_css(vendor),
         **(_vendor_inline() if vendor == "inline" else {}),
     )

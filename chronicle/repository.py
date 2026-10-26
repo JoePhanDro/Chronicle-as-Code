@@ -1008,6 +1008,15 @@ def _with_evidence(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[di
 _STATUS_RANK = {"open": 0, "in_progress": 1, "resolved": 2, None: 3}
 
 
+def most_pressing_status(statuses) -> str | None:
+    """The most pressing of the given event statuses (open, then in_progress, then resolved), None for none."""
+    found = set(statuses)
+    for status in ("open", "in_progress"):
+        if status in found:
+            return status
+    return "resolved" if found else None
+
+
 def list_topics(conn: sqlite3.Connection, *, by_attention: bool = False) -> list[dict]:
     """All topics with their event count, the time of the latest event (last_event_at, UTC) and a status.
 

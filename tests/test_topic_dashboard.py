@@ -57,7 +57,7 @@ def test_dashboard_of_unknown_topic_is_not_found(db_path):
 
 def test_topic_page_embeds_the_dashboard(db_path):
     page = login(db_path).get("/topics/inc-2026-042").text
-    assert 'src="/topics/inc-2026-042/dashboard"' in page
+    assert 'src="/topics/inc-2026-042/dashboard?embed=1"' in page
     assert 'href="/topics/inc-2026-042/dashboard"' in page
 
 

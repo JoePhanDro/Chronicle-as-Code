@@ -205,10 +205,22 @@
     .prose-chronicle code::before, .prose-chronicle code::after { content: none; }
     .prose-chronicle pre { background: var(--pre); border: 1px solid var(--line); }
   </style>
+  {% if embedded %}
+  <style>
+    /* In the topic page's frame the layout is always stacked and the frame grows to fit it, so the panels get
+       fixed heights: vh units would depend on the frame's own height and feed back into it. */
+    :root:root body { height: auto; overflow: visible; min-height: 0; }
+    :root:root #panel-timeline { height: 420px; min-height: 0; flex: none; }
+    :root:root #panel-graph, :root:root #panel-events, :root:root #panel-evidence { height: 520px; min-height: 0; flex: none; }
+    :root:root main { grid-template-columns: minmax(0, 1fr); }
+    :root:root #details { overflow: visible; }
+  </style>
+  {% endif %}
 </head>
 <body class="flex min-h-screen flex-col font-sans lg:h-screen lg:overflow-hidden">
 
   <header class="glass flex flex-wrap items-center justify-between gap-4 border-x-0 border-t-0 px-5 py-3">
+    {% if not embedded %}
     <div class="flex min-w-0 items-center gap-3">
       <div class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-violet-500>
         <svg viewBox="0 0 24 24" class="h-5 w-5 text-ink" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
@@ -219,6 +231,7 @@
         {% if summary %}<p class="truncate text-xs text-slate-400">{{ summary }}</p>{% endif %}
       </div>
     </div>
+    {% endif %}
     {% if snapshot %}<span class="rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-1 text-xs text-amber-200">Berichts-Snapshot · vertraulich · ohne Anmeldung{% if generated_at %} · Stand {{ generated_at }}{% endif %}</span>{% endif %}
     <div id="kpis" class="flex flex-wrap items-center gap-2 text-xs"></div>
   </header>
@@ -908,5 +921,17 @@
     showView(view);
     if (id && eventsById.has(id)) selectEvent(id, { focusGraph: true });
   </script>
+{% if embedded %}
+<script>
+  // Same-origin frame on the topic page: grow to the content so the page scrolls once, not the frame as well.
+  (function () {
+    var frame = window.frameElement;
+    if (!frame) return;
+    var fit = function () { frame.style.height = Math.ceil(document.body.getBoundingClientRect().height) + 'px'; };
+    new ResizeObserver(fit).observe(document.body);
+    fit();
+  })();
+</script>
+{% endif %}
 </body>
 </html>

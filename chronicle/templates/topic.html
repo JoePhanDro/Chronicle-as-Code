@@ -26,38 +26,49 @@
 </form>
 
 {% else %}
+{% set status_text = {'open': 'offen', 'in_progress': 'in Arbeit', 'resolved': 'abgeschlossen'} %}
+{% set status_dot = {'open': 'bg-rose-500', 'in_progress': 'bg-amber-500 motion-safe:animate-pulse', 'resolved': 'bg-emerald-500'} %}
+{% set last = events | map(attribute='t0') | max if events else None %}
 <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
   <div class="min-w-0">
-    <div class="font-mono text-xs text-slate-500">{{ topic.key }} · {{ topic.kind }}</div>
+    <div class="font-mono text-xs text-slate-400">{{ topic.key }} · {{ topic.kind }}</div>
     <h1 class="mt-1 text-xl font-semibold text-slate-100">{{ topic.title }}</h1>
+    <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-400">
+      {% if status %}<span class="inline-flex items-center gap-2"><span class="h-2 w-2 flex-none rounded-full {{ status_dot[status] }}" aria-hidden="true"></span>{{ status_text[status] }}</span><span aria-hidden="true">·</span>{% endif %}
+      <span>{{ events | length }} Events</span>
+      {% if last %}<span aria-hidden="true">·</span><span>zuletzt <time class="font-mono text-xs" data-utc="{{ last }}">{{ last[:16].replace('T', ' ') }}</time></span>{% endif %}
+    </p>
     {% if topic.summary %}<p class="mt-2 max-w-2xl text-sm text-slate-400">{{ topic.summary }}</p>{% endif %}
     <a href="/events?topic={{ topic.key }}" class="mt-2 inline-block text-xs text-sky-300 hover:underline">Im Ereignisprotokoll anzeigen</a>
   </div>
   {% if can_write %}
-  <form method="post" action="/topics/{{ topic.key }}/delete" onsubmit="return confirm('Topic wirklich löschen?');">
-    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-    <button type="submit" class="rounded-lg border border-rose-400/30 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-500/10">Löschen</button>
-  </form>
+  <a href="#bearbeiten" id="edit-link" class="text-sm text-sky-300 hover:underline max-sm:flex max-sm:min-h-11 max-sm:items-center">Bearbeiten</a>
   {% endif %}
 </div>
 
+{% if events %}
 <section class="mb-10">
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500">Zeitleiste und Zusammenhänge</h2>
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Zeitleiste und Zusammenhänge</h2>
     <a href="/topics/{{ topic.key }}/dashboard" target="_blank" rel="noopener" class="text-xs text-sky-300 hover:underline">In neuem Fenster öffnen</a>
   </div>
-  <iframe src="/topics/{{ topic.key }}/dashboard" title="Zeitleiste und Zusammenhänge von {{ topic.title }}"
-          class="h-[80vh] min-h-[520px] w-full rounded-xl border border-white/10 bg-slate-950"></iframe>
+  <iframe src="/topics/{{ topic.key }}/dashboard?embed=1" title="Zeitleiste und Zusammenhänge von {{ topic.title }}"
+          class="h-[75vh] min-h-[480px] w-full rounded-xl border border-white/10 bg-slate-950"></iframe>
 </section>
+{% endif %}
 
 <section class="mb-10">
-  <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Events ({{ events|length }})</h2>
-  <ul class="divide-y divide-white/10 rounded-xl border border-white/10">
+  <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Events ({{ events|length }})</h2>
+  {% if events %}
+  <ul class="divide-y divide-white/10 rounded-xl border border-white/10" aria-label="Events dieses Topics">
     {% for event in events %}
     <li class="flex items-center justify-between gap-4 px-4 py-3">
-      <a href="/events/{{ event.key }}" class="min-w-0 hover:underline">
-        <span class="block truncate text-sm text-slate-100">{{ event.action }}</span>
-        <span class="font-mono text-xs text-slate-500">{{ event.t0[:16].replace('T', ' ') }} · {{ event.phase }} · {{ event.key }}</span>
+      <a href="/events/{{ event.key }}" data-list-row class="flex min-w-0 items-start gap-3 hover:underline">
+        <span class="mt-1.5 h-1.5 w-1.5 flex-none rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>
+        <span class="min-w-0">
+          <span class="block truncate text-sm text-slate-100">{{ event.action }}</span>
+          <span class="font-mono text-xs text-slate-400">{{ event.t0[:16].replace('T', ' ') }} · {{ event.phase }} · {{ event.key }}{% if event.status in status_text %} · <span class="font-sans">{{ status_text[event.status] }}</span>{% endif %}</span>
+        </span>
       </a>
       <span class="flex flex-none items-center gap-3 text-xs">
         {% if event.home_topic == topic.key %}
@@ -65,34 +76,63 @@
         {% else %}
           <span class="rounded-md bg-white/5 px-2 py-0.5 text-slate-400">verknüpft</span>
           {% if can_write %}
-          <form method="post" action="/topics/{{ topic.key }}/unlink/{{ event.key }}">
+          <form method="post" action="/topics/{{ topic.key }}/unlink/{{ event.key }}"
+                onsubmit='return confirm({{ ("Verknüpfung lösen?\n\n" ~ event.action ~ " (" ~ event.key ~ ") bleibt in seinem Heimat-Topic erhalten und verschwindet nur aus diesem Topic.") | tojson }});'>
             <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-            <button type="submit" class="text-rose-300 hover:underline">Lösen</button>
+            <button type="submit" class="py-2 text-rose-300 hover:underline">Lösen</button>
           </form>
           {% endif %}
         {% endif %}
       </span>
     </li>
-    {% else %}
-    <li class="px-4 py-3 text-sm text-slate-500">Noch keine Events in diesem Topic.</li>
     {% endfor %}
   </ul>
+  {% else %}
+  <div class="rounded-xl border border-dashed border-white/10 px-6 py-10 text-center">
+    <p class="text-sm font-medium text-slate-100">Noch keine Events in diesem Topic</p>
+    <p class="mx-auto mt-1 max-w-md text-sm text-slate-400">Events legen die Zeitleiste und den Graphen an. Ein Event hat dieses Topic als Heimat oder ist mit ihm verknüpft.</p>
+    {% if can_write %}
+    <a href="/events/new?topic={{ topic.key }}" class="mt-5 inline-block rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Erstes Event anlegen</a>
+    {% else %}
+    <p class="mt-3 text-sm text-slate-400">Events legen Analysten und Admins an.</p>
+    {% endif %}
+  </div>
+  {% endif %}
 
   {% if can_write and addable %}
   <form method="post" action="/topics/{{ topic.key }}/link" class="mt-4 flex flex-wrap items-end gap-3">
     <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-    <label class="block min-w-[16rem] flex-1"><span class="{{ label_class }}">Event verknüpfen</span>
-      <select name="event" class="{{ input_class }}">
+    <div class="min-w-[16rem] flex-1">
+      <label for="link-filter" class="{{ label_class }}">Event verknüpfen: Liste filtern</label>
+      <input id="link-filter" type="search" autocomplete="off" placeholder="Aktion oder Key" class="{{ input_class }} mb-2" aria-controls="link-event">
+      <label for="link-event" class="sr-only">Event</label>
+      <select id="link-event" name="event" class="{{ input_class }}">
         {% for event in addable %}<option value="{{ event.key }}">{{ event.action }} ({{ event.key }})</option>{% endfor %}
-      </select></label>
+      </select>
+      <p id="link-count" class="mt-1 text-xs text-slate-400" aria-live="polite"></p>
+    </div>
     <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Verknüpfen</button>
   </form>
+  <script>
+    (function () {
+      var filter = document.getElementById('link-filter'), select = document.getElementById('link-event'), count = document.getElementById('link-count');
+      var all = Array.prototype.map.call(select.options, function (option) { return { value: option.value, text: option.textContent }; });
+      filter.addEventListener('input', function () {
+        var words = filter.value.toLowerCase().split(/\s+/).filter(Boolean);
+        var shown = all.filter(function (item) { var hay = item.text.toLowerCase(); return words.every(function (word) { return hay.indexOf(word) !== -1; }); });
+        select.innerHTML = '';
+        shown.forEach(function (item) { var option = document.createElement('option'); option.value = item.value; option.textContent = item.text; select.appendChild(option); });
+        count.textContent = words.length ? (shown.length ? shown.length + ' von ' + all.length + ' Events' : 'Kein Event gefunden') : '';
+      });
+    })();
+  </script>
   {% endif %}
 </section>
 
 {% if can_write %}
-<section>
-  <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Bearbeiten</h2>
+<details id="bearbeiten" class="rounded-xl border border-white/10" {{ 'open' if errors }}>
+  <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-100">Topic bearbeiten</summary>
+  <div class="border-t border-white/10 px-4 py-5">
   <form method="post" action="/topics/{{ topic.key }}/edit" class="max-w-2xl space-y-5">
     <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
     <label class="block"><span class="{{ label_class }}">Key (nicht änderbar)</span>
@@ -107,7 +147,35 @@
       <textarea name="summary" rows="4" class="{{ input_class }}">{{ topic.summary }}</textarea></label>
     <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Speichern</button>
   </form>
-</section>
+
+  <div class="mt-8 max-w-2xl border-t border-white/10 pt-5">
+    <h2 class="text-sm font-medium text-slate-100">Topic löschen</h2>
+    {% if home_events %}
+    <p class="mt-1 text-sm text-slate-400">Dieses Topic ist Heimat von {{ home_events | length }} {{ 'Event' if home_events | length == 1 else 'Events' }} ({{ home_events | join(', ') }}). Zuerst diese Events löschen, dann lässt sich das Topic löschen.</p>
+    {% else %}
+    <p class="mt-1 text-sm text-slate-400">Entfernt das Topic. Verknüpfte Events bleiben in ihren Heimat-Topics erhalten.</p>
+    <form method="post" action="/topics/{{ topic.key }}/delete" class="mt-3"
+          onsubmit='return confirm({{ ("Topic löschen?\n\n" ~ topic.title ~ " (" ~ topic.key ~ ")") | tojson }});'>
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <button type="submit" class="rounded-lg border border-rose-400/30 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-500/10">Topic löschen</button>
+    </form>
+    {% endif %}
+  </div>
+  </div>
+</details>
+<script>
+  (function () {
+    var link = document.getElementById('edit-link'), panel = document.getElementById('bearbeiten');
+    if (!link || !panel) return;
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      panel.open = true;
+      panel.scrollIntoView({ block: 'start' });
+      var first = panel.querySelector('input[name=title]');
+      if (first) first.focus({ preventScroll: true });
+    });
+  })();
+</script>
 {% endif %}
 {% endif %}
 {% endblock %}

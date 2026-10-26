@@ -229,6 +229,9 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] not in WRITER_ROLES:
             return render(request, "forbidden.html", user, status_code=403)
         now = t0_parts(datetime.now(UTC).isoformat())
+        topic = request.query_params.get("topic")  # the topic page's empty state links here with its key
+        if topic and repository.get_topic(conn, topic):
+            now["topic"] = topic
         return render(request, "event.html", user, mode="new", event=None, errors=None,
                       **form_context(conn, form=now))
 
@@ -374,8 +377,11 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         events = repository.list_topic_events(conn, key)
         linked = {event["key"] for event in events}
         addable = [event for event in repository.list_events(conn) if event["key"] not in linked]
+        home_events = [event["key"] for event in events if event["home_topic"] == key]
         return render(request, "topic.html", user, status_code=status_code, mode="view", topic=topic,
-                      events=events, addable=addable, errors=errors, kinds=TOPIC_KINDS, form=None)
+                      events=events, addable=addable, errors=errors, kinds=TOPIC_KINDS, form=None,
+                      status=repository.most_pressing_status(event["status"] for event in events),
+                      home_events=home_events)
 
     @router.get("/topics", response_class=HTMLResponse)
     def topics_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
@@ -419,7 +425,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user is None:
             return RedirectResponse("/login", status_code=303)
         try:
-            return HTMLResponse(make_dashboard(conn, key))
+            return HTMLResponse(make_dashboard(conn, key, embedded=request.query_params.get("embed") == "1"))
         except repository.NotFound:
             return render(request, "not_found.html", user, status_code=404)
         except ExportError as exc:  # shown inside the frame on the topic page
