@@ -207,6 +207,7 @@ A 6px circle for status (in progress pulses at 1.8s). Phases colour timeline mar
 - **Do** write every colour through the themed variables so light and dark both work.
 - **Do** use the gradient primary button once per view; everything else is secondary or ghost.
 - **Do** set keys, roles and timestamps in JetBrains Mono at 12px.
+- **Do** keep every control and button-like link at least 44px high on narrow screens and touch devices; `input.css` does this for `button`, `select`, `summary`, inputs, `a.rounded-lg` and checkbox labels, and isolated text links add `max-sm:min-h-11` themselves.
 - **Do** keep German labels short and let the table density setting apply to any new table.
 - **Do** keep phase and status colours identical across list, timeline, graph and report.
 
