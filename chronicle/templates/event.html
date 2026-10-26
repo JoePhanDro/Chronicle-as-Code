@@ -38,7 +38,6 @@
   </form>
 
 {% else %}
-  {% set status_text = {'open': 'offen', 'in_progress': 'in Arbeit', 'resolved': 'abgeschlossen'} %}
   {% set status_dot = {'open': 'bg-rose-500', 'in_progress': 'bg-amber-500 motion-safe:animate-pulse', 'resolved': 'bg-emerald-500'} %}
   {% set causes = links.causes if links else [] %}
   {% set effects = links.effects if links else [] %}

@@ -117,7 +117,7 @@ def test_event_list_page_applies_the_filters(search_db):
     html = viewer.get("/events", params={"q": "siem", "status": "resolved"}).text
     assert "Webshell entfernt" in html
     assert "Alarm" not in html
-    assert "1 Events gefunden" in html
+    assert "1 Event gefunden" in html
     assert "Filter zurücksetzen" in html
 
 

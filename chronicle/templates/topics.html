@@ -1,12 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Topics{% endblock %}
 {% block content %}
-{% set status_text = {'open': 'offen', 'in_progress': 'in Arbeit', 'resolved': 'abgeschlossen'} %}
 {% set status_dot = {'open': 'bg-rose-500', 'in_progress': 'bg-amber-500 motion-safe:animate-pulse', 'resolved': 'bg-emerald-500'} %}
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div>
     <h1 class="text-xl font-semibold text-slate-100">Topics</h1>
-    {% if topics %}<p class="text-sm text-slate-400">{{ topics | length }} Topics, offene zuerst, darin das neueste Event zuerst (<span data-zone-label>UTC</span>)</p>{% endif %}
+    {% if topics %}<p class="text-sm text-slate-400">{{ topics | length }} {{ 'Topic' if topics | length == 1 else 'Topics' }}, offene zuerst, darin das neueste Event zuerst (<span data-zone-label>UTC</span>)</p>{% endif %}
   </div>
   {% if can_write and topics %}<a href="/topics/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Neues Topic</a>{% endif %}
 </div>
@@ -22,11 +21,11 @@
           <span class="mt-1 block font-mono text-xs text-slate-400">
             {{ topic.key }} · {{ topic.kind }}
             {%- if topic.last_event_at %} · <time class="whitespace-nowrap" data-utc="{{ topic.last_event_at }}">{{ topic.last_event_at[:16].replace('T', ' ') }}</time>{% endif %}
-            <span class="sm:hidden"> · {{ topic.event_count }} Events</span>
+            <span class="sm:hidden"> · {{ topic.event_count | count_events }}</span>
           </span>
         </span>
       </span>
-      <span class="hidden flex-none text-xs text-slate-400 sm:block">{{ topic.event_count }} Events</span>
+      <span class="hidden flex-none text-xs text-slate-400 sm:block">{{ topic.event_count | count_events }}</span>
     </a>
   </li>
   {% endfor %}

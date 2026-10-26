@@ -32,7 +32,7 @@
     <label class="block">
       <span class="{{ label_class }}">Status</span>
       <select name="status" required class="{{ input_class }}">
-        {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if f.status == status }}>{{ status.replace('_', ' ') }}</option>{% endfor %}
+        {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if f.status == status }}>{{ status_text.get(status, status) }}</option>{% endfor %}
       </select>
     </label>
   </div>
