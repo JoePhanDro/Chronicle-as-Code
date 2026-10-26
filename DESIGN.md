@@ -24,6 +24,18 @@ colors:
   status-open: "#f43f5e"
   status-in-progress: "#f59e0b"
   status-resolved: "#22c55e"
+  light-page: "#f8fafc"
+  light-surface: "#f1f5f9"
+  light-text: "#334155"
+  light-text-strong: "#0f172a"
+  light-text-muted: "#475569"
+  light-text-faint: "#5c6b82"
+  light-signal-sky: "#0284c7"
+  light-signal-sky-text: "#0369a1"
+  light-entity-system: "#7c3aed"
+  light-error-rose: "#be123c"
+  light-error-alert: "#9f1239"
+  entity-event: "#f87171"
 typography:
   title:
     fontFamily: "Inter, system-ui, sans-serif"
@@ -99,7 +111,7 @@ components:
 
 Chronicle looks like a well-kept log: near-black slate surfaces, one-pixel hairlines, small sober type, and colour that appears only when it means something (a phase, a status, an entity kind). The interface stays out of the way of the timeline and graph, which are the content. Density is a feature; a compact table mode exists and is honoured everywhere.
 
-Dark is the default. Light is a full inversion of the same scale (every Tailwind shade swaps to its mirror), not a second palette, so hierarchy and contrast relationships survive the switch. The theme follows the operating system unless the user picks one.
+Dark is the default; the values in the front matter are the dark theme, the light values sit under "Light theme" in Colors. Light is a full inversion of the same scale (every Tailwind shade swaps to its mirror), not a second palette, so hierarchy and contrast relationships survive the switch. The theme follows the operating system unless the user picks one.
 
 **Key Characteristics:**
 - Dark-first, light by scale inversion; both are first-class.
@@ -119,13 +131,23 @@ Slate neutrals do the structural work; sky is the only accent; the rainbow belon
 ### Neutral
 - **Ledger Black** (#020617): page background and input fill (at 70 %).
 - **Ledger Slate** (#0f172a): elevated surfaces: menus, dialogs, cards (login card at 60 % with blur).
-- **Hairline** (white at 10 %): every border and divider; hover tint is white at 5 %.
+- **Hairline** (white at 10 % on dark, ink at 10 % on light): every border and divider; hover tint is white at 5 %.
 - **Text** (#e2e8f0), **Text Strong** (#f1f5f9) for titles, **Text Muted** (#94a3b8) for controls and secondary info, **Text Faint** (#7183a0 on dark, #5c6b82 on light; both at least 4.5:1 on the page and on cards, which Tailwind's own slate-500 is not) for helper copy, placeholders and meta lines.
+
+### Light theme
+Light is the dark scale mirrored (shade 50 swaps with 950, 100 with 900, and so on; 500 stays), so each role keeps its place in the hierarchy. Values that differ from the dark theme:
+- **Page** #f8fafc (slate 50) and **Surface** #f1f5f9 (slate 100) for menus, dialogs, cards; inputs are the page colour at 70 %.
+- **Hairline** is Text Strong (#0f172a) at 10 %, because the themed `white` token is that dark ink in light.
+- **Text** #334155, **Text Strong** #0f172a, **Text Muted** #475569, **Text Faint** #5c6b82 (at least 4.5:1 on page and cards).
+- **Signal Sky** #0284c7 for borders, focus and the actor entity; its text variant is #0369a1. Gradient primary buttons keep sky to violet with ink text.
+- **System entity** #7c3aed. **Error text** is #9f1239 in alert blocks and #be123c for inline errors and destructive buttons, on a rose 10 % fill with a rose 30 % border (#e11d48 at 30 %).
+- The dashboard keeps its own variables in both themes: dark `--bg` #030712, `--text` #e2e8f0, `--muted` #94a3b8; light `--bg` #f1f5f9, `--text` #0f172a, `--muted` #475569, `--accent` #0284c7, `--line` slate at 12 %.
+- **Data colours do not change** between themes: phase, status and entity colours below are the same in light and dark, and the contrast of text over them is checked in both.
 
 ### Data colours (fixed, from `chronicle/models.py` and the dashboard)
 - **Phase:** Identification and Exploit red (#ef4444), Analysis yellow (#eab308), Containment orange (#f97316), Mitigation green (#22c55e), Recovery emerald (#10b981), Lessons Learned blue (#3b82f6), neutral Activity slate (#94a3b8).
 - **Status:** open rose (#f43f5e), in progress amber (#f59e0b, pulsing), resolved green (#22c55e), as 6px dots.
-- **Entities in the graph:** actor sky, system violet (#a78bfa), event red-400, evidence slate.
+- **Entities in the graph:** actor sky, system violet (#a78bfa), event red-400 (#f87171), evidence slate.
 - **Error:** rose text (#fda4af) on a rose 10 % fill with a rose 30 % border; destructive buttons use rose text on the normal secondary button.
 - **Notices:** success uses emerald text on an emerald 10 % fill with an emerald 30 % border; warnings use amber text on an amber 10 % fill with an amber 30 to 40 % border. Same recipe as errors, only the hue changes.
 
