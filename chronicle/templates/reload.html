@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Neu laden{% endblock %}
+{% block content %}
+<h1 class="mb-2 text-xl font-semibold text-slate-100">Neu laden nicht möglich</h1>
+<p class="mb-6 max-w-2xl text-sm text-slate-400">Es wurde nichts übernommen. Die Anzeige zeigt weiter den Stand von vorher. Nach der Korrektur in den Dateien noch einmal neu laden.</p>
+<ul role="alert" class="mb-6 max-w-3xl space-y-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+  {% for problem in problems %}<li class="break-words font-mono text-xs">{{ problem }}</li>{% endfor %}
+</ul>
+<a href="{{ back }}" class="inline-block rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Zurück</a>
+{% endblock %}
