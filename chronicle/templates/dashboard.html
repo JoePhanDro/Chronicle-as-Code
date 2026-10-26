@@ -108,11 +108,31 @@
     .st { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; margin-right: 6px; vertical-align: middle; background: #64748b; flex: none; }
     .st-open { background: #f43f5e; }
     .st-resolved { background: #22c55e; }
-    .st-in_progress { background: #f59e0b; animation: pulse 1.8s infinite; }
-    @keyframes pulse {
+    .st-in_progress { background: #f59e0b; animation: st-pulse 1.8s infinite; }
+    @keyframes st-pulse {
       0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, .7); }
       70% { box-shadow: 0 0 0 7px rgba(245, 158, 11, 0); }
       100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    }
+
+    /* Reduced motion keeps the state (the in-progress dot stays amber) and drops the movement. */
+    @media (prefers-reduced-motion: reduce) {
+      .st-in_progress { animation: none; }
+      .btn, .vis-item.ch-item { transition: none; }
+      .vis-item.ch-item:hover { transform: none; }
+    }
+
+    /* Touch: controls reach 44px on coarse pointers and narrow screens; the mouse layout stays dense. */
+    @media (pointer: coarse), (max-width: 639px) {
+      .btn, .view-tab, #filters select, #panel-graph label, #panel-events td button { min-height: 44px; }
+      #filters select { padding-left: 10px; padding-right: 10px; }
+      #panel-graph label { padding: 0 4px; }
+    }
+    /* Narrow: the filters sit in two columns, so the larger fields do not push the views off the screen. */
+    @media (max-width: 639px) {
+      #filters { display: grid; grid-template-columns: 1fr 1fr; }
+      #filters label { flex-direction: column; align-items: stretch; gap: 4px; }
+      #filters > span, #filters > button { grid-column: 1 / -1; }
     }
 
     /* vis-timeline: dark, minimal chrome, event cards in swimlanes */
@@ -220,12 +240,14 @@
         <button type="button" role="tab" id="tab-evidence" data-view="evidence" aria-controls="panel-evidence" class="view-tab">Evidence</button>
       </div>
 
-      <section role="tabpanel" id="panel-timeline" aria-labelledby="tab-timeline" class="view-panel h-[45vh] min-h-[280px] px-2 py-2 lg:h-auto lg:min-h-0">
-        <div id="timeline" class="h-full"></div>
+      <section role="tabpanel" id="panel-timeline" aria-labelledby="tab-timeline" aria-describedby="hint-timeline" class="view-panel h-[45vh] min-h-[280px] px-2 py-2 lg:h-auto lg:min-h-0">
+        <p id="hint-timeline" class="sr-only">Grafische Timeline. Alle Ereignisse stehen auch als Tabelle im Tab Ereignisse und lassen sich dort mit der Tastatur auswählen.</p>
+        <div id="timeline" role="group" aria-label="Timeline der Ereignisse" class="h-full"></div>
       </section>
 
-      <section role="tabpanel" id="panel-graph" aria-labelledby="tab-graph" hidden class="view-panel dot-grid relative h-[60vh] lg:h-auto lg:min-h-0">
-        <div id="graph" class="absolute inset-0"></div>
+      <section role="tabpanel" id="panel-graph" aria-labelledby="tab-graph" aria-describedby="hint-graph" hidden class="view-panel dot-grid relative h-[60vh] lg:h-auto lg:min-h-0">
+        <p id="hint-graph" class="sr-only">Grafischer Graph der Zusammenhänge. Alle Ereignisse stehen auch als Tabelle im Tab Ereignisse und lassen sich dort mit der Tastatur auswählen.</p>
+        <div id="graph" role="group" aria-label="Graph der Zusammenhänge" class="absolute inset-0"></div>
 
         <div class="absolute right-4 top-4 z-10 flex gap-2">
           <button id="btn-fit" class="btn">Zentrieren</button>
@@ -261,6 +283,9 @@
     const zoneIsLocal = setting('chronicle.zone') === 'local';
     const groupBy = ['actor', 'system', 'phase'].includes(setting('chronicle.timeline.group')) ? setting('chronicle.timeline.group') : 'actor';
     const zoomSpan = { day: 24 * 60 * 60 * 1000, hours: 6 * 60 * 60 * 1000 }[setting('chronicle.timeline.zoom')] || null;
+    // Movement is dropped when the system asks for reduced motion; vis takes `false` for "no animation".
+    const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const motion = options => (REDUCED_MOTION.matches ? false : options);
     const physicsStart = setting('chronicle.graph.physics') !== 'off';
     const labelsOn = setting('chronicle.graph.labels') !== 'off';
 
@@ -447,7 +472,7 @@
       timeline.setSelection(timelineItems.get(id) ? id : []); // a filtered-out event has no item
       network.selectNodes([`event:${id}`]);
       highlightNeighborhood(`event:${id}`);
-      if (focusGraph && currentView === 'graph' && graphEl.clientWidth) network.focus(`event:${id}`, { scale: 1.1, animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+      if (focusGraph && currentView === 'graph' && graphEl.clientWidth) network.focus(`event:${id}`, { scale: 1.1, animation: motion({ duration: 600, easingFunction: 'easeInOutQuad' }) });
       markSelected(id);
       updateHash();
     }
@@ -610,7 +635,7 @@
       },
     });
 
-    network.once('stabilized', () => network.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } }));
+    network.once('stabilized', () => network.fit({ animation: motion({ duration: 500, easingFunction: 'easeInOutQuad' }) }));
     // vis-network resizes its canvas with the container but keeps the old view, so the graph can end up outside it.
     let refitTimer = null;
     new ResizeObserver(() => {
@@ -652,7 +677,7 @@
       if (view === 'timeline') applyDefaultZoom();
       if (view === 'graph' && currentId) {
         // The graph was hidden, so its focus on the selected event has to wait until it is visible.
-        setTimeout(() => network.focus(`event:${currentId}`, { scale: 1.1, animation: { duration: 400, easingFunction: 'easeInOutQuad' } }), 200);
+        setTimeout(() => network.focus(`event:${currentId}`, { scale: 1.1, animation: motion({ duration: 400, easingFunction: 'easeInOutQuad' }) }), 200);
       }
       updateHash();
     }
@@ -700,8 +725,9 @@
         rowsById.set(ev.id, row);
         return row;
       });
-      const head = el('tr', '', ['Zeit (UTC)', 'Phase', 'Aktion', 'Akteur', 'Status'].map(text => el('th', 'px-3 py-2 font-medium', text)));
+      const head = el('tr', '', ['Zeit (UTC)', 'Phase', 'Aktion', 'Akteur', 'Status'].map(text => { const th = el('th', 'px-3 py-2 font-medium', text); th.scope = 'col'; return th; }));
       document.getElementById('panel-events').replaceChildren(el('table', 'w-full text-left text-sm', [
+        el('caption', 'sr-only', 'Alle Ereignisse des Topics, nach Zeit sortiert'),
         el('thead', 'text-xs uppercase tracking-wide text-slate-500', [head]),
         el('tbody', 'divide-y divide-white/5', rows),
       ]));
@@ -736,7 +762,7 @@
     }
 
     // Toolbar
-    document.getElementById('btn-fit').addEventListener('click', () => network.fit({ animation: { duration: 500 } }));
+    document.getElementById('btn-fit').addEventListener('click', () => network.fit({ animation: motion({ duration: 500 }) }));
     document.getElementById('btn-reset').addEventListener('click', clearSelection);
     let physicsOn = physicsStart;
     document.getElementById('btn-physics').addEventListener('click', () => {
@@ -825,7 +851,7 @@
         const edge = graphEdges.get(id);
         return { id, hidden: !(shown.get(edge.from) && shown.get(edge.to)) };
       }));
-      if (graphEl.clientWidth) network.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
+      if (graphEl.clientWidth) network.fit({ animation: motion({ duration: 400, easingFunction: 'easeInOutQuad' }) });
     }
 
     // Every view applies the same filters. The selected event stays in the details pane, even when filtered out.
