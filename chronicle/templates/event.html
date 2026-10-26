@@ -42,41 +42,47 @@
   {% set status_dot = {'open': 'bg-rose-500', 'in_progress': 'bg-amber-500 motion-safe:animate-pulse', 'resolved': 'bg-emerald-500'} %}
   {% set causes = links.causes if links else [] %}
   {% set effects = links.effects if links else [] %}
-  <header class="mb-8">
+  <header class="mb-8 border-l-[3px] pl-4" style="border-color: {{ phase_color(event.phase) }}">
     <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
       <div class="font-mono text-xs text-slate-400">{{ event.key }} · Version {{ event.version }} · {{ 'manuell bearbeitet' if event.source == 'manual' else 'aus Import' }}</div>
       {% if editing %}<a href="#bearbeiten" id="edit-link" class="text-sm text-sky-300 hover:underline max-sm:flex max-sm:min-h-11 max-sm:items-center">Bearbeiten</a>{% endif %}
     </div>
-    <h1 class="mt-1 text-xl font-semibold text-slate-100">{{ event.action }}</h1>
-    <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-y border-white/10 py-4 text-sm sm:grid-cols-4">
+    <h1 class="mt-1 text-xl font-semibold text-slate-100 sm:text-2xl">{{ event.action }}</h1>
+    <p class="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium text-slate-100">
+      <span class="inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1"><span class="sr-only">Phase: </span><span class="h-2 w-2 flex-none rounded-full" style="background: {{ phase_color(event.phase) }}" aria-hidden="true"></span>{{ event.phase }}</span>
+      <span class="inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1"><span class="sr-only">Status: </span><span class="h-2 w-2 flex-none rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>{{ status_text[event.status] if event.status in status_text else event.status }}</span>
+    </p>
+    <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-y border-white/10 py-4 text-sm sm:grid-cols-3">
       <div>
         <dt class="text-xs text-slate-400">Zeit (<span data-zone-label>UTC</span>)</dt>
         <dd class="mt-0.5 font-mono text-slate-100"><time data-utc="{{ event.t0 }}">{{ event.t0[:16].replace('T', ' ') }}</time></dd>
       </div>
       <div>
-        <dt class="text-xs text-slate-400">Phase</dt>
-        <dd class="mt-0.5 flex items-center gap-2 text-slate-100"><span class="h-2 w-2 flex-none rounded-full" style="background: {{ phase_color(event.phase) }}" aria-hidden="true"></span>{{ event.phase }}</dd>
+        <dt class="text-xs text-slate-400">Akteur</dt>
+        <dd class="mt-0.5 text-slate-100"><a href="/events?actor={{ event.actor | urlencode }}" class="hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ event.actor }}</a></dd>
       </div>
+      {% if event.system %}
       <div>
-        <dt class="text-xs text-slate-400">Status</dt>
-        <dd class="mt-0.5 flex items-center gap-2 text-slate-100"><span class="h-2 w-2 flex-none rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>{{ status_text[event.status] if event.status in status_text else event.status }}</dd>
+        <dt class="text-xs text-slate-400">System</dt>
+        <dd class="mt-0.5 font-mono text-slate-100"><a href="/events?system={{ event.system | urlencode }}" class="hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ event.system }}</a></dd>
       </div>
-      <div>
-        <dt class="text-xs text-slate-400">Akteur{% if event.system %} und System{% endif %}</dt>
-        <dd class="mt-0.5 text-slate-100">
-          <a href="/events?actor={{ event.actor | urlencode }}" class="hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ event.actor }}</a>
-          {% if event.system %}<a href="/events?system={{ event.system | urlencode }}" class="block font-mono text-xs text-slate-400 hover:underline max-sm:flex max-sm:min-h-11 max-sm:items-center">{{ event.system }}</a>{% endif %}
-        </dd>
-      </div>
+      {% endif %}
     </dl>
   </header>
+
+  {% if event.details %}
+  <section class="mb-8 rounded-xl border border-white/10 bg-white/[.02] p-5">
+    <h2 class="mb-3 text-base font-semibold text-slate-100">Beschreibung</h2>
+    <div class="prose prose-chronicle max-w-none text-sm prose-a:text-sky-300">{{ event | event_details }}</div>
+  </section>
+  {% endif %}
 
   {% if causes or effects %}
   <div class="mb-8 grid gap-6 sm:grid-cols-2">
     {% for heading, items in (('Ausgelöst durch', causes), ('Löste aus', effects)) %}
     {% if items %}
     <section>
-      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{{ heading }}</h2>
+      <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{{ heading }}</h2>
       <ul class="divide-y divide-white/10 rounded-xl border border-white/10">
         {% for other in items %}
         <li>
@@ -96,15 +102,8 @@
   </div>
   {% endif %}
 
-  {% if event.details %}
-  <section class="mb-8 rounded-xl border border-white/10 bg-white/[.02] p-5">
-    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Beschreibung</h2>
-    <div class="prose prose-chronicle max-w-none text-sm prose-a:text-sky-300">{{ event | event_details }}</div>
-  </section>
-  {% endif %}
-
   <section class="mb-8">
-    <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Evidence</h2>
+    <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Evidence</h2>
     {% if event.evidence %}
     <ul class="grid gap-4 {{ 'sm:grid-cols-2' if event.evidence | length > 1 }}">
       {% for item in event.evidence %}
@@ -161,7 +160,7 @@
   </section>
 
   <section class="mb-8 text-sm text-slate-400">
-    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Topics</h2>
+    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Topics</h2>
     {% for topic in event.topics %}<a href="/topics/{{ topic }}" class="mr-2 inline-block rounded-md bg-white/5 px-2 py-0.5 max-sm:inline-flex max-sm:min-h-11 max-sm:items-center font-mono text-xs text-slate-300 hover:bg-white/10 hover:text-white">{{ topic }}</a>{% endfor %}
   </section>
 
