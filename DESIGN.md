@@ -162,10 +162,11 @@ Flat at rest. Depth is conveyed by surface step (black to slate) and hairlines, 
 
 ### Shadow Vocabulary
 - **Floating** (`shadow-2xl` with black at 40 %): menus and the settings dialog; dialog backdrop is black at 60 %.
-- **Glow** (`shadow-2xl` with sky at 10 %, backdrop blur): the login card only.
+- **Glow** (`shadow-2xl` with sky at 10 %): the login card only. No other surface glows; a colour halo is not a state.
+- **Glass** (backdrop blur 14px): the login card and panels that lie over content, today the legend on the dashboard's graph. Header, filter bars and detail panes of the dashboard are plain translucent slate with a hairline.
 
 ### Named Rules
-**The Flat-By-Default Rule.** Lists, tables and forms carry no shadow. If it doesn't float, it doesn't cast.
+**The Flat-By-Default Rule.** Lists, tables and forms carry no shadow. If it doesn't float, it doesn't cast. On the dashboard a timeline card is flat: its phase colour is the 3px left edge, and selection is a 2px ring in that colour, not a glow.
 
 ## Shapes
 
@@ -213,6 +214,7 @@ A 6px circle for status (in progress pulses at 1.8s). Phases colour timeline mar
 - **Don't** use red, yellow, orange, green or blue for anything but phase, status or error meaning.
 - **Don't** add a second interface accent next to sky.
 - **Don't** put shadows on lists, tables or in-page cards.
+- **Don't** add colour halos or glows to cards, buttons, dots or logos. Phase colour is an edge or a ring, never a glow.
 - **Don't** hard-code dark-theme hex values in templates; the dashboard stylesheet still does in places and should be migrated.
 - **Don't** add new external font or script requests; reports must keep opening without the network (ADR 0006). The dashboard uses Inter while the other pages fall back to the system sans; decide deliberately before extending either.
 - **Don't** remove or replace the focus outline; a colour change alone is not a focus indicator.

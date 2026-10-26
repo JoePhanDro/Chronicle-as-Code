@@ -69,7 +69,7 @@
       {
         "name": "glow",
         "value": "0 25px 50px -12px rgba(14,165,233,0.1)",
-        "purpose": "Login card only."
+        "purpose": "Login card only. Backdrop blur (14px) is for panels over content: the login card and the dashboard's graph legend."
       }
     ],
     "motion": [
@@ -193,6 +193,7 @@
       "Don't use red, yellow, orange, green or blue for anything but phase, status or error meaning.",
       "Don't add a second interface accent next to sky.",
       "Don't put shadows on lists, tables or in-page cards.",
+      "Don't add colour halos or glows to cards, buttons, dots or logos. Phase colour is an edge or a ring, never a glow.",
       "Don't hard-code dark-theme hex values in templates.",
       "Don't add new external font or script requests.",
       "Don't remove or replace the focus outline; a colour change alone is not a focus indicator."

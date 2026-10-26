@@ -1,6 +1,7 @@
 """Dashboard layout: reading order on narrow screens and cards that do not land on top of each other."""
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -48,3 +49,16 @@ def test_card_classes_survive_vis_timelines_html_filter(html):
     # without the allow-list the filter drops every class, the cards fall back to the width of their text
     # and the stacking is computed from those widths
     assert "xss: { filterOptions: { whiteList: { div: ['class'], span: ['class'] } } }" in html
+
+
+def test_blur_is_only_on_the_graph_legend_and_nothing_glows():
+    # the template source, not the rendered page: the page also holds the stylesheet and the vis bundle
+    html = (Path(__file__).resolve().parent.parent / "chronicle" / "templates" / "dashboard.html").read_text(encoding="utf-8")
+    assert len(re.findall(r"(?<!-webkit-)backdrop-filter", html)) == 1  # inside .blur-overlay
+    assert re.search(r'class="glass blur-overlay absolute bottom-4 left-4', html)
+    assert not re.search(r"\.glass \{[^}]*backdrop-filter", html)
+    # no zero-offset coloured halos and no sky glow on the logo tile
+    assert "box-shadow: 0 0 10px" not in html and "shadow-sky-500" not in html
+    assert "0 0 18px" not in html and "0 0 26px" not in html and "0 10px 28px -14px var(--c)" not in html
+    assert "box-shadow: 0 0 0 2px var(--c)" in html  # selection is a ring in the phase colour
+    assert ".vis-active { box-shadow: none; }" in html  # the library's own sky glow is switched off
