@@ -219,9 +219,9 @@
     <div id="kpis" class="flex flex-wrap items-center gap-2 text-xs"></div>
   </header>
 
-  <div class="glass flex flex-wrap gap-1.5 border-x-0 border-t-0 px-5 py-2 text-[11px] text-slate-300">
+  <div class="glass flex flex-none gap-1.5 overflow-x-auto border-x-0 border-t-0 px-5 py-2 text-[11px] text-slate-300 sm:flex-wrap sm:overflow-visible">
     {% for phase in phases %}
-    <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[.03] px-2.5 py-1 ring-1 ring-white/5">
+    <span class="inline-flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full bg-white/[.03] px-2.5 py-1 ring-1 ring-white/5">
       <span class="h-2 w-2 rounded-full" style="background: {{ phase.color }}; box-shadow: 0 0 10px {{ phase.color }}"></span>{{ phase.name }}
     </span>
     {% endfor %}
@@ -230,10 +230,9 @@
   <div id="filters" class="glass flex flex-wrap items-center gap-x-4 gap-y-2 border-x-0 border-t-0 px-5 py-2 text-xs"></div>
 
   <main class="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-5">
-    <article id="details" class="glass p-5 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto" style="border-width: 0 1px 0 0"></article>
 
     <div class="flex min-w-0 flex-col lg:col-span-3 lg:min-h-0">
-      <div role="tablist" aria-label="Ansichten" class="flex flex-wrap gap-1 border-b border-white/10 px-3">
+      <div role="tablist" aria-label="Ansichten" class="sticky top-0 z-20 flex flex-wrap gap-1 border-b border-white/10 bg-[var(--bg)] px-3 lg:static">
         <button type="button" role="tab" id="tab-timeline" data-view="timeline" aria-controls="panel-timeline" class="view-tab">Timeline</button>
         <button type="button" role="tab" id="tab-graph" data-view="graph" aria-controls="panel-graph" class="view-tab">Graph</button>
         <button type="button" role="tab" id="tab-events" data-view="events" aria-controls="panel-events" class="view-tab">Ereignisse</button>
@@ -267,6 +266,7 @@
       <section role="tabpanel" id="panel-events" aria-labelledby="tab-events" hidden class="view-panel h-[60vh] overflow-y-auto p-4 lg:h-auto lg:min-h-0"></section>
       <section role="tabpanel" id="panel-evidence" aria-labelledby="tab-evidence" hidden class="view-panel h-[60vh] overflow-y-auto p-4 lg:h-auto lg:min-h-0"></section>
     </div>
+    <article id="details" class="glass p-5 lg:order-first lg:col-span-2 lg:min-h-0 lg:overflow-y-auto" style="border-width: 0 1px 0 0"></article>
   </main>
 
   <script id="payload" type="application/json">{{ payload | tojson }}</script>
@@ -464,7 +464,7 @@
       graphEdges.update(graphEdges.getIds().map(id => ({ id, color: { color: edgeBase.get(id), highlight: '#e2e8f0' } })));
     }
 
-    function selectEvent(id, { focusGraph = false } = {}) {
+    function selectEvent(id, { focusGraph = false, reveal = false } = {}) {
       if (id === currentId || !eventsById.has(id)) return;
       currentId = id;
       const ev = eventsById.get(id);
@@ -475,6 +475,14 @@
       if (focusGraph && currentView === 'graph' && graphEl.clientWidth) network.focus(`event:${id}`, { scale: 1.1, animation: motion({ duration: 600, easingFunction: 'easeInOutQuad' }) });
       markSelected(id);
       updateHash();
+      if (reveal) revealDetails();
+    }
+
+    // Below the large layout the details sit under the views; after a click they scroll into sight.
+    const STACKED = window.matchMedia('(max-width: 1023px)');
+    function revealDetails() {
+      if (!STACKED.matches) return;
+      document.getElementById('details').scrollIntoView({ block: 'nearest', behavior: REDUCED_MOTION.matches ? 'auto' : 'smooth' });
     }
 
     function clearSelection() {
@@ -528,6 +536,13 @@
     // Axis in UTC unless the local zone is chosen. vis.moment is part of vis-timeline's standalone bundle.
     const timeAxisMoment = !zoneIsLocal && window.vis && vis.moment ? { moment: date => vis.moment(date).utc() } : {};
 
+    // Standard zoom from Einstellungen: a window from the first event. It goes into the timeline's options, because
+    // moving the window afterwards (setWindow) leaves cards stacked on top of each other that were placed for the old one.
+    const firstStart = Math.min(...DATA.events.map(ev => Date.parse(ev.t0)));
+    const zoomWindow = zoomSpan && Number.isFinite(firstStart)
+      ? { start: new Date(firstStart - 10 * 60 * 1000), end: new Date(firstStart + zoomSpan) }
+      : {};
+
     // Filled by applyFilters, which runs once the views exist.
     const timelineGroups = new vis.DataSet();
     const timelineItems = new vis.DataSet();
@@ -538,9 +553,14 @@
       margin: { item: { horizontal: 8, vertical: 10 }, axis: 8 },
       groupOrder: 'order',
       ...timeAxisMoment,
+      ...zoomWindow,
       zoomMin: 1000 * 60,
       zoomMax: 1000 * 60 * 60 * 24 * 365 * 5,
       showCurrentTime: false,
+      // vis-timeline filters the card HTML and drops every class by default, which left the .ch-* styles below without
+      // effect and the cards at the width of their text. The card only needs the class of its div and span elements;
+      // all dynamic text is escaped in the template.
+      xss: { filterOptions: { whiteList: { div: ['class'], span: ['class'] } } },
       template: item => {
         const ev = eventsById.get(item.id);
         return `<div class="ch-card">
@@ -550,7 +570,7 @@
       },
     });
     timeline.on('select', props => {
-      if (props.items.length) selectEvent(props.items[0], { focusGraph: true });
+      if (props.items.length) selectEvent(props.items[0], { focusGraph: true, reveal: true });
       else clearSelection();
     });
 
@@ -646,7 +666,7 @@
     network.on('click', params => {
       if (!params.nodes.length) return clearSelection();
       const node = graphNodes.get(params.nodes[0]);
-      if (node.event_id) selectEvent(node.event_id);
+      if (node.event_id) selectEvent(node.event_id, { reveal: true });
     });
     network.on('hoverNode', () => { graphEl.style.cursor = 'pointer'; });
     network.on('blurNode', () => { graphEl.style.cursor = 'default'; });
@@ -654,16 +674,6 @@
     // Views are tabs. The URL keeps the view and the selected event: #/graph/exploit.
     const tablist = document.querySelector('[role=tablist]');
     const tabs = [...tablist.querySelectorAll('[role=tab]')];
-    // Standard zoom from Einstellungen: a window from the first shown event. Applied once, when the timeline is first shown.
-    let defaultZoomDone = false;
-    function applyDefaultZoom() {
-      if (defaultZoomDone || !zoomSpan) return;
-      const starts = DATA.events.filter(eventVisible).map(ev => Date.parse(ev.t0)).sort((a, b) => a - b);
-      if (!starts.length) return;
-      defaultZoomDone = true;
-      timeline.setWindow(new Date(starts[0] - 10 * 60 * 1000), new Date(starts[0] + zoomSpan));
-    }
-
     function showView(view, { focusTab = false } = {}) {
       if (!VIEWS.includes(view)) view = 'timeline';
       currentView = view;
@@ -674,7 +684,6 @@
         document.getElementById(`panel-${tab.dataset.view}`).hidden = !selected;
         if (selected && focusTab) tab.focus();
       }
-      if (view === 'timeline') applyDefaultZoom();
       if (view === 'graph' && currentId) {
         // The graph was hidden, so its focus on the selected event has to wait until it is visible.
         setTimeout(() => network.focus(`event:${currentId}`, { scale: 1.1, animation: motion({ duration: 400, easingFunction: 'easeInOutQuad' }) }), 200);
@@ -714,7 +723,7 @@
     function renderEventTable() {
       const rows = DATA.events.map(ev => {
         const action = el('button', 'text-left text-sky-300 hover:underline', ev.action);
-        action.addEventListener('click', () => selectEvent(ev.id));
+        action.addEventListener('click', () => selectEvent(ev.id, { reveal: true }));
         const row = el('tr', 'hover:bg-white/[.03]', [
           el('td', 'whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-400', formatTime(ev.t0)),
           el('td', 'px-3 py-2 text-xs text-slate-300', ev.phase),
@@ -754,7 +763,7 @@
             el('span', 'block truncate text-xs text-slate-500', ev.action),
           ]),
         ]);
-        card.addEventListener('click', () => selectEvent(ev.id));
+        card.addEventListener('click', () => selectEvent(ev.id, { reveal: true }));
         galleryCards.push({ id: ev.id, card });
         return card;
       }));
