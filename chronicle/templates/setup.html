@@ -7,6 +7,13 @@
   <link rel="stylesheet" href="/static/app.css">
   <link rel="icon" type="image/png" href="/static/icon.png">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <script>
+    // The theme chosen in the app (or the system setting) applies before sign-in too.
+    try {
+      const theme = localStorage.getItem('chronicle.theme');
+      if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+    } catch (error) { /* storage can be blocked; the system setting applies */ }
+  </script>
 </head>
 <body class="min-h-screen bg-slate-950 font-sans text-slate-200 antialiased">
   <main class="grid min-h-screen place-items-center px-4">

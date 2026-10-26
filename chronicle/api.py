@@ -13,9 +13,11 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import __version__, accounts, administration, repository, security, sync
 from .admin_pages import make_admin_pages
@@ -23,7 +25,7 @@ from .auth import PasswordChangeRequired, SetupState, client_ip, make_auth, pars
 from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
 from .models import Phase, Status, Topic
-from .pages import make_pages
+from .pages import make_pages, not_found_page
 from .report import make_report, report_headers
 from .event_input import EventCreate, EventUpdate, event_of, new_event_key, topic_list
 
@@ -88,6 +90,26 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
     # Pages of a user who must change the password go to the change form instead.
     app.add_exception_handler(PasswordChangeRequired, lambda request, exc: RedirectResponse("/account/password", status_code=303))
     app.include_router(make_pages(get_conn, auth))
+
+    @app.exception_handler(StarletteHTTPException)
+    async def not_found_for_browsers(request: Request, exc: StarletteHTTPException):
+        """An unknown address in a browser gets the 404 page (or the login when nobody is signed in), not JSON."""
+        wants_page = (
+            exc.status_code == 404
+            and not request.url.path.startswith("/api/")
+            and "text/html" in request.headers.get("accept", "")
+        )
+        if not wants_page:
+            return await http_exception_handler(request, exc)
+        try:
+            with closing(connect(path)) as conn:
+                user = auth.page_session(request, conn)
+        except PasswordChangeRequired:
+            return RedirectResponse("/account/password", status_code=303)
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        return not_found_page(request, user)
+
     app.include_router(make_admin_pages(get_conn, auth))
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
