@@ -59,3 +59,20 @@
 :root:root [data-list-row]:focus-visible {
   outline-offset: -2px;
 }
+
+/* Touch targets: on narrow screens and on touch devices every control and button-like link is at least 44px high.
+   Checkbox labels carry the target, since the box itself stays small. Isolated text links add their own padding in the template. */
+@media (max-width: 639px), (pointer: coarse) {
+  :root:root button,
+  :root:root select,
+  :root:root summary,
+  :root:root a.rounded-lg,
+  :root:root input:not([type="checkbox"], [type="radio"], [type="hidden"]),
+  :root:root label:has(> input[type="checkbox"], > input[type="radio"]) {
+    min-height: 44px;
+  }
+  :root:root a.rounded-lg {
+    display: inline-flex;
+    align-items: center;
+  }
+}

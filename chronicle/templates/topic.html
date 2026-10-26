@@ -39,7 +39,7 @@
       {% if last %}<span aria-hidden="true">·</span><span>zuletzt <time class="font-mono text-xs" data-utc="{{ last }}">{{ last[:16].replace('T', ' ') }}</time></span>{% endif %}
     </p>
     {% if topic.summary %}<p class="mt-2 max-w-2xl text-sm text-slate-400">{{ topic.summary }}</p>{% endif %}
-    <a href="/events?topic={{ topic.key }}" class="mt-2 inline-block text-xs text-sky-300 hover:underline">Im Ereignisprotokoll anzeigen</a>
+    <a href="/events?topic={{ topic.key }}" class="mt-2 inline-block text-xs text-sky-300 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">Im Ereignisprotokoll anzeigen</a>
   </div>
   {% if can_write %}
   <a href="#bearbeiten" id="edit-link" class="text-sm text-sky-300 hover:underline max-sm:flex max-sm:min-h-11 max-sm:items-center">Bearbeiten</a>
@@ -50,7 +50,7 @@
 <section class="mb-10">
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
     <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Zeitleiste und Zusammenhänge</h2>
-    <a href="/topics/{{ topic.key }}/dashboard" target="_blank" rel="noopener" class="text-xs text-sky-300 hover:underline">In neuem Fenster öffnen</a>
+    <a href="/topics/{{ topic.key }}/dashboard" target="_blank" rel="noopener" class="text-xs text-sky-300 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">In neuem Fenster öffnen</a>
   </div>
   <iframe src="/topics/{{ topic.key }}/dashboard?embed=1" title="Zeitleiste und Zusammenhänge von {{ topic.title }}"
           class="h-[75vh] min-h-[480px] w-full rounded-xl border border-white/10 bg-slate-950"></iframe>
