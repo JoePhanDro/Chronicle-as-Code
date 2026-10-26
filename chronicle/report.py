@@ -47,7 +47,7 @@ def make_report(
     return f"bericht-{topic_key}.html", html.encode("utf-8")
 
 
-def make_dashboard(conn: sqlite3.Connection, topic_key: str) -> str:
+def make_dashboard(conn: sqlite3.Connection, topic_key: str, *, embedded: bool = False) -> str:
     """The dashboard for the app. Evidence is loaded from the login-protected API, not embedded."""
     evidence_ids: dict[str, int] = {}
     found = topic_document(conn, topic_key, expand_refs=True, evidence_ids=evidence_ids)
@@ -60,6 +60,7 @@ def make_dashboard(conn: sqlite3.Connection, topic_key: str) -> str:
         src_for=lambda item: f"/api/v1/evidence/{evidence_ids[item.file]}",
         snapshot=False,
         vendor="local",
+        embedded=embedded,
     )
 
 
