@@ -201,9 +201,9 @@
     }
 
     /* Markdown in details */
-    .prose-invert code { background: var(--code); padding: 1px 5px; border-radius: 5px; }
-    .prose-invert code::before, .prose-invert code::after { content: none; }
-    .prose-invert pre { background: var(--pre); border: 1px solid var(--line); }
+    .prose-chronicle code { background: var(--code); padding: 1px 5px; border-radius: 5px; }
+    .prose-chronicle code::before, .prose-chronicle code::after { content: none; }
+    .prose-chronicle pre { background: var(--pre); border: 1px solid var(--line); }
   </style>
 </head>
 <body class="flex min-h-screen flex-col font-sans lg:h-screen lg:overflow-hidden">
@@ -214,7 +214,7 @@
         <svg viewBox="0 0 24 24" class="h-5 w-5 text-ink" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
       </div>
       <div class="min-w-0">
-        <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300/80">Chronicle · {{ 'Bericht' if snapshot else 'Ansicht' }}</div>
+        <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300">Chronicle · {{ 'Bericht' if snapshot else 'Ansicht' }}</div>
         <h1 class="truncate text-base font-semibold text-slate-100">{{ title }}</h1>
         {% if summary %}<p class="truncate text-xs text-slate-400">{{ summary }}</p>{% endif %}
       </div>
@@ -435,7 +435,7 @@
 
       const sections = [hero];
       if (ev.details) {
-        const body = el('div', 'prose prose-invert mt-5 max-w-none rounded-2xl bg-slate-950/40 p-5 ring-1 ring-white/5 prose-a:text-sky-400');
+        const body = el('div', 'prose prose-chronicle mt-5 max-w-none rounded-2xl bg-slate-950/40 p-5 ring-1 ring-white/5 prose-a:text-sky-300');
         // Rendered and sanitized on the server (chronicle/markdown.py), the same as on the event page.
         body.innerHTML = ev.details_html;
         window.renderDiagrams(body);
@@ -601,7 +601,7 @@
         figures = [`Events: ${linked.length}`, `nicht abgeschlossen: ${linked.filter(other => other.status !== 'resolved').length}`];
       }
       return el('div', 'space-y-1', [
-        el('div', 'text-[10px] font-semibold uppercase tracking-[.18em] text-sky-300/80', NODE_KIND_NAME[kind]),
+        el('div', 'text-[10px] font-semibold uppercase tracking-[.18em] text-sky-300', NODE_KIND_NAME[kind]),
         el('div', 'font-semibold text-slate-100', title),
         ...figures.map(text => el('div', 'font-mono text-[11px] text-slate-400', text)),
       ]);

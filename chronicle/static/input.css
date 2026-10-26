@@ -2,6 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Markdown text (event details). Tailwind's prose-invert has fixed light colours; these follow the theme through
+   the same variables as the rest of the interface, so text stays readable in light and dark. The doubled :root
+   lifts the rule above .prose, which is emitted after this file. */
+:root:root .prose-chronicle {
+  --tw-prose-body: rgb(var(--slate-300));
+  --tw-prose-lead: rgb(var(--slate-300));
+  --tw-prose-links: rgb(var(--sky-300));
+  --tw-prose-headings: rgb(var(--white));
+  --tw-prose-bold: rgb(var(--white));
+  --tw-prose-counters: rgb(var(--slate-400));
+  --tw-prose-bullets: rgb(var(--slate-500));
+  --tw-prose-hr: rgb(var(--slate-700));
+  --tw-prose-quotes: rgb(var(--slate-200));
+  --tw-prose-quote-borders: rgb(var(--slate-600));
+  --tw-prose-captions: rgb(var(--slate-400));
+  --tw-prose-code: rgb(var(--white));
+  --tw-prose-pre-code: rgb(var(--slate-200));
+  --tw-prose-pre-bg: rgb(var(--slate-900));
+  --tw-prose-th-borders: rgb(var(--slate-600));
+  --tw-prose-td-borders: rgb(var(--slate-700));
+}
+:root:root .prose-chronicle code {
+  background: rgb(var(--slate-800) / .6);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+:root:root .prose-chronicle code::before,
+:root:root .prose-chronicle code::after {
+  content: none;
+}
+
 /* One focus ring for every control, in the interface accent. The doubled :root lifts it above Tailwind's focus:outline-none (0,2,0), which is emitted after this file. */
 :root:root :focus-visible {
   outline: 2px solid rgb(var(--sky-400));

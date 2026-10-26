@@ -5,6 +5,12 @@
   let loading = null;
   let counter = 0;
 
+  // The diagram follows the interface theme: the chosen one, otherwise the system setting (dark is the default).
+  function isLight() {
+    const chosen = document.documentElement.dataset.theme;
+    return chosen ? chosen === "light" : window.matchMedia("(prefers-color-scheme: light)").matches;
+  }
+
   function loadMermaid() {
     if (window.mermaid) return Promise.resolve(window.mermaid);
     if (!loading) {
@@ -15,7 +21,7 @@
         script.crossOrigin = "anonymous";
         script.onload = () => {
           // strict: labels are sanitized by mermaid, and no click handlers or HTML labels are allowed.
-          window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "dark" });
+          window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: isLight() ? "default" : "dark" });
           resolve(window.mermaid);
         };
         script.onerror = () => reject(new Error("Mermaid konnte nicht geladen werden"));
