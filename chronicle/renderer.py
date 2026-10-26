@@ -11,7 +11,7 @@ from urllib.parse import quote
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from .markdown import render_markdown
-from .models import PHASE_COLORS, Evidence, Event, Phase, Timeline
+from .models import PHASE_COLORS, STATUS_LABELS, Evidence, Event, Phase, Timeline
 
 ACTOR_COLOR = "#38bdf8"
 SYSTEM_COLOR = "#a78bfa"
@@ -94,6 +94,7 @@ def render_dashboard(
         "events": [_event_payload(event, src_for or _relative_src) for event in events],
         "nodes": nodes,
         "edges": edges,
+        "statusText": {status.value: label for status, label in STATUS_LABELS.items()},
     }
     phases = [{"name": phase.value, "color": PHASE_COLORS[phase]} for phase in Phase]
 

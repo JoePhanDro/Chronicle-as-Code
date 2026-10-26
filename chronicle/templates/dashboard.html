@@ -365,9 +365,13 @@
       return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     }
 
+    function eventsText(count) { return `${count} ${count === 1 ? 'Event' : 'Events'}`; }
+
+    function statusName(status) { return DATA.statusText[status] || status.replace('_', ' '); }
+
     function statusPill(status) {
       return el('span', 'inline-flex items-center rounded-full bg-white/[.04] px-2.5 py-0.5 text-[11px] text-slate-300 ring-1 ring-white/10', [
-        el('span', `st st-${status}`), status.replace('_', ' '),
+        el('span', `st st-${status}`), statusName(status),
       ]);
     }
 
@@ -601,7 +605,7 @@
       if (kind === 'event') {
         title = ev.action;
         figures = [
-          `${ev.phase} · ${ev.status.replace('_', ' ')}`,
+          `${ev.phase} · ${statusName(ev.status)}`,
           `Belege: ${ev.evidence.length}`,
           `löst aus: ${DATA.events.filter(other => other.triggered_by.includes(ev.id)).length}`,
         ];
@@ -745,7 +749,7 @@
           el('td', 'px-3 py-2 text-xs text-slate-300', ev.phase),
           el('td', 'px-3 py-2', [action]),
           el('td', 'px-3 py-2 text-slate-400', ev.actor),
-          el('td', 'px-3 py-2 text-xs text-slate-400', ev.status.replace('_', ' ')),
+          el('td', 'px-3 py-2 text-xs text-slate-400', statusName(ev.status)),
         ]);
         rowsById.set(ev.id, row);
         return row;
@@ -826,7 +830,7 @@
       const phases = PHASE_ORDER.filter(name => DATA.events.some(ev => ev.phase === name));
       fields.push(filterSelect('phase', 'Phase', phases));
       const statuses = ['open', 'in_progress', 'resolved'].filter(name => DATA.events.some(ev => ev.status === name));
-      fields.push(filterSelect('status', 'Status', statuses, status => status.replace('_', ' ')));
+      fields.push(filterSelect('status', 'Status', statuses, statusName));
 
       const reset = el('button', 'btn', 'Filter zurücksetzen');
       reset.type = 'button';
@@ -890,8 +894,8 @@
       galleryEmpty.textContent = galleryCards.length ? 'Keine Evidence passt zu den Filtern.' : 'Keine Evidence vorhanden.';
       galleryEmpty.hidden = shownCards > 0;
       filterCount.textContent = visible.size === DATA.events.length
-        ? `${DATA.events.length} Events`
-        : `${visible.size} von ${DATA.events.length} Events`;
+        ? eventsText(DATA.events.length)
+        : `${visible.size} von ${eventsText(DATA.events.length)}`;
     }
 
     document.querySelectorAll('#panel-graph input[data-kind]').forEach(box => {

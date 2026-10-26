@@ -28,7 +28,7 @@ Server-rendered web UI (Python backend, Jinja templates, Tailwind CSS built with
 - Create, edit and delete topics and events; link events across topics; upload and preview evidence (PNG, JPEG, GIF, WebP, PDF, text; no SVG/HTML).
 - Search (`/` shortcut), help page with shortcuts, dashboard embedded in the topic page.
 - Phase colour semantics are part of the data model: red = Identification/Exploit, yellow = Analysis, orange = Containment, green = Mitigation/Recovery, blue = Lessons Learned.
-- UI language is German (all existing copy).
+- UI language is German (all existing copy). Status words are German everywhere (offen, in Arbeit, abgeschlossen); phase names (Identification, Exploit, …) and the terms Evidence, Timeline and Graph stay English as the data model's vocabulary.
 - Reports and static pages embed the stylesheet, the diagram libraries (vis-timeline, vis-network), the dashboard fonts and attachments, and are reproducible. Only a Mermaid diagram in an event text is fetched from the network when opened, so they are nearly, not fully, offline.
 - Not decided: explicit accessibility standard, keyboard-first requirement, and a ban on external requests were not confirmed by the owner.
 

@@ -44,6 +44,13 @@ class Status(StrEnum):
     RESOLVED = "resolved"
 
 
+# The status words the interface shows; the stored values stay English. Phase names stay English too: they are the terms of the data model.
+STATUS_LABELS: dict[Status, str] = {
+    Status.OPEN: "offen",
+    Status.IN_PROGRESS: "in Arbeit",
+    Status.RESOLVED: "abgeschlossen",
+}
+
 EvidenceType = Literal["screenshot", "log", "report", "other"]
 
 
