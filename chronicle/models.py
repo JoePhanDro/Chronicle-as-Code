@@ -128,6 +128,12 @@ class Topic(BaseModel):
     summary: str = ""
 
 
+class TopicCreate(Topic):
+    """Topic for a new record. Without a key the server generates one (see new_topic_key)."""
+
+    key: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+
+
 class Timeline(BaseModel):
     """One topic file: the topic, the events it defines and references to events defined elsewhere."""
 

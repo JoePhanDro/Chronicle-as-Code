@@ -45,6 +45,11 @@ def new_event_key() -> str:
     return f"ev-{datetime.now(UTC):%Y%m%d}-{secrets.token_hex(4)}"
 
 
+def new_topic_key() -> str:
+    """Key for a topic created in the UI: UTC date and a random part, e.g. tp-20261021-3fa9c2e1."""
+    return f"tp-{datetime.now(UTC):%Y%m%d}-{secrets.token_hex(4)}"
+
+
 def event_of(body: EventWrite) -> Event:
     return Event.model_validate(body.model_dump(exclude={"topic", "topics", "version"}))
 

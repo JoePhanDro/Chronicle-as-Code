@@ -37,7 +37,7 @@ def test_form_and_list_use_the_same_words_as_the_read_view(api_client):
 def test_topic_list_and_status_line_use_the_singular(api_client):
     client = api_client("analyst")
     token = client.headers["X-CSRF-Token"]
-    client.post("/topics/new", data={"key": "eins", "title": "Eins", "kind": "project", "csrf_token": token})
+    client.post("/api/v1/topics", json={"key": "eins", "title": "Eins", "kind": "project"})
     client.post("/topics/eins/link", data={"event": "feed-cve", "csrf_token": token})
     assert "1 Event<" in client.get("/topics").text and "1 Events" not in client.get("/topics").text
     assert "1 Event</span>" in client.get("/topics/eins").text

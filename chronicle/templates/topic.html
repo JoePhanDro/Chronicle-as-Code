@@ -12,8 +12,6 @@
 <h1 class="mb-6 text-xl font-semibold text-slate-100">Neues Topic</h1>
 <form method="post" action="/topics/new" class="max-w-2xl space-y-5">
   <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-  <label class="block"><span class="{{ label_class }}">Key (eindeutig, danach nicht mehr änderbar)</span>
-    <input name="key" value="{{ form.key or '' }}" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,99}" class="{{ input_class }} font-mono"></label>
   <label class="block"><span class="{{ label_class }}">Titel</span>
     <input name="title" value="{{ form.title or '' }}" required class="{{ input_class }}"></label>
   <label class="block"><span class="{{ label_class }}">Art</span>
@@ -22,6 +20,7 @@
     </select></label>
   <label class="block"><span class="{{ label_class }}">Zusammenfassung</span>
     <textarea name="summary" rows="4" class="{{ input_class }}">{{ form.summary or '' }}</textarea></label>
+  <p class="text-xs text-slate-400">Der Key wird beim Speichern automatisch vergeben und danach auf der Seite des Topics angezeigt.</p>
   <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Anlegen</button>
 </form>
 

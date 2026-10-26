@@ -82,15 +82,16 @@ def test_analyst_creates_topic_and_event_through_the_forms(db_path):
     client, csrf = login(db_path, "anna")
 
     topic = client.post("/topics/new", data={
-        "csrf_token": csrf, "key": "menu-test", "title": "Menü-Test", "kind": "project", "summary": "",
+        "csrf_token": csrf, "title": "Menü-Test", "kind": "project", "summary": "",
     }, follow_redirects=False)
     assert topic.status_code == 303, topic.text
+    topic_key = topic.headers["location"].rsplit("/", 1)[-1]
 
     event = client.post("/events/new", data={
         "csrf_token": csrf, "t0_date": "2026-10-20", "t0_hour": "12", "t0_minute": "00",
         "t0_zone": "Europe/Berlin", "phase": "Identification",
         "actor": "Analyst", "system": "", "action": "Erster Eintrag", "status": "open",
-        "triggered_by": "", "details": "", "topic": "menu-test", "topics": [],
+        "triggered_by": "", "details": "", "topic": topic_key, "topics": [],
     }, follow_redirects=False)
     assert event.status_code == 303, event.text
     assert event.headers["location"].startswith("/events/ev-")
@@ -101,7 +102,7 @@ def test_analyst_creates_topic_and_event_through_the_forms(db_path):
 def test_viewer_cannot_post_creation_forms(db_path):
     client, csrf = login(db_path, "viewer")
     response = client.post("/topics/new", data={
-        "csrf_token": csrf, "key": "nope", "title": "Nein", "kind": "project", "summary": "",
+        "csrf_token": csrf, "title": "Nein", "kind": "project", "summary": "",
     }, follow_redirects=False)
     assert response.status_code == 403
 
