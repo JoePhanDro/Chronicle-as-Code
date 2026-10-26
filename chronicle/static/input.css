@@ -23,6 +23,18 @@
   --tw-prose-th-borders: rgb(var(--slate-600));
   --tw-prose-td-borders: rgb(var(--slate-700));
 }
+:root:root .prose-chronicle h1,
+:root:root .prose-chronicle h2,
+:root:root .prose-chronicle h3 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 1.5em;
+  margin-bottom: .5em;
+}
+:root:root .prose-chronicle h1 { font-size: 1.25em; }
+:root:root .prose-chronicle h2 { font-size: 1.125em; }
+:root:root .prose-chronicle h3 { font-size: 1em; }
+:root:root .prose-chronicle > :first-child { margin-top: 0; }
 :root:root .prose-chronicle code {
   background: rgb(var(--slate-800) / .6);
   padding: 1px 5px;

@@ -23,7 +23,7 @@ from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, Blob, check_file
 from .exporter import ExportError
 from .markdown import markdown_filter
 from .report import make_dashboard, make_report, report_headers
-from .models import Phase, Status, Topic, TopicKind
+from .models import PHASE_COLORS, Phase, Status, Topic, TopicKind
 from .event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -112,6 +112,9 @@ def edit_form(event: dict) -> dict:
 
 
 TEMPLATES.env.globals["edit_form"] = edit_form
+# Phase colour for the dot next to a phase name; a name outside the enum (old data) gets the neutral colour.
+TEMPLATES.env.globals["phase_color"] = lambda name: next(
+    (color for phase, color in PHASE_COLORS.items() if phase.value == name), PHASE_COLORS[Phase.ACTIVITY])
 
 
 async def _attachments_from_form(form) -> list[Blob]:
@@ -260,7 +263,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if event is None:
             return render(request, "not_found.html", user, status_code=404)
         return render(request, "event.html", user, mode="view", event=event, errors=None,
-                      **form_context(conn, form=None))
+                      links=repository.get_event_links(conn, key), **form_context(conn, form=None))
 
     @router.post("/events/{key}/edit", response_class=HTMLResponse)
     async def update_event_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
