@@ -84,9 +84,12 @@
     }
     .glass {
       background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    /* Blur only where a panel lies over content: the legend on the graph. */
+    .blur-overlay {
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
-      border: 1px solid var(--line);
     }
     .dot-grid {
       background-image: radial-gradient(var(--dot) 1px, transparent 1px);
@@ -102,7 +105,7 @@
       font-size: 12px;
       transition: all .15s ease;
     }
-    .btn:hover { color: var(--strong); border-color: rgba(56, 189, 248, .5); box-shadow: 0 0 18px -6px rgba(56, 189, 248, .6); }
+    .btn:hover { color: var(--strong); border-color: rgba(56, 189, 248, .5); }
 
     /* Status indicator (open / in_progress / resolved) */
     .st { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; margin-right: 6px; vertical-align: middle; background: #64748b; flex: none; }
@@ -135,6 +138,8 @@
       #filters > span, #filters > button { grid-column: 1 / -1; }
     }
 
+    .vis-active { box-shadow: none; } /* vis-timeline's own sky glow on the active timeline */
+
     /* vis-timeline: dark, minimal chrome, event cards in swimlanes */
     .vis-timeline { border: 0; background: transparent; font-family: Inter, system-ui, sans-serif; }
     .vis-panel.vis-background, .vis-panel.vis-center, .vis-panel.vis-left,
@@ -149,14 +154,13 @@
       border: 1px solid var(--line);
       border-left: 3px solid var(--c);
       border-radius: 10px;
-      box-shadow: 0 10px 28px -14px var(--c);
       color: var(--text);
       transition: box-shadow .2s ease, transform .2s ease;
     }
     .vis-item.ch-item:hover { transform: translateY(-1px); }
     .vis-item.ch-item.vis-selected {
       border-color: var(--c);
-      box-shadow: 0 0 0 1px var(--c), 0 0 26px -4px var(--c);
+      box-shadow: 0 0 0 2px var(--c);
     }
     .vis-item.ch-item { font-size: 12px; line-height: 1.3; text-align: left; }
     .vis-item.ch-item .vis-item-content { padding: 0; }
@@ -206,7 +210,7 @@
 
   <header class="glass flex flex-wrap items-center justify-between gap-4 border-x-0 border-t-0 px-5 py-3">
     <div class="flex min-w-0 items-center gap-3">
-      <div class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-violet-500 shadow-lg shadow-sky-500/20">
+      <div class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-violet-500>
         <svg viewBox="0 0 24 24" class="h-5 w-5 text-ink" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
       </div>
       <div class="min-w-0">
@@ -222,7 +226,7 @@
   <div class="glass flex flex-none gap-1.5 overflow-x-auto border-x-0 border-t-0 px-5 py-2 text-[11px] text-slate-300 sm:flex-wrap sm:overflow-visible">
     {% for phase in phases %}
     <span class="inline-flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full bg-white/[.03] px-2.5 py-1 ring-1 ring-white/5">
-      <span class="h-2 w-2 rounded-full" style="background: {{ phase.color }}; box-shadow: 0 0 10px {{ phase.color }}"></span>{{ phase.name }}
+      <span class="h-2 w-2 rounded-full" style="background: {{ phase.color }}"></span>{{ phase.name }}
     </span>
     {% endfor %}
   </div>
@@ -254,7 +258,7 @@
           <button id="btn-reset" class="btn">Auswahl lösen</button>
         </div>
 
-        <div class="glass absolute bottom-4 left-4 z-10 flex flex-wrap gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-slate-300">
+        <div class="glass blur-overlay absolute bottom-4 left-4 z-10 flex flex-wrap gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-slate-300">
           <label class="inline-flex cursor-pointer items-center gap-1.5"><input type="checkbox" data-kind="actor" checked class="accent-sky-400"><span class="h-2 w-2 rounded-full bg-sky-400"></span>Akteur</label>
           <label class="inline-flex cursor-pointer items-center gap-1.5"><input type="checkbox" data-kind="system" checked class="accent-violet-400"><span class="h-2 w-2 rounded-full bg-violet-400"></span>System</label>
           <label class="inline-flex cursor-pointer items-center gap-1.5"><input type="checkbox" data-kind="event" checked class="accent-rose-400"><span class="h-2 w-2 rounded-full bg-rose-400"></span>Event (Phase-Farbe)</label>
@@ -357,7 +361,6 @@
     function phaseBadge(ev) {
       const badge = el('span', 'rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-ink', ev.phase);
       badge.style.background = ev.color;
-      badge.style.boxShadow = `0 0 18px -4px ${ev.color}`;
       return badge;
     }
 
