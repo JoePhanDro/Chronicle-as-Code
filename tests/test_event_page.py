@@ -1,5 +1,6 @@
 """Event page, read view: the facts, what caused the event and what it caused, editing and deleting out of the way."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -46,14 +47,58 @@ def test_viewers_see_neither_edit_panel_nor_delete(api_client):
     assert 'id="bearbeiten"' not in html and "Event löschen" not in html and 'id="edit-link"' not in html
 
 
+def js(text):
+    """How `tojson` writes text into the onsubmit handler: escaped, without the quotes."""
+    return json.dumps(text)[1:-1]
+
+
 def test_analysts_get_a_closed_edit_panel_with_delete_at_its_end(api_client):
-    html = api_client("analyst").get("/events/exploit").text
+    html = api_client("analyst").get("/events/lessons").text
     assert '<details id="bearbeiten" class="rounded-xl border border-white/10" >' in html  # closed
-    assert html.index('id="bearbeiten"') < html.index("Event löschen")  # delete is inside the panel, last
+    assert html.index('id="bearbeiten"') < html.index("Event löschen</button>")  # delete is inside the panel, last
     assert 'id="edit-link"' in html
-    # the confirmation names the event and its key
-    assert "Event " + chr(92) + "u201eRemote Code Execution erfolgreich" + chr(92) + "u201c (exploit) wirklich l" + chr(92) + "u00f6schen?" in html
-    assert "Es löst 1 weiteres Event aus" in html  # an event that others depend on says so before the click
+
+
+def test_delete_dialog_names_event_key_evidence_and_the_way_back(api_client):
+    html = api_client("analyst").get("/events/lessons").text  # file mode, no evidence, nothing depends on it
+    question = js("Event „Post-Mortem abgeschlossen“ (lessons) löschen?\n\n")
+    assert question in html
+    assert js("Es hat keine Evidence-Dateien. Die Datei des Topics ändert sich; den früheren Stand liefert Git.") in html
+
+
+def test_delete_dialog_counts_the_evidence_files(api_client):
+    client = api_client("analyst")
+    token = client.headers["X-CSRF-Token"]
+    upload = client.post("/events/lessons/evidence", data={"csrf_token": token, "type": "log"},
+                         files={"file": ("a.log", b"zeile", "text/plain")}, follow_redirects=False)
+    assert upload.status_code == 303
+    assert js("Dabei wird 1 Evidence-Datei entfernt.") in client.get("/events/lessons").text
+
+
+def test_an_event_that_others_depend_on_has_no_delete_button_but_the_reason(api_client):
+    html = api_client("analyst").get("/events/exploit").text
+    assert "Nicht löschbar: Dieses Event löst 1 weiteres Event aus" in html
+    assert 'href="/events/analysis"' in html.split("Nicht löschbar")[1]
+    assert "Event löschen</button>" not in html and 'action="/events/exploit/delete"' not in html
+
+
+def test_without_a_data_folder_the_dialog_points_to_the_tombstones(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from chronicle import accounts, security
+    from chronicle.api import create_app
+    from chronicle.db import connect
+    from chronicle.importer import import_folder
+    from tests.conftest import DATA_DIR, PASSWORD
+
+    import_folder(tmp_path / "chronicle.db", DATA_DIR)
+    conn = connect(tmp_path / "chronicle.db")
+    accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
+    conn.close()
+    client = TestClient(create_app(tmp_path / "chronicle.db"))
+    client.post("/api/v1/auth/login", json={"username": "anna", "password": PASSWORD})
+    html = client.get("/events/lessons").text
+    assert js("Ein Admin kann es unter Verwaltung, Gelöschte Events wiederherstellen.") in html
 
 
 def test_a_failed_edit_opens_the_panel_again(api_client):
