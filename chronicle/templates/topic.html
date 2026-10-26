@@ -13,7 +13,7 @@
 <form method="post" action="/topics/new" class="max-w-2xl space-y-5">
   <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
   <label class="block"><span class="{{ label_class }}">Key (eindeutig, danach nicht mehr änderbar)</span>
-    <input name="key" value="{{ form.key or '' }}" required pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,99}" class="{{ input_class }} font-mono"></label>
+    <input name="key" value="{{ form.key or '' }}" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,99}" class="{{ input_class }} font-mono"></label>
   <label class="block"><span class="{{ label_class }}">Titel</span>
     <input name="title" value="{{ form.title or '' }}" required class="{{ input_class }}"></label>
   <label class="block"><span class="{{ label_class }}">Art</span>

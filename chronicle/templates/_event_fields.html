@@ -19,7 +19,7 @@
     {% else %}
     <label class="block">
       <span class="{{ label_class }}">Key (eindeutig)</span>
-      <input name="key" value="{{ f.key or '' }}" required {{ 'readonly' if mode == 'view' }} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,99}"
+      <input name="key" value="{{ f.key or '' }}" required {{ 'readonly' if mode == 'view' }} pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,99}"
              class="{{ input_class }} font-mono {{ 'opacity-60' if mode == 'view' }}">
     </label>
     {% endif %}

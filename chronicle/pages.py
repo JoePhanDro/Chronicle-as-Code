@@ -134,6 +134,13 @@ def _error_text(exc: Exception) -> str:
     return str(exc)
 
 
+def not_found_page(request: Request, user: dict) -> HTMLResponse:
+    """The 404 page for an address that matches no route (pages that know their topic or event render their own)."""
+    return TEMPLATES.TemplateResponse(
+        request, "not_found.html", {"user": user, "can_write": user["role"] in WRITER_ROLES}, status_code=404
+    )
+
+
 def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth) -> APIRouter:
     router = APIRouter()
 
