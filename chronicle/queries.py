@@ -168,39 +168,29 @@ def _match_expression(text: str) -> str | None:
     return " ".join(f'"{word}"*' for word in words) or None
 
 
+_TOPIC_CLAUSE = (
+    "events.pk IN (SELECT topic_events.event_pk FROM topic_events "
+    "JOIN topics ON topics.pk = topic_events.topic_pk WHERE topics.key = ?)"
+)
+_QUERY_CLAUSE = "events.pk IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)"
+
+
 def _filter_sql(flt: EventFilter) -> tuple[str, list]:
-    clauses: list[str] = []
-    params: list = []
-    if flt.topic is not None:
-        clauses.append(
-            "events.pk IN (SELECT topic_events.event_pk FROM topic_events "
-            "JOIN topics ON topics.pk = topic_events.topic_pk WHERE topics.key = ?)"
-        )
-        params.append(flt.topic)
     expression = _match_expression(flt.query or "")
-    if expression is not None:
-        clauses.append("events.pk IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)")
-        params.append(expression)
-    if flt.phase:
-        clauses.append("events.phase = ?")
-        params.append(flt.phase)
-    if flt.status:
-        clauses.append("events.status = ?")
-        params.append(flt.status)
-    if flt.actor:
-        clauses.append("instr(lower(events.actor), lower(?)) > 0")
-        params.append(flt.actor)
-    if flt.system:
-        clauses.append("instr(lower(events.system), lower(?)) > 0")
-        params.append(flt.system)
     # t0 is stored in UTC, so the first ten characters are the UTC day.
-    if flt.since is not None:
-        clauses.append("substr(events.t0, 1, 10) >= ?")
-        params.append(flt.since.isoformat())
-    if flt.until is not None:
-        clauses.append("substr(events.t0, 1, 10) <= ?")
-        params.append(flt.until.isoformat())
-    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    conditions = [
+        (flt.topic is not None, _TOPIC_CLAUSE, flt.topic),
+        (expression is not None, _QUERY_CLAUSE, expression),
+        (flt.phase, "events.phase = ?", flt.phase),
+        (flt.status, "events.status = ?", flt.status),
+        (flt.actor, "instr(lower(events.actor), lower(?)) > 0", flt.actor),
+        (flt.system, "instr(lower(events.system), lower(?)) > 0", flt.system),
+        (flt.since is not None, "substr(events.t0, 1, 10) >= ?", flt.since),
+        (flt.until is not None, "substr(events.t0, 1, 10) <= ?", flt.until),
+    ]
+    active = [(clause, param) for used, clause, param in conditions if used]
+    params = [param.isoformat() if isinstance(param, date) else param for _, param in active]
+    where = f" WHERE {' AND '.join(clause for clause, _ in active)}" if active else ""
     return where, params
 
 

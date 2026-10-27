@@ -266,6 +266,13 @@ def ops_path(db_path: str | Path) -> Path:
     return path.with_name(f"{path.stem}.ops{path.suffix}")
 
 
+def _copy_to_ops(conn: sqlite3.Connection, table: str) -> None:
+    main_columns = [row["name"] for row in conn.execute(f"PRAGMA main.table_info({table})")]
+    ops_columns = [row["name"] for row in conn.execute(f"PRAGMA ops.table_info({table})")]
+    common = ", ".join(column for column in main_columns if column in ops_columns)
+    conn.execute(f"INSERT OR IGNORE INTO ops.{table} ({common}) SELECT {common} FROM main.{table}")
+
+
 def _move_operations_out_of_index(conn: sqlite3.Connection) -> None:
     """Databases written before the split keep accounts and the audit log in the index file. Copy them to the
     operations file and drop them from the index. Runs once: afterwards the index has no such tables."""
@@ -276,10 +283,7 @@ def _move_operations_out_of_index(conn: sqlite3.Connection) -> None:
     try:
         with conn:
             for table in legacy:
-                main_columns = [row["name"] for row in conn.execute(f"PRAGMA main.table_info({table})")]
-                ops_columns = [row["name"] for row in conn.execute(f"PRAGMA ops.table_info({table})")]
-                common = ", ".join(column for column in main_columns if column in ops_columns)
-                conn.execute(f"INSERT OR IGNORE INTO ops.{table} ({common}) SELECT {common} FROM main.{table}")
+                _copy_to_ops(conn, table)
             for table in ("audit_log", "sessions", "login_failures", "settings", "users"):
                 if table in legacy:
                     conn.execute(f"DROP TABLE main.{table}")
