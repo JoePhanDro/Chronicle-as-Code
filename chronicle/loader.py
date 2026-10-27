@@ -46,6 +46,18 @@ def find_topic_files(data_dir: Path) -> list[Path]:
     if not data_dir.is_dir():
         raise TimelineError(f"Datenordner existiert nicht: {data_dir}")
 
+    files, links = _walk(data_dir)
+    if links:
+        links.sort()
+        more = f" und {len(links) - MAX_LISTED_LINKS} weitere" if len(links) > MAX_LISTED_LINKS else ""
+        raise TimelineError("Links sind im Datenordner nicht erlaubt: " + ", ".join(links[:MAX_LISTED_LINKS]) + more)
+    if not files:
+        raise TimelineError(f"Keine YAML-Datei unterhalb von {data_dir} gefunden")
+    return sorted(files)
+
+
+def _walk(data_dir: Path) -> tuple[list[Path], list[str]]:
+    """The topic files below the folder and the links found on the way (relative paths)."""
     files: list[Path] = []
     links: list[str] = []
     pending = [data_dir]
@@ -54,23 +66,23 @@ def find_topic_files(data_dir: Path) -> list[Path]:
         try:
             with os.scandir(folder) as entries:
                 for entry in entries:
-                    if entry.is_symlink():
-                        links.append(Path(entry.path).relative_to(data_dir).as_posix())
-                    elif entry.is_dir(follow_symlinks=False):
-                        if not (folder == data_dir and entry.name == ".git"):
-                            pending.append(Path(entry.path))
-                    elif entry.name.endswith(TOPIC_SUFFIXES) and entry.is_file(follow_symlinks=False):
-                        files.append(Path(entry.path))
+                    _sort_entry(entry, folder == data_dir, data_dir, files, links, pending)
         except OSError as exc:  # only the path is named: the error text of the system may hold file names
             where = folder.relative_to(data_dir).as_posix()
             raise TimelineError(f"Ordner nicht lesbar: {where} ({exc.strerror})") from exc
-    if links:
-        links.sort()
-        more = f" und {len(links) - MAX_LISTED_LINKS} weitere" if len(links) > MAX_LISTED_LINKS else ""
-        raise TimelineError("Links sind im Datenordner nicht erlaubt: " + ", ".join(links[:MAX_LISTED_LINKS]) + more)
-    if not files:
-        raise TimelineError(f"Keine YAML-Datei unterhalb von {data_dir} gefunden")
-    return sorted(files)
+    return files, links
+
+
+def _sort_entry(
+    entry: os.DirEntry, in_root: bool, data_dir: Path, files: list[Path], links: list[str], pending: list[Path]
+) -> None:
+    if entry.is_symlink():
+        links.append(Path(entry.path).relative_to(data_dir).as_posix())
+    elif entry.is_dir(follow_symlinks=False):
+        if not (in_root and entry.name == ".git"):
+            pending.append(Path(entry.path))
+    elif entry.name.endswith(TOPIC_SUFFIXES) and entry.is_file(follow_symlinks=False):
+        files.append(Path(entry.path))
 
 
 def link_below(base: Path, path: Path) -> Path | None:
