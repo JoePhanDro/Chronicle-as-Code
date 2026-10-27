@@ -90,6 +90,13 @@ class Event(BaseModel):
     details: str = Field(default="", description="Markdown body shown in the detail view")
     evidence: list[Evidence] = Field(default_factory=list)
 
+    @field_validator("details")
+    @classmethod
+    def _unix_line_ends(cls, value: str) -> str:
+        # Browsers send a textarea with CRLF. A YAML block scalar reads that back as LF, so a file would never match
+        # what was written. The text is stored with LF.
+        return value.replace("\r\n", "\n").replace("\r", "\n")
+
     @field_validator("t0")
     @classmethod
     def _require_timezone(cls, value: datetime) -> datetime:
