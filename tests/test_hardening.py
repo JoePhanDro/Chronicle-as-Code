@@ -7,7 +7,8 @@ import pytest
 from chronicle.check import check_folder
 from chronicle.loader import TimelineError, find_topic_files
 from chronicle.models import Timeline
-from chronicle.repository import Invalid, _free_evidence_name
+from chronicle.evidence_store import _free_evidence_name
+from chronicle.repository import Invalid
 from chronicle.store import LOCK_FILE, StoreError, _atomic_write, folder_lock, write_new_file, write_timeline
 
 TOPIC = ("topic:\n  key: a\n  title: A\nevents:\n  - key: a1\n    t0: 2026-10-14T08:40:00+02:00\n"
