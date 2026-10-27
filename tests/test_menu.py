@@ -130,3 +130,10 @@ def test_every_page_has_a_skip_link_to_the_main_content(db_path):
     for path in ["/", "/events", "/topics", "/hilfe"]:
         html = client.get(path).text
         assert 'href="#main"' in html and '<main id="main"' in html, path
+
+
+def test_home_groups_viewing_apart_from_creating(db_path):
+    body = login(db_path, "anna")[0].get("/").text.split('id="home-open"')[1]  # below the header
+    assert body.index('href="/topics"') < body.index('id="home-new"') < body.index('href="/events/new"') < body.index('href="/topics/new"')
+    viewer = login(db_path, "viewer")[0].get("/").text.split('id="home-open"')[1]
+    assert 'id="home-new"' not in viewer and "/events/new" not in viewer
