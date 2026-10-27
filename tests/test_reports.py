@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for, import_example
 from chronicle import accounts, repository, security
-from chronicle.api import create_app
 from chronicle.db import connect
 from chronicle.evidence import check_file
 from chronicle.importer import import_folder
@@ -29,7 +29,7 @@ def db_path(tmp_path):
     anna_id = accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
     conn.close()
-    import_folder(path, DATA_DIR)
+    import_example(path)
 
     # Changes that exist only in the database, not in the YAML file.
     conn = connect(path)
@@ -49,7 +49,7 @@ def db_path(tmp_path):
 
 
 def api_login(db_path, username):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -116,7 +116,7 @@ def test_only_admins_can_build_reports(db_path, username):
 
 
 def test_anonymous_request_gets_no_report(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     assert client.get("/api/v1/topics/inc-2026-042/report").status_code == 401
     response = client.get("/reports/inc-2026-042", follow_redirects=False)
     assert response.status_code == 303
@@ -206,7 +206,7 @@ def test_pdf_is_audited_with_its_kind_and_only_admins_get_it(db_path):
         client = api_login(db_path, username)
         assert client.get("/api/v1/topics/inc-2026-042/report.pdf").status_code == 403
         assert client.get("/reports/inc-2026-042/pdf").status_code == 403
-    assert TestClient(create_app(db_path)).get("/api/v1/topics/inc-2026-042/report.pdf").status_code == 401
+    assert TestClient(app_for(db_path)).get("/api/v1/topics/inc-2026-042/report.pdf").status_code == 401
 
 
 def test_reports_page_offers_html_and_both_pdfs(db_path):

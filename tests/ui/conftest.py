@@ -11,9 +11,8 @@ import uvicorn
 from playwright.sync_api import sync_playwright
 
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
-from chronicle.importer import import_folder
+from tests.conftest import app_for, import_example
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
@@ -36,13 +35,13 @@ def app_url(tmp_path_factory):
     accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
     conn.close()
-    import_folder(db_path, DATA_DIR)
+    import_example(db_path)
 
     # Local HTTP, so the session cookie must not require HTTPS.
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("CHRONICLE_COOKIE_SECURE", "0")
         port = free_port()
-        server = uvicorn.Server(uvicorn.Config(create_app(db_path), host="127.0.0.1", port=port, log_level="warning"))
+        server = uvicorn.Server(uvicorn.Config(app_for(db_path), host="127.0.0.1", port=port, log_level="warning"))
         thread = threading.Thread(target=server.run, daemon=True)
         thread.start()
         deadline = time.monotonic() + 15

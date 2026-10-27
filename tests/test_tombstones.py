@@ -6,8 +6,8 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from tests.conftest import db_mode_app
 from chronicle import accounts, repository, security
-from chronicle.api import create_app
 from chronicle.db import connect
 from chronicle.importer import import_folder
 
@@ -67,7 +67,7 @@ def user_id(conn, username):
 
 
 def login(db_path, username, password=PASSWORD):
-    client = TestClient(create_app(db_path))
+    client = TestClient(db_mode_app(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]

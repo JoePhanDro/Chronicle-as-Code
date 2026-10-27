@@ -3,10 +3,9 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for, import_example
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
-from chronicle.importer import import_folder
 
 DATA_DIR = "data"
 PASSWORD = "correct horse battery"
@@ -23,19 +22,19 @@ def db_path(tmp_path):
     conn = connect(path)
     accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
     conn.close()
-    import_folder(path, DATA_DIR)
+    import_example(path)
     return path
 
 
 def login(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": "viewer", "password": PASSWORD})
     assert response.status_code == 200, response.text
     return client
 
 
 def test_dashboard_needs_login(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.get("/topics/inc-2026-042/dashboard", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"

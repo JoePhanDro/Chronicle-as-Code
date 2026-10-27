@@ -3,8 +3,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import db_mode_app
 from chronicle import accounts, repository, security
-from chronicle.api import create_app
 from chronicle.db import connect
 from chronicle.pages import _local_path, _with_param
 from tests.conftest import PASSWORD
@@ -36,7 +36,7 @@ def test_button_is_absent_without_a_data_folder(tmp_path):
     conn = connect(tmp_path / "chronicle.db")
     accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     conn.close()
-    client = TestClient(create_app(tmp_path / "chronicle.db"))
+    client = TestClient(db_mode_app(tmp_path / "chronicle.db"))
     token = client.post("/api/v1/auth/login", json={"username": "anna", "password": PASSWORD}).json()["csrf_token"]
     assert "/neu-laden" not in client.get("/topics").text
     response = client.post("/neu-laden", data={"csrf_token": token}, follow_redirects=False)

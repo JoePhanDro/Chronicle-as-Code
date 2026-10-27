@@ -3,8 +3,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
 from chronicle.importer import import_folder
 
@@ -59,7 +59,7 @@ def db_path(tmp_path):
 
 
 def login(db_path, username):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
     assert response.status_code == 200, response.text
     return client
@@ -88,7 +88,7 @@ def test_search_without_text_explains_what_is_searched(db_path):
 
 
 def test_search_needs_a_session(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.get("/suche", params={"q": "webshell"}, follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
@@ -111,7 +111,7 @@ def test_help_page_lists_shortcuts_and_settings(db_path):
 
 
 def test_help_page_needs_a_session(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.get("/hilfe", follow_redirects=False)
     assert response.status_code == 303
 

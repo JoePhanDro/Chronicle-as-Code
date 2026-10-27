@@ -3,8 +3,8 @@ import asyncio
 import httpx
 import pytest
 
+from tests.conftest import app_for
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
 
 PASSWORD = "correct horse battery"
@@ -45,7 +45,7 @@ def fail_five_times(app, source: str, forwarded: str | None = None):
 
 
 def test_attacker_cannot_lock_the_owner_out(db_path):
-    app = create_app(db_path, trusted_proxies="")
+    app = app_for(db_path, trusted_proxies="")
     fail_five_times(app, ATTACKER)
 
     assert login(app, ATTACKER).status_code == 429  # the attacker is locked for this account
@@ -53,7 +53,7 @@ def test_attacker_cannot_lock_the_owner_out(db_path):
 
 
 def test_failures_for_many_accounts_lock_only_that_address(db_path):
-    app = create_app(db_path, trusted_proxies="")
+    app = app_for(db_path, trusted_proxies="")
     for index in range(20):
         assert login(app, ATTACKER, username=f"niemand{index}", password="falsch").status_code == 401
 
@@ -62,7 +62,7 @@ def test_failures_for_many_accounts_lock_only_that_address(db_path):
 
 
 def test_successful_login_clears_the_failures_of_this_client(db_path):
-    app = create_app(db_path, trusted_proxies="")
+    app = app_for(db_path, trusted_proxies="")
     for _ in range(4):
         assert login(app, OWNER, password="falsch").status_code == 401
     assert login(app, OWNER).status_code == 200
@@ -72,7 +72,7 @@ def test_successful_login_clears_the_failures_of_this_client(db_path):
 
 
 def test_behind_a_trusted_proxy_the_forwarded_client_counts(db_path):
-    app = create_app(db_path, trusted_proxies=PROXY)
+    app = app_for(db_path, trusted_proxies=PROXY)
     fail_five_times(app, PROXY, forwarded=ATTACKER)
 
     assert login(app, PROXY, forwarded=ATTACKER).status_code == 429
@@ -80,7 +80,7 @@ def test_behind_a_trusted_proxy_the_forwarded_client_counts(db_path):
 
 
 def test_forwarded_header_from_an_untrusted_peer_is_ignored(db_path):
-    app = create_app(db_path, trusted_proxies=PROXY)
+    app = app_for(db_path, trusted_proxies=PROXY)
     fail_five_times(app, ATTACKER, forwarded=OWNER)  # claims to be the owner, but is not behind the proxy
 
     assert login(app, ATTACKER, forwarded=OWNER).status_code == 429  # still counted as the real address
@@ -93,7 +93,7 @@ def test_forwarded_header_from_an_untrusted_peer_is_ignored(db_path):
 
 
 def test_without_trusted_proxies_no_forwarded_header_is_used(db_path):
-    app = create_app(db_path, trusted_proxies="")
+    app = app_for(db_path, trusted_proxies="")
     fail_five_times(app, PROXY, forwarded=ATTACKER)
 
     assert login(app, PROXY, forwarded=OWNER).status_code == 429  # every request is the proxy itself
@@ -101,7 +101,7 @@ def test_without_trusted_proxies_no_forwarded_header_is_used(db_path):
 
 def test_trusted_proxies_come_from_the_environment(db_path, monkeypatch):
     monkeypatch.setenv("CHRONICLE_TRUSTED_PROXIES", "10.0.0.0/8")
-    app = create_app(db_path)
+    app = app_for(db_path)
     fail_five_times(app, "10.1.2.3", forwarded=ATTACKER)
 
     assert login(app, "10.1.2.3", forwarded=ATTACKER).status_code == 429

@@ -17,6 +17,38 @@ B_TOPIC = (
 )
 
 
+def example_folder(db_path) -> Path:
+    """A copy of the example data next to the database, as the data folder of an app. Made once per database."""
+    copy = Path(db_path).parent / "data"
+    if not any(copy.glob("*.yaml")):
+        shutil.copytree(DATA_DIR, copy, dirs_exist_ok=True)
+    return copy
+
+
+def import_example(db_path) -> list:
+    """Builds the index of `db_path` from the example data. The copy next to it is the data folder (ADR 0011)."""
+    return import_folder(db_path, example_folder(db_path))
+
+
+def app_for(db_path, **options):
+    """The app on `db_path` with the data folder next to it, created empty when there is none. The files are the
+    source of truth (ADR 0011), so every app has a data folder."""
+    from chronicle.api import create_app
+
+    data_dir = options.pop("data_dir", None) or Path(db_path).parent / "data"
+    data_dir.mkdir(exist_ok=True)
+    return create_app(db_path, data_dir=data_dir, **options)
+
+
+def db_mode_app(db_path, **options):
+    """The app without a data folder: the database is the source of truth. This operation ends with ADR 0011, step 3.
+    Tests that use this function check behaviour that only exists there (import rules, tombstones, manual marks) and
+    are deleted together with it."""
+    from chronicle.api import create_app
+
+    return create_app(db_path, **options)
+
+
 @pytest.fixture
 def folder(tmp_path):
     """The example data as a folder; the database is tmp_path / "chronicle.db"."""

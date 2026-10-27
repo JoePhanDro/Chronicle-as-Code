@@ -4,10 +4,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for, db_mode_app, import_example
 from chronicle import accounts, repository, security
-from chronicle.api import create_app
 from chronicle.db import connect
-from chronicle.importer import import_folder
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 PASSWORD = "correct horse battery"
@@ -25,12 +24,12 @@ def db_path(tmp_path):
     accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
     conn.close()
-    import_folder(path, DATA_DIR)
+    import_example(path)
     return path
 
 
-def api_login(db_path, username):
-    client = TestClient(create_app(db_path))
+def api_login(db_path, username, db_mode=False):
+    client = TestClient(db_mode_app(db_path) if db_mode else app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -120,7 +119,7 @@ def test_title_can_change_but_key_cannot(db_path):
 
 
 def test_deleting_a_topic_takes_its_home_events_along(db_path):
-    anna = api_login(db_path, "anna")
+    anna = api_login(db_path, "anna", db_mode=True)
     assert anna.delete("/api/v1/topics/inc-2026-042").status_code == 204
     assert anna.get("/api/v1/topics/inc-2026-042").status_code == 404
     assert anna.get("/api/v1/events/feed-cve").status_code == 404

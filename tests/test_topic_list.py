@@ -2,6 +2,7 @@
 
 import pytest
 
+from tests.conftest import app_for
 from chronicle import repository
 from chronicle.db import connect
 
@@ -51,7 +52,6 @@ def test_empty_topic_list_explains_itself_and_offers_one_way_to_create(tmp_path)
     from fastapi.testclient import TestClient
 
     from chronicle import accounts, security
-    from chronicle.api import create_app
     from tests.conftest import PASSWORD
 
     path = tmp_path / "leer.db"
@@ -61,7 +61,7 @@ def test_empty_topic_list_explains_itself_and_offers_one_way_to_create(tmp_path)
     conn.close()
 
     def page(username):
-        client = TestClient(create_app(path))
+        client = TestClient(app_for(path))
         assert client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD}).status_code == 200
         return client.get("/topics").text
 

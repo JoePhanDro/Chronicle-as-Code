@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.conftest import app_for
 from chronicle import sync
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -176,13 +177,12 @@ def test_without_a_data_folder_the_preview_is_refused(tmp_path):
     from fastapi.testclient import TestClient
 
     from chronicle import accounts, security
-    from chronicle.api import create_app
     from chronicle.db import connect
 
     conn = connect(tmp_path / "chronicle.db")
     accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     conn.close()
-    client = TestClient(create_app(tmp_path / "chronicle.db"))
+    client = TestClient(app_for(tmp_path / "chronicle.db"))
     response = client.post("/api/v1/auth/login", json={"username": "anna", "password": PASSWORD})
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
 

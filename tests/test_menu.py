@@ -3,8 +3,8 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
 
 ADMIN_PASSWORD = "admin-passwort-123"
@@ -29,7 +29,7 @@ def db_path(tmp_path):
 
 def login(db_path, username, password=PASSWORD):
     """Logs in through the API once to get a session cookie; the pages then use the same cookie."""
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200, response.text
     return client, response.json()["csrf_token"]
