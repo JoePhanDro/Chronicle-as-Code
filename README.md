@@ -314,7 +314,8 @@ Der Standard-Stack hat kein TLS und bindet nur auf `127.0.0.1`. Für einen Betri
 
 ```
 chronicle/
-  api.py             HTTP-App: API, Bootstrap-Admin, Einmal-Code für /setup
+  api.py             HTTP-App: setzt Seiten und Router zusammen, Bootstrap-Admin, Einmal-Code für /setup
+  api_routes/        JSON-API unter /api/v1, ein Router je Bereich: topics, events, sync, admin
   pages.py           Oberfläche: Topics, Events, Evidence, Suche, Neu laden (Formulare)
   admin_pages.py     Verwaltung: Konten, Sperre, Audit-Log
   administration.py  Regeln für Konten und Sperren, von API und Verwaltung gemeinsam genutzt
