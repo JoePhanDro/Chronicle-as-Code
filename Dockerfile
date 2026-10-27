@@ -30,4 +30,4 @@ USER chronicle
 
 # Default: the API. Reports are built in the app by admins (ADR 0006), not by a command in the image.
 ENTRYPOINT ["python", "-m", "chronicle.serve"]
-CMD ["--db", "/db/chronicle.db", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["--db", "/db/chronicle.db", "--data", "/data", "--host", "0.0.0.0", "--port", "8000"]

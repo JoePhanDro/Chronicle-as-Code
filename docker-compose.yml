@@ -1,14 +1,16 @@
 # Chronicle API stack. Setup:
 #   cp .env.example .env                                 # set CHRONICLE_ADMIN_USER / _PASSWORD
-#   docker compose --profile import run --rm importer    # once per incident, not on every `up`
+#   docker compose --profile import run --rm importer    # builds the index from ./data, once and after outside changes
 #   docker compose up -d api                             # then open http://localhost:8000/login
+# The topic files in ./data are the source of truth (ADR 0008, ADR 0011): the API writes edits into them, so the
+# folder must be writable for user 1000 (see README).
 
 services:
   api:
     build: .
     image: chronicle-dashboard:local
     entrypoint: ["python", "-m", "chronicle.serve"]
-    command: ["--db", "/db/chronicle.db", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["--db", "/db/chronicle.db", "--data", "/data", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       CHRONICLE_ADMIN_USER: ${CHRONICLE_ADMIN_USER:-}
       CHRONICLE_ADMIN_PASSWORD: ${CHRONICLE_ADMIN_PASSWORD:-}
@@ -18,6 +20,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - chronicle-db:/db
+      - ./data:/data
     read_only: true
     tmpfs:
       - /tmp
@@ -32,7 +35,7 @@ services:
       timeout: 5s
       retries: 3
 
-  # Reads ./data and stores the timeline in the database. Only runs with --profile import.
+  # Builds the index (the database) from ./data. Only runs with --profile import.
   importer:
     build: .
     image: chronicle-dashboard:local

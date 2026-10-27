@@ -37,13 +37,25 @@ cp .env.example .env
 # In .env CHRONICLE_ADMIN_USER und CHRONICLE_ADMIN_PASSWORD setzen (Passwort mind. 12 Zeichen).
 # Ohne diese Werte zeigt der Server beim Start einen Einmal-Code im Log, siehe unten.
 
-docker compose --profile import run --rm importer   # Topic-Datei aus ./data importieren
+docker compose --profile import run --rm importer   # Index aus den Topic-Dateien in ./data aufbauen
 docker compose up -d api                            # Server starten
 ```
 
 Dann http://localhost:8000/login öffnen. Der Port ist nur auf `127.0.0.1` gebunden.
 
-Der Import läuft bewusst nicht bei jedem `up`. Er ist idempotent, kann also beliebig oft laufen.
+Die Topic-Dateien in `./data` sind die Quelle der Wahrheit ([ADR 0011](docs/adr/0011-files-only-write-path.md)): Der Server schreibt Änderungen aus der Oberfläche in diese Dateien. Der Ordner muss für den Benutzer `1000` beschreibbar sein, unter dem der Container läuft. Falls nicht: `sudo chown -R 1000:1000 data`. Unter macOS und Windows ist das meist nicht nötig. Am besten steht `data` unter Versionskontrolle (Git), denn gelöschte Events lassen sich nur darüber zurückholen.
+
+Der Import baut den Index auf und läuft bewusst nicht bei jedem `up`. Er ist idempotent, kann also beliebig oft laufen, und ist nötig, wenn Dateien außerhalb von Chronicle geändert wurden (alternativ **Neu laden** in der Oberfläche).
+
+**Umstieg aus dem Datenbankmodus:** Wer bisher ohne `--data` gearbeitet und Events in der Oberfläche geändert hat, hat diese Änderungen nur in der Datenbank. Vor dem Umstellen exportieren und die Dateien nach `./data` übernehmen, sonst überschreibt der Index-Aufbau aus den alten Dateien den Stand der Datenbank:
+
+```bash
+mkdir -p export
+docker compose run --rm -v "$PWD/export:/export" --entrypoint python api \
+  -m chronicle.exporter --db /db/chronicle.db --out /export
+```
+
+Gelöschte Events, die nur als Grabstein vorliegen, stellt man vorher unter **Verwaltung, Gelöschte Events** wieder her.
 
 **Erster Start ohne `.env`:** Solange kein Konto existiert, schreibt der Server beim Start einen Einmal-Code ins Log:
 
@@ -71,7 +83,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 python -m chronicle.admin_cli --db ./chronicle.db create --username admin --role admin
 python -m chronicle.importer --db ./chronicle.db --data ./data
-CHRONICLE_COOKIE_SECURE=0 python -m chronicle.serve --db ./chronicle.db --port 8000
+CHRONICLE_COOKIE_SECURE=0 python -m chronicle.serve --db ./chronicle.db --data ./data --port 8000
 ```
 
 `CHRONICLE_COOKIE_SECURE=0` ist nur für Tests über HTTP gedacht. Ohne diese Variable setzt der Server das Cookie
@@ -178,7 +190,7 @@ python -m chronicle build data --out site
 - **Anhänge** liegen als Dateien unter `evidence/<Event-Key>/` im Datenordner. Die Topic-Datei nennt Pfad, Typ und Beschreibung. Gleiche Namen mit anderem Inhalt bekommen eine Nummer, nichts wird überschrieben. Ein Anhang, der bereits am Event hängt, wird nicht doppelt angelegt. Der Ordner `evidence/` gehört in die Synchronisation (z. B. OneDrive), nicht in Git (ADR 0008).
 - **Neu laden:** Wer Dateien von Hand oder durch ein Git-Pull ändert, drückt als Analyst oder Admin in der Kopfzeile **Neu laden** (im Menü „Konto“ auf dem Handy). Chronicle liest den Ordner dann neu ein. Ist eine Datei ungültig, bleibt der bisherige Stand bestehen, und die Seite nennt den Fehler. Den Knopf gibt es nur mit Datenordner.
 
-**Ohne Datenordner:** Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
+**Ohne Datenordner (entfällt, [ADR 0011](docs/adr/0011-files-only-write-path.md)):** Der Server startet noch ohne `--data`, warnt aber. Die Datenbank ist dann nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
 
 - Ein erneuter Import überschreibt keine Events, die in der Oberfläche bearbeitet wurden. Gelöschte Events kehren nicht zurück. Beides meldet der Import.
 - Ein Import entfernt keine Topic-Verknüpfungen. Die ändert man in der Oberfläche.

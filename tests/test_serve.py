@@ -54,3 +54,13 @@ def test_python_m_chronicle_runs_the_command_line():
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip()
+
+
+def test_without_a_data_folder_the_server_warns_that_this_mode_is_going_away(tmp_path, started, capsys):
+    serve.main(["--db", str(tmp_path / "x.db")])
+    assert "0011" in capsys.readouterr().err
+
+
+def test_with_a_data_folder_there_is_no_warning(tmp_path, started, capsys):
+    serve.main(["--db", str(tmp_path / "x.db"), "--data", str(tmp_path / "data")])
+    assert capsys.readouterr().err == ""
