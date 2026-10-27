@@ -101,6 +101,49 @@ def test_without_a_data_folder_the_dialog_points_to_the_tombstones(tmp_path):
     assert js("Ein Admin kann es unter Verwaltung, Gelöschte Events wiederherstellen.") in html
 
 
+def mark(client, key, **fields):
+    page = client.get(f"/events/{key}").text
+    version = page.split('name="version" value="')[1].split('"')[0]
+    token = client.headers["X-CSRF-Token"]
+    return client.post(f"/events/{key}/mark", data={"csrf_token": token, "version": version, **fields}, follow_redirects=False)
+
+
+def test_analysts_change_status_and_phase_on_the_event_page(api_client):
+    client = api_client("analyst")
+    html = client.get("/events/lessons").text
+    assert 'action="/events/lessons/mark"' in html and '<select name="status"' in html and '<select name="phase"' in html
+    response = mark(client, "lessons", status="open", phase="Lessons Learned")
+    assert response.status_code == 303 and response.headers["location"] == "/events/lessons?gespeichert=status"
+    page = client.get(response.headers["location"]).text
+    assert 'value="open" selected' in page and "Status gespeichert" in page
+    assert mark(client, "lessons", status="open", phase="Analysis").headers["location"].endswith("gespeichert=phase")
+    assert 'value="Analysis" selected' in client.get("/events/lessons").text
+
+
+def test_viewers_see_status_and_phase_as_text_and_cannot_change_them(api_client):
+    client = api_client("viewer")
+    html = client.get("/events/lessons").text
+    assert "/mark" not in html and '<select name="status"' not in html
+    assert mark_attempt(client).status_code == 403
+
+
+def mark_attempt(client):
+    return client.post("/events/lessons/mark", data={"csrf_token": client.headers["X-CSRF-Token"], "version": "1", "status": "open"})
+
+
+def test_a_stale_version_is_reported_and_changes_nothing(api_client):
+    client = api_client("analyst")
+    token = client.headers["X-CSRF-Token"]
+    response = client.post("/events/lessons/mark", data={"csrf_token": token, "version": "999", "status": "open"})
+    assert response.status_code == 409 and 'role="alert"' in response.text
+
+
+def test_edit_panel_no_longer_asks_for_status_and_phase_but_keeps_them(api_client):
+    html = api_client("analyst").get("/events/lessons").text.split('id="bearbeiten"')[1]
+    assert '<select name="status"' not in html and '<select name="phase"' not in html
+    assert 'type="hidden" name="status"' in html and 'type="hidden" name="phase"' in html
+
+
 def test_a_failed_edit_opens_the_panel_again(api_client):
     client = api_client("analyst")
     token = client.get("/api/v1/auth/me").json()["csrf_token"]

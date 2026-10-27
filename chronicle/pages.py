@@ -290,7 +290,8 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         event = repository.get_event(conn, key)
         if event is None:
             return render(request, "not_found.html", user, status_code=404)
-        return render(request, "event.html", user, mode="view", event=event, errors=None,
+        saved = {"phase": "Phase", "status": "Status"}.get(request.query_params.get("gespeichert") or "")
+        return render(request, "event.html", user, mode="view", event=event, errors=None, saved=saved,
                       links=repository.get_event_links(conn, key), **form_context(conn, form=None))
 
     @router.post("/events/{key}/edit", response_class=HTMLResponse)
@@ -316,6 +317,36 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
                           event=repository.get_event(conn, key), errors=_error_text(exc),
                           **form_context(conn, form=None))
         return RedirectResponse(f"/events/{key}", status_code=303)
+
+    @router.post("/events/{key}/mark", response_class=HTMLResponse)
+    async def mark_event_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        """Change only phase and status, as the chips on the event page do; everything else stays as stored."""
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        current = repository.get_event(conn, key)
+        if current is None:
+            return render(request, "not_found.html", user, status_code=404)
+        phase, status = form.get("phase") or current["phase"], form.get("status") or current["status"]
+        try:
+            version = int(form.get("version") or 0)
+            payload = {
+                "key": key, "t0": current["t0"], "phase": phase, "actor": current["actor"], "system": current["system"],
+                "action": current["action"], "status": status, "triggered_by": current["triggered_by"],
+                "details": current["details"] or "", "topic": current["home_topic"], "topics": current["topics"],
+            }
+            body = EventWrite.model_validate(payload)
+            repository.update_event(conn, key, event_of(body), topic_list(body), version,
+                                    user["id"], client_ip(request), data_dir=request.app.state.data_dir)
+        except (ValidationError, ValueError, repository.RepositoryError) as exc:
+            code = 409 if isinstance(exc, repository.Conflict) else 422
+            return render(request, "event.html", user, status_code=code, mode="view",
+                          event=repository.get_event(conn, key), errors=_error_text(exc), saved=None,
+                          links=repository.get_event_links(conn, key), **form_context(conn, form=None))
+        changed = "phase" if phase != current["phase"] else "status"
+        return RedirectResponse(f"/events/{key}?gespeichert={changed}", status_code=303)
 
     @router.post("/events/{key}/delete", response_class=HTMLResponse)
     async def delete_event_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
