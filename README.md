@@ -395,7 +395,20 @@ Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/is
   - [ADR 0008](docs/adr/0008-files-as-source-of-truth.md): Dateien als Quelle der Wahrheit (akzeptiert)
   - [ADR 0009](docs/adr/0009-cli-first.md): CLI als Kernprodukt, Server als Oberfläche (akzeptiert für den CLI-Teil)
   - [ADR 0010](docs/adr/0010-operations-separate.md): Betriebsdaten getrennt vom Index (akzeptiert)
-  - [ADR 0011](docs/adr/0011-files-only-write-path.md): Dateien sind der einzige Schreibpfad (akzeptiert, wird in Schritten umgesetzt)
+  - [ADR 0011](docs/adr/0011-files-only-write-path.md): Dateien sind der einzige Schreibpfad (akzeptiert, umgesetzt)
+  - [ADR 0012](docs/adr/0012-code-repo-und-vault-repos.md): Code-Repository und Vault-Repositories (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0013](docs/adr/0013-vault-layout-und-format.md): Layout und Format des Vaults (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0014](docs/adr/0014-lokale-konfiguration-und-login.md): Lokale Konfiguration und Login (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0015](docs/adr/0015-identitaet-und-autorenschaft.md): Identität und Autorenschaft (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0016](docs/adr/0016-freigabe-workflow.md): Freigabe-Workflow (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0017](docs/adr/0017-konflikte-und-merge.md): Konflikte und Merge (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0018](docs/adr/0018-index-als-abgeleiteter-zustand.md): Index als abgeleiteter Zustand (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0019](docs/adr/0019-mehrere-vaults-und-mandantentrennung.md): Mehrere Vaults und Mandantentrennung (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0020](docs/adr/0020-anhaenge-im-vault.md): Anhänge im Vault (Entscheidung des Projektinhabers: in Git, große Dateien per Link) (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0021](docs/adr/0021-sensible-daten-und-loeschkonzept.md): Sensible Daten und Löschkonzept (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0022](docs/adr/0022-git-integration-und-eingabepruefung.md): Git-Integration und Eingabeprüfung (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0023](docs/adr/0023-migration-und-formatversionen.md): Migration und Formatversionen (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0024](docs/adr/0024-verschluesselung-der-eintraege.md): Verschlüsselung der Einträge (Vorschlag, [Architektur](docs/architecture/vault-git.md))
 - Notation der Topic-Dateien: [`docs/notation.md`](docs/notation.md). Produktkontext und Designsystem: [`PRODUCT.md`](PRODUCT.md) und [`DESIGN.md`](DESIGN.md).
 - Wie man beiträgt, steht in [CONTRIBUTING.md](CONTRIBUTING.md).
 

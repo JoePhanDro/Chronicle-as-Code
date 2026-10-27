@@ -52,7 +52,7 @@ Danke, dass du mitmachen möchtest. Dieses Dokument beschreibt, wie wir arbeiten
 
 Entscheidungen, die mehrere Teile betreffen oder schwer rückgängig zu machen sind, halten wir als ADR in [`docs/adr/`](docs/adr/) fest:
 
-1. Nimm die nächste freie Nummer in `docs/adr/` (aktuell ist `0003` die letzte).
+1. Nimm die nächste freie Nummer in `docs/adr/` (zuletzt vergeben ist `0024`, siehe die Liste in `docs/adr/`).
 2. Kopfzeilen: Titel, Status (`Vorgeschlagen`, `Akzeptiert`, `Ersetzt durch ...`), Datum, Bezug, dann Kontext, Entscheidung, Konsequenzen und offene Punkte. Vorlage: ADR 0002.
 3. Der ADR kommt in den gleichen PR wie die Umsetzung oder vorher als eigener Docs-PR.
 

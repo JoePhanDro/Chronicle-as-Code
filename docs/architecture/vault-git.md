@@ -14,13 +14,13 @@ Vieles ist schon da. Das Konzept baut darauf auf und ändert wenig am Fundament:
 
 | Baustein | Stand auf `main` | Datei |
 |---|---|---|
-| Dateien als Wahrheit, Index in SQLite | umgesetzt (ADR 0008, 0010) | `store.py`, `repository.py`, `db.py` |
+| Dateien als Wahrheit, Index in SQLite | umgesetzt (ADR 0008, 0010, 0011) | `store.py`, `index.py`, `queries.py`, `db.py` |
 | Datenordner als eigenes Git-Repository, Vorschau und Abgleich | umgesetzt | `sync.py` |
 | Merge-Treiber auf Feldebene | umgesetzt, nur lokal wirksam | `merge.py` |
 | Prüfung ohne Server, `check`, `plan`, `apply`, `build` | umgesetzt | `check.py`, `cli.py` |
 | CI-Prüfung der Topic-Dateien | umgesetzt (`topic-files.yml`) | `.github/workflows/` |
 | Konten, Sitzungen, Audit in eigener Datei | umgesetzt (ADR 0010) | `accounts.py`, `ops.db` |
-| Zweiter Schreibpfad über die Datenbank | vorhanden, soll entfallen (#123) | `repository.py` |
+| Zweiter Schreibpfad über die Datenbank | **entfernt** (ADR 0011, #123); der Index speichert keine Anhangs-Bytes und keine Grabsteine | `events.py`, `topics.py`, `evidence_store.py`, `folder_writes.py` |
 | Anhänge in Git | bisher bewusst nicht (ADR 0008, 0009) | `evidence.py` |
 
 Was fehlt: das Konzept „Vault“ als Einheit (Manifest, Registry), ein Layout, das Zusammenarbeit verträgt, ein Freigabe-Weg über Pull Requests, ein gehärteter Git-Aufruf, ein Umgang mit Identität, sensiblen Daten und Migration.
@@ -222,7 +222,7 @@ Nicht Teil dieses Modells: Angriffe auf das Betriebssystem des Arbeitsplatzes, S
 - **Keine Pull-Request-Anlage über die API** im ersten Ausbau (ADR 0016). Link statt Token.
 - **Kein Windows.** `fcntl`-Sperre, Dateirechte (ADR 0014).
 - **Keine Verweise zwischen Vaults**, und mehrere Vaults in einer Oberfläche sind zurückgestellt (ADR 0019).
-- **Container.** Das heutige Image (`python:3.12-slim`, ohne `git`/`ssh`, `read_only`, `cap_drop: ALL`) liest nur. Schreiben und Sync im Container sind ein eigener Plan-Teil (ADR 0014, Teil 8b).
+- **Container.** Das heutige Image (`python:3.12-slim`, ohne `git`/`ssh`, `read_only`, `cap_drop: ALL`) schreibt in den eingebundenen Datenordner (ADR 0011), hat aber kein Git. Der Stack läuft hinter einem TLS-Proxy (`docs/betrieb-tls.md`). Git, SSH und Sync im Container sind ein eigener Plan-Teil (ADR 0014, Teil 8b).
 - **Vertraulichkeit pro Vault, nicht pro Topic.** `also_in` umgeht Topic-CODEOWNERS (ADR 0013).
 - **„Freigegeben“ heißt „im Standard-Branch“.** Ein erzwungenes Vier-Augen-Prinzip besteht nur mit passendem Hoster-Tarif und geprüfter Schutzregel (`chronicle vault doctor`, ADR 0016, Punkt 10).
 - **Historie lässt sich nicht verlässlich aus allen Kopien tilgen** (ADR 0021).

@@ -1,7 +1,7 @@
 # Umsetzungsplan: Vaults in Git
 
-- **Status:** Entwurf, überarbeitet nach Review (Sicherheit und Architektur). Nichts davon ist umgesetzt.
-- **Stand:** 2026-10-25
+- **Status:** Entwurf, überarbeitet nach Review (Sicherheit und Architektur). Umgesetzt sind bisher: Teil 0a (PR #138), die Schritte aus #125 (PR #136) und Teil 2a bis 2c mit ADR 0011 (siehe dort). Alles Übrige ist offen.
+- **Stand:** 2026-10-25, abgeglichen mit `main` am 2026-10-27
 - **Grundlage:** [`vault-git.md`](vault-git.md) und ADR 0012 bis 0024
 
 ## Regeln für jeden Teil
@@ -17,7 +17,7 @@
 Die Nummern sind Namen, nicht die Reihenfolge. Ausgeführt wird so:
 
 1. **Sofort, wirkt auf `main`:** 0a, 0b, dann 1. Sie beheben im Review **belegte** Lücken des Ist-Zustands und hängen an nichts.
-2. **Vereinfachen:** 2a, 2b, 2c (Datenbankmodus entfernen). Parallel dazu 3 (`git.py`).
+2. **Vereinfachen:** ~~2a, 2b, 2c (Datenbankmodus entfernen)~~ **erledigt** (ADR 0011). Offen: 3 (`git.py`).
 3. **Format:** 4, 5, danach **7 (Migration) vor oder zusammen mit 6b**, 6a, 6b, **18 direkt nach 6b**.
 4. **Lokale Konfiguration:** 8, 8b, 10.
 5. **Vault anlegen und prüfen:** 11, 12, 12b, **12a (Annahmen zu GitHub am Testrepository prüfen) vor 14**.
@@ -34,9 +34,9 @@ Abhängigkeiten (vereinfacht): `0a,0b → 1 → 4 → 5 → 7 → 6b → 18`; `2
 | **0a** | Sofort: Treiber isolieren, sicher schreiben, Links abweisen | nichts | S | 0022 | K1, H2 | ja (strenger) |
 | **0b** | Sofort: YAML-Vorabscan, Fehlermeldungen, `fullmatch` | nichts | S/M | 0022 | H1, M1, M2 | ja (strenger) |
 | 1 | Sicheres Lesen, Rest: Größen, Zeichen, strenge Typen, Host-Prüfung | 0a, 0b | S | 0022 | N1, N2, N3, N5 | ja |
-| 2a | Datenbankmodus entfernen: Events | nichts | M | 0012 | | ja |
-| 2b | Datenbankmodus entfernen: Topics, Verknüpfungen | 2a | M | 0012 | | ja |
-| 2c | Datenbankmodus entfernen: Anhänge, Grabsteine, Start nur mit Datenordner | 2b | M | 0012 | | ja |
+| ~~2a~~ | Datenbankmodus entfernen: Events **(erledigt, ADR 0011)** | nichts | M | 0012 | | ja |
+| ~~2b~~ | Datenbankmodus entfernen: Topics, Verknüpfungen **(erledigt, ADR 0011)** | 2a | M | 0012 | | ja |
+| ~~2c~~ | Datenbankmodus entfernen: Anhänge, Grabsteine, Start nur mit Datenordner **(erledigt, ADR 0011)** | 2b | M | 0012 | | ja |
 | 3 | Modul `git.py` mit Härtung | nichts (Matrix vorab) | M/L | 0022 | H3, H4, M8, M9 | nein (Umbau) |
 | 4 | Manifest und Formatversion | 1 | S | 0013, 0023 | M4 | nein |
 | 5 | Format 1 lesen und prüfen | 1, 4 | M | 0013 | M5, N5 | nein (nur CLI) |
@@ -45,7 +45,7 @@ Abhängigkeiten (vereinfacht): `0a,0b → 1 → 4 → 5 → 7 → 6b → 18`; `2
 | 6b | Server liest und schreibt Format 1, Anhänge, Index je Datei | 6a, **7** | L | 0013, 0018 | H8 | ja |
 | 18 | Beispiel-Vault statt `data/`, alte Lesepfade entfernen | 6b, 12 | S | 0023 | H8 | nein |
 | 8 | Zustandsordner, Registry, `init`, `ops.db` umziehen, Backup/Restore | 2c, 4 | M | 0014 | H7 | ja |
-| 8b | Container-Betrieb (Git, SSH, Volumes, nicht read-only für Vault) | 3, 8 | M | 0014 | M10 | ja |
+| 8b | Container-Betrieb (Git, SSH, Volumes) auf dem Stand von `main`: Datenordner schreibbar, TLS-Proxy | 3, 8 | M | 0014 | M10 | ja |
 | 10 | Cache-Ordner und `meta`-Kopf des Index | 6b, 8 | S | 0018 | M7 | nein |
 | 11 | `vault init`, `vault clone`, Vorlage (inkl. Ruleset-JSON) | 3, 4, 8 | M | 0012, 0022 | H9 | nein |
 | 12 | Wiederverwendbarer Prüf-Workflow (erweitert) | 5 | M | 0022 | M13 | nein |
@@ -88,13 +88,25 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 - **Akzeptanz:** Je Regel ein Test; `data/` besteht unverändert.
 - **Risiko:** gering.
 
-## Teil 2a bis 2c: Zweiten Schreibpfad über die Datenbank entfernen (Issue #123)
+## Teil 2a bis 2c: Zweiten Schreibpfad über die Datenbank entfernen (Issue #123) — erledigt
 
-**Klarstellung (Entscheidung des Projektinhabers):** Die Datenbank bleibt. Sie dient weiter für Konten, Sitzungen, Audit-Log, etwaige Schlüssel-Metadaten (`ops.db`) und als Index. Entfernt wird nur der Weg, Topics, Events und Anhänge **über die Datenbank** zu schreiben und zu speichern. Die Wahrheit für Inhalte liegt im Vault.
+**Stand:** umgesetzt mit ADR 0011 („Dateien sind der einzige Schreibpfad“, Entscheidung des Projektinhabers vom 2026-10-27), in dieser Aufteilung statt der drei ursprünglich geplanten PRs:
 
-- **Inhalt:** Alle Zweige `if data_dir is not None` in `repository.py` entfernen, in drei PRs (Events, Topics und Verknüpfungen, Anhänge/Grabsteine/Start nur mit Datenordner). Danach streichen: `deleted_events`, `deleted_evidence`, gespeicherte Anhangs-Bytes im Index. Tabellen für Konten, Sitzungen, Audit und Einstellungen bleiben unberührt. Ein Schritt in `db.py` entfernt die toten Tabellen idempotent. Vorher in der Migration (Teil 7) und im Export (`exporter.py`) den Weg für Datenbank-Installationen sichern.
-- **Akzeptanz:** `repository.py` hat einen Schreibpfad. `serve` ohne `--data` endet mit klarer Meldung. Tests laufen im Dateimodus (Fixtures in `conftest.py`).
-- **Risiko:** Größter Umbau. Betreiber ohne Datenordner müssen vorher exportieren (offene Frage 6).
+| Schritt | PR | Inhalt |
+|---|---|---|
+| 1 | #180 | ADR 0011 |
+| 2a | #181 | Docker mit Datenordner (`--data`, `./data` schreibbar), Warnung ohne `--data` |
+| 2b | #183 (mit #182) | Tests laufen im Dateimodus (`import_example`, `app_for`, `db_mode_app`); dabei gefundener Fehler: Details mit CRLF scheiterten im Dateimodus |
+| 3a | #184 | Grabsteine entfernt (Seite, Funktionen, Tabellen `deleted_events`/`deleted_evidence` werden beim Öffnen gelöscht) |
+| 3b | #185 | Datenbankpfad entfernt (alle zehn Zweige), `serve` verlangt `--data` |
+| 3c | #188 | Der Importer baut denselben Index wie „Neu laden“; Spalte `source` und gespeicherte Evidence-Bytes entfallen; Live-Dashboard braucht keine Bytes |
+| Aufteilung | #179, #186, #187 | `repository.py` in `queries`, `index`, `folder_writes`, `events`, `topics`, `evidence_store`, `errors`; Wiederholungen in Hilfsfunktionen (#124) |
+
+**Klarstellung (Entscheidung des Projektinhabers):** Die Datenbank bleibt. Sie dient weiter für Konten, Sitzungen, Audit-Log, etwaige Schlüssel-Metadaten (`ops.db`) und als Index. Entfernt ist der Weg, Topics, Events und Anhänge **über die Datenbank** zu schreiben und zu speichern. Die Wahrheit für Inhalte liegt in den Dateien.
+
+- **Was geblieben ist:** Exporter, Backup und `get_evidence_content` können Evidence-Bytes weiter aus älteren Datenbanken lesen, damit Betreiber aus dem alten Datenbankmodus exportieren können (README, Abschnitt „Umstieg“). Die Spalte `evidence.content` bleibt im Schema, wird aber nie mehr geschrieben.
+- **Akzeptanz (erfüllt):** `repository.py` hat einen Schreibpfad. `serve` ohne `--data` endet mit klarer Meldung. Tests laufen im Dateimodus.
+- **Für die weiteren Teile wichtig:** Der Index entsteht aus den Dateien in einer Funktion (`build_index`, Teil 10 knüpft daran an). Der Server schreibt bereits in den Datenordner, nur Git fehlt (Teil 8b).
 
 ## Teil 3: Modul `git.py`
 
@@ -123,7 +135,7 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 ## Teil 6a und 6b: Format 1 schreiben und bedienen
 
 - **6a:** `store.py` schreibt Events als eigene Dateien (anlegen, ändern feldweise mit Kommentaren, löschen, Heimat wechseln, `also_in`), Topics (Ordner), atomar, mit Versionsvergleich und sicherem Schreiben (Teil 0a). Anhänge ändern sich beim Heimatwechsel nicht (`evidence/<event-key>/`).
-- **6b:** `repository.py` und Index auf Event-Dateien, Anhänge mit `sha256`, Link-Anhänge (`link`, `evidence.link_hosts`, ADR 0020 Punkt 7), Markdown als Anhangstyp (Punkt 8), Server liest Format 1. **Format 0 wird erst abgeschaltet, wenn Teil 7 gemergt ist.**
+- **6b:** `index.py`, `events.py`, `topics.py` und `evidence_store.py` (früher `repository.py`) auf Event-Dateien, Anhänge mit `sha256`, Link-Anhänge (`link`, `evidence.link_hosts`, ADR 0020 Punkt 7), Markdown als Anhangstyp (Punkt 8), Server liest Format 1. **Format 0 wird erst abgeschaltet, wenn Teil 7 gemergt ist.**
 - **Akzeptanz:** Alle Schreibtests laufen auf Format 1, Rollback und 409 wie heute, eine Änderung schreibt genau eine Datei, 10.000 Events unter 1 Sekunde je Änderung. Die Schritte aus #125 sind bereits auf `main` (`c7bb327`, `5c017a6`, PR #136) und bleiben.
 - **Risiko:** Größter fachlicher Teil. Reihenfolge 2 vor 6 einhalten.
 
@@ -137,9 +149,9 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 - **8:** `CHRONICLE_HOME` (0700), `config.toml` mit lokaler ID, Klon-Kennung, Manifest-Etikett, `origin`, Linkvorlage; `init`, `vault add` (Allowlist der `.git/config`), `list`, `remove`; `serve` liest die Registry; `ops.db` zieht um (`init --adopt-ops`); Spalten `git_name`, `git_email`, Audit `vault_id`. **`backup.py` sichert `config.toml` und `ops.db`, Wiederherstellung wird getestet.**
 - **8 (Ergänzung):** Abgrenzung der Orte nach ADR 0014, Punkt 5 (Tabelle). `ops.db` bekommt eine Tabelle `key_metadata` (Kennung, Fingerabdruck, Datum) **nur wenn** ADR 0024 (b) gewählt wird, vorher nicht.
 - **8c (optional):** Audit-Log mit `prev_hash`/`entry_hash` (SHA-256), Prüfbefehl `chronicle audit verify`, Kopfwert als Trailer `Chronicle-Audit-Head` in Commits (ab 14a). Macht Veränderungen erkennbar, verhindert sie nicht. Test: Löschen oder Ändern eines mittleren Eintrags wird gemeldet.
-- **8b:** Container mit `git`, `ssh`, beschreibbarem Vault-Volume, `/state`, Deploy Key als Datei, `read_only` und `cap_drop` wo möglich. Bis dahin liest der Container nur.
+- **8b:** Container mit `git`, `ssh`, `/state`, Deploy Key als Datei, `read_only` und `cap_drop` wo möglich. **Ausgangslage auf `main`:** Der Container schreibt bereits in den eingebundenen Datenordner (ADR 0011), hat aber weder `git` noch `ssh`. Der Stack läuft hinter einem TLS-Proxy (Caddy, `docker-compose.yml`, `docs/betrieb-tls.md`), `read_only` und `cap_drop: ALL` gelten für den Server.
 - **Akzeptanz:** Start ohne Parameter öffnet den Vault. Doppelte Manifest-ID wird abgelehnt. Bootstrap-Wege funktionieren. Docker-Smoke-Test in der CI passt.
-- **Risiko:** `docker-compose.yml`, `Dockerfile`, CI-Job `docker` ändern sich.
+- **Risiko:** `docker-compose.yml`, `Dockerfile`, CI-Jobs `docker` und `proxy` (`scripts/check_proxy.sh`) ändern sich.
 
 ## Teil 10: Cache-Ordner und `meta`-Kopf (verkleinert)
 
@@ -215,7 +227,7 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 | 3 | Ein Modul für alle Git-Aufrufe, `.git/config`-Allowlist | ADR 0022 |
 | 14b | „Abgleichen“ durch „Einreichen“ ersetzen | ersetzt Teile von #90 und #131 |
 | 16 | Prüfung auf Geheimnisse und Bereinigungsverfahren | zusammen mit #98 |
-| bestehend | #123 | ADR 0012: Variante A |
+| bestehend | #123 | ADR 0011 (Variante A), erledigt |
 | bestehend | #125 | Schritte sind in `main` (`c7bb327`, `5c017a6`, #136), Rest erledigt Format 1 |
 | bestehend | #127, #128, #131 | #127 vor Teil 9, #128 vereinfacht sich in 14b, #131 in 14b und 15b |
 
@@ -230,7 +242,7 @@ Die ersten Fragen muss der Projektinhaber **wirklich entscheiden**. Zu den übri
 1. **Anhänge in Git (ADR 0020): entschieden am 2026-10-27, Ja.** Bilder, Markdown, PDF, Text und Logs bis 10 MiB liegen im Vault; größere Binärdateien liegen außerhalb (OneDrive/SharePoint) und werden im Event verlinkt (ADR 0020, Punkte 7 und 8, Teil 6b). **GitHub-Tarif, Vertrag zur Auftragsverarbeitung, Region und Aufbewahrung sind Sache des Betreibers** (Entscheidung des Projektinhabers, 2026-10-27): GitHub ist nur der Vorfallsspeicher, in eigenen Vorfall-Repositories. Das Projekt liefert Anleitung, Checklisten und Prüfungen (`vault doctor`, Teil 12a und 16b), aber keine Bedingung, ohne die der Code nicht läuft. Der PR kann gemergt werden, sobald die ADR-Nummern angepasst (0012 ist inzwischen vergeben) und die Konflikte gelöst sind.
 
    Ursprüngliche Frage und Vorschlag des Reviews: Ja, aber unter Bedingungen (privater Vault, Tarif mit Branch Protection, Vertrag und Region geklärt, Bereinigung erprobt). Diese Bedingungen bleiben als **Empfehlung an Betreiber** bestehen. Geschützte Branches und erforderliche Reviews in privaten Repositories sind nach unserem Kenntnisstand bezahlt (zu prüfen, Teil 12a).
-6. **Zweiten Schreibpfad über die Datenbank streichen (#123, ADR 0012): entschieden.** Die Datenbank bleibt für Login, Audit und etwaige Verschlüsselungs-Metadaten, die Wahrheit für Inhalte liegt im Vault. Offen bleibt nur der Zeitpunkt für Installationen ohne Datenordner: Exportweg und Migration (Teil 7) kommen zuerst.
+6. **Zweiten Schreibpfad über die Datenbank streichen (#123): entschieden und umgesetzt (ADR 0011).** Die Datenbank bleibt für Login, Audit und etwaige Verschlüsselungs-Metadaten, die Wahrheit für Inhalte liegt in den Dateien. Der Exportweg für Installationen aus dem alten Datenbankmodus steht in der README („Umstieg“).
 9. **Live-Dokumentation bei Vorfällen (ADR 0016, Punkte 12 bis 14).** Vorschlag: Incident-Branch `incident/<id>` ohne Review (nur Status-Check), in der Oberfläche als „ohne Freigabe“ gekennzeichnet, danach ein Sammel-Pull-Request nach `main` mit Review. Schwächt das Vier-Augen-Prinzip für die Dauer eines Vorfalls bewusst. Ohne Ihre Zustimmung bleibt es bei einem Pull Request je Person (Teil 19 entfällt).
 10. **Aufbewahrung und Löschung (ADR 0021): Sache des Betreibers.** Fristen und Löschpflichten legt der Betreiber mit seiner oder seinem Datenschutzbeauftragten fest. Das Projekt liefert den Ablauf zur Bereinigung (Teil 16b) als Anleitung und eine Checkliste, aber keine Frist und keine Sperre.
 

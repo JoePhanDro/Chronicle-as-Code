@@ -9,7 +9,7 @@
 Es gibt zwei heutige Speicherarten:
 
 - **Dateimodus (Format 0):** ein Ordner mit Topic-Dateien, `refs:` am Topic, Anhänge ohne Prüfsumme, Index und `ops.db` neben der Datenbank-Option `--db`.
-- **Datenbankmodus:** Inhalte nur in `chronicle.db` (mit Grabsteinen und Anhangs-Bytes), `ops.db` daneben.
+- **Datenbankmodus (nur noch Altbestand):** Inhalte nur in `chronicle.db` (mit Grabsteinen und Anhangs-Bytes), `ops.db` daneben. Neuere Versionen schreiben ihn nicht mehr (ADR 0011), die Beschreibung gilt für Datenbanken aus der Zeit davor.
 
 Beides soll in Vaults (Format 1) übergehen. Vorhandene Daten dürfen weder verloren gehen noch beim Umzug unbemerkt ihren Sinn ändern.
 
@@ -36,7 +36,7 @@ Beides soll in Vaults (Format 1) übergehen. Vorhandene Daten dürfen weder verl
 
 ### Von der Datenbank
 
-8. **Datenbankmodus:** zuerst `python -m chronicle.exporter` (schreibt Format 0), dann Punkt 4. Grabsteine (`deleted_events`) werden nicht übertragen. Der Export enthält nur die vorhandenen Events, gelöschte bleiben also gelöscht. Im Vault gibt es keinen Import und damit keine Wiederbelebung gelöschter Events.
+8. **Datenbankmodus (Altbestand):** zuerst `python -m chronicle.exporter` (schreibt Format 0, siehe README, Abschnitt „Umstieg“), dann Punkt 4. Grabsteine (`deleted_events`) werden nicht übertragen. Der Export enthält nur die vorhandenen Events, gelöschte bleiben also gelöscht. Im Vault gibt es keinen Import und damit keine Wiederbelebung gelöschter Events.
 9. **Konten:** `chronicle init --adopt-ops <pfad-zu-chronicle.ops.db>` kopiert die Betriebsdatei in den Zustandsordner (ADR 0014), fügt Spalten `git_name`, `git_email`, `vault_id` im Audit-Log hinzu und lässt die alten Einträge ohne `vault_id`. Der alte Index wird nicht übernommen.
 10. **Rückweg:** Der alte Ordner bleibt unverändert, bis der Benutzer ihn löscht. Wird eine Migration verworfen, genügt es, den neuen Ordner zu löschen.
 

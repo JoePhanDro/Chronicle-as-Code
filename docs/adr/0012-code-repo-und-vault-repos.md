@@ -2,8 +2,8 @@
 
 - **Status:** Vorgeschlagen (zu bestätigen)
 - **Datum:** 2026-10-25
-- **Bezug:** ADR 0008 (Dateien als Quelle der Wahrheit), ADR 0009 (CLI), ADR 0010 (Betriebsdaten), Issue #123 (zwei Schreibpfade), `docs/architecture/vault-git.md`
-- **Ändert:** ADR 0008, Punkte 3 und 7 (gemeinsamer Stand, Mehrbenutzerbetrieb). Entscheidet die Frage aus #123 mit Variante A.
+- **Bezug:** ADR 0008 (Dateien als Quelle der Wahrheit), ADR 0009 (CLI), ADR 0010 (Betriebsdaten), ADR 0011 (Dateien sind der einzige Schreibpfad, Issue #123), `docs/architecture/vault-git.md`
+- **Ändert:** ADR 0008, Punkte 3 und 7 (gemeinsamer Stand, Mehrbenutzerbetrieb). Baut auf ADR 0011 auf, das die Frage aus #123 mit Variante A entschieden hat.
 
 ## Kontext
 
@@ -23,7 +23,7 @@ Heute liegt ein Beispieldatenordner (`data/`) im Code-Repository. ADR 0008 erlau
    - Das **Code-Repository** (dieses Repository) enthält die Anwendung, die CLI, das Schema, die Dokumentation, eine Vorlage für Vaults und ein Beispiel-Vault (ersetzt später `data/`). Es enthält keine echten Inhalte.
    - Ein **Vault** ist ein eigenes Git-Repository je Einsatzort. Es enthält ausschließlich Inhalte: Topics, Events, Anhänge und ein Manifest (`vault.yaml`, ADR 0013). Die Wurzel des Vaults ist der Datenordner im Sinne von ADR 0008.
 2. **Option 2 gilt.** Ein Vault ist eine Vertrauens- und Rechtegrenze (ADR 0019).
-3. **Die Event-Wahrheit liegt ausschließlich in den Vault-Dateien. Der Dateimodus ist der einzige Schreibpfad für Inhalte (Variante A aus #123).** Entfallen ist **nur der zweite Schreibpfad für Topics, Events und Anhänge über die Datenbank** (der „Datenbankmodus ohne Datenordner“, einschließlich Grabsteinen und gespeicherter Anhangs-Bytes). Die Anwendung startet nur mit einem Vault.
+3. **Die Event-Wahrheit liegt ausschließlich in den Vault-Dateien. Der Dateimodus ist der einzige Schreibpfad für Inhalte (ADR 0011, Variante A aus #123, umgesetzt).** Entfallen ist **nur der zweite Schreibpfad für Topics, Events und Anhänge über die Datenbank** (der „Datenbankmodus ohne Datenordner“, einschließlich Grabsteinen und gespeicherter Anhangs-Bytes). Die Anwendung startet nur mit einem Datenordner, künftig einem Vault.
    **Die Datenbank bleibt vorgesehen** (Entscheidung des Projektinhabers), mit klar getrennten Aufgaben:
    - `ops.db` im Zustandsordner: Konten (Login), Sitzungen, Login-Sperren, Einstellungen, **Audit-Log** und etwaige **Metadaten zu Schlüsseln** für eine Verschlüsselung (ADR 0014, ADR 0024). Sie ist Betrieb, nicht Inhalt, und liegt nie im Vault.
    - `index.db` im Cache: abgeleiteter Index der Vault-Inhalte, jederzeit neu aufbaubar (ADR 0018).
