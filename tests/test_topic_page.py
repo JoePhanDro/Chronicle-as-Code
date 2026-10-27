@@ -155,3 +155,19 @@ def test_long_event_lists_show_five_rows_and_fold_the_rest(api_client):
     create_empty_topic(client, key="kurz")
     client.post("/topics/kurz/link", data={"event": "feed-cve", "csrf_token": client.headers["X-CSRF-Token"]})
     assert "Weitere" not in client.get("/topics/kurz").text
+
+
+def test_event_rows_carry_the_phase_colour_as_an_edge_and_name_the_phase(api_client):
+    html = api_client("viewer").get("/topics/inc-2026-042").text
+    rows = html.split('aria-label="Events dieses Topics"')[1].split("</ul>")[0]
+    assert rows.count("absolute inset-y-2 left-1.5") == 5 and "background: #ef4444" in rows  # Identification/Exploit are red
+    assert "· Exploit ·" in rows  # the word stays next to the colour
+
+
+def test_topic_list_edge_follows_the_phase_of_the_latest_event(api_client):
+    client = api_client("analyst")
+    create_empty_topic(client)
+    html = client.get("/topics").text
+    row = html.split('href="/topics/inc-2026-042"')[1].split("</li>")[0]
+    assert "left-1.5" in row and "background: #3b82f6" in row and "· Lessons Learned" in row  # latest event is the post-mortem
+    assert "left-1.5" not in html.split('href="/topics/leer"')[1].split("</li>")[0]  # no events, no phase, no edge

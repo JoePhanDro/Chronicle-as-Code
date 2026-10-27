@@ -28,7 +28,8 @@
 {% set status_dot = {'open': 'bg-rose-500', 'in_progress': 'bg-amber-500 motion-safe:animate-pulse', 'resolved': 'bg-emerald-500'} %}
 {% set last = events | map(attribute='t0') | max if events else None %}
 {% macro event_row(event) %}
-  <li class="flex items-center justify-between gap-4 px-4 py-3">
+  <li class="relative flex items-center justify-between gap-4 py-3 pl-5 pr-4">
+    <span class="absolute inset-y-2 left-1.5 w-[3px] rounded-full" style="background: {{ phase_color(event.phase) }}" aria-hidden="true"></span>
     <a href="/events/{{ event.key }}" data-list-row class="flex min-w-0 items-start gap-3 hover:underline">
       <span class="mt-1.5 h-1.5 w-1.5 flex-none rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>
       <span class="min-w-0">
