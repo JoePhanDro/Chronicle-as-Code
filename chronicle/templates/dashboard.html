@@ -210,10 +210,12 @@
     /* In the topic page's frame the layout is always stacked and the frame grows to fit it, so the panels get
        fixed heights: vh units would depend on the frame's own height and feed back into it. */
     :root:root body { height: auto; overflow: visible; min-height: 0; }
-    :root:root #panel-timeline { height: 420px; min-height: 0; flex: none; }
-    :root:root #panel-graph, :root:root #panel-events, :root:root #panel-evidence { height: 520px; min-height: 0; flex: none; }
+    :root:root #panel-timeline { height: 320px; min-height: 0; flex: none; }
+    :root:root #panel-graph, :root:root #panel-events, :root:root #panel-evidence { height: 420px; min-height: 0; flex: none; }
     :root:root main { grid-template-columns: minmax(0, 1fr); }
     :root:root #details { overflow: visible; }
+    /* Without a selected event there is nothing to show: no empty panel, the event list above already names them. */
+    :root:root #details:empty { display: none; }
   </style>
   {% endif %}
 </head>
@@ -236,6 +238,7 @@
     <div id="kpis" class="flex flex-wrap items-center gap-2 text-xs"></div>
   </header>
 
+  {% if not embedded %}
   <div class="glass flex flex-none gap-1.5 overflow-x-auto border-x-0 border-t-0 px-5 py-2 text-[11px] text-slate-300 sm:flex-wrap sm:overflow-visible">
     {% for phase in phases %}
     <span class="inline-flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full bg-white/[.03] px-2.5 py-1 ring-1 ring-white/5">
@@ -243,6 +246,7 @@
     </span>
     {% endfor %}
   </div>
+  {% endif %}
 
   <div id="filters" class="glass flex flex-wrap items-center gap-x-4 gap-y-2 border-x-0 border-t-0 px-5 py-2 text-xs"></div>
 
@@ -392,6 +396,7 @@
     }
 
     function renderEmpty() {
+      {% if embedded %}detailsEl.replaceChildren(); return;{% endif %}
       detailsEl.replaceChildren(el('div', 'flex h-full min-h-[240px] flex-col items-center justify-center text-center', [
         el('div', 'grid h-14 w-14 place-items-center rounded-2xl bg-sky-400/10 text-2xl text-sky-300 ring-1 ring-sky-400/20', '◎'),
         el('p', 'mt-4 text-sm font-medium text-slate-300', 'Kein Event ausgewählt'),

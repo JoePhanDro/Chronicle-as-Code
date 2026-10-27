@@ -89,3 +89,34 @@ def test_unlink_asks_with_the_event_named(api_client):
     client.post("/topics/leer/link", data={"event": "feed-cve", "csrf_token": token})
     html = client.get("/topics/leer").text
     assert js("Verknüpfung lösen?") in html and "(feed-cve)" in html and 'id="link-filter"' in html
+
+
+def test_events_come_before_the_frame_and_the_frame_can_be_skipped(api_client):
+    html = api_client("viewer").get("/topics/inc-2026-042").text
+    assert html.index('aria-label="Events dieses Topics"') < html.index("<iframe")
+    assert html.index('href="#nach-zeitleiste"') < html.index("<iframe") < html.index('id="nach-zeitleiste"')
+
+
+def test_only_linked_events_are_marked_not_the_home_ones(api_client):
+    client = api_client("analyst")
+    create_empty_topic(client)
+    token = client.headers["X-CSRF-Token"]
+    client.post("/topics/leer/link", data={"event": "feed-cve", "csrf_token": token})
+    assert "Heimat</span>" not in client.get("/topics/inc-2026-042").text
+    assert "verknüpft</span>" in client.get("/topics/leer").text
+
+
+def test_link_filter_does_not_submit_on_enter_and_has_its_own_heading(api_client):
+    client = api_client("analyst")
+    create_empty_topic(client)
+    html = client.get("/topics/leer").text
+    assert "event.key === 'Enter'" in html and 'id="link-heading"' in html
+
+
+def test_embedded_dashboard_has_no_phase_legend_and_no_empty_detail_panel(api_client):
+    client = api_client("viewer")
+    embedded = client.get("/topics/inc-2026-042/dashboard?embed=1").text
+    standalone = client.get("/topics/inc-2026-042/dashboard").text
+    assert "#details:empty { display: none; }" in embedded and "#details:empty" not in standalone
+    assert 'rounded-full bg-white/[.03] px-2.5 py-1' not in embedded
+    assert 'rounded-full bg-white/[.03] px-2.5 py-1' in standalone
