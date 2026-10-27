@@ -1,6 +1,6 @@
 # ADR 0008: Dateien als Quelle der Wahrheit, lokale Arbeitskopien und Git als Austausch
 
-- **Status:** Vorgeschlagen (zu bestätigen)
+- **Status:** Akzeptiert (Entscheidung des Projektinhabers, 2026-10-27, bestätigt mit ADR 0011)
 - **Datum:** 2026-10-22
 - **Bezug:** ADR 0001 (Server, Konten), ADR 0002 (Topics und Events), ADR 0003 (Bearbeiten in der Oberfläche), ADR 0004 (Evidence), ADR 0005 (Export und Backup)
 
