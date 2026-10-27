@@ -313,7 +313,9 @@ chronicle/
   reading_lock.py    Lesesperre mit Passwort für Besucher ohne Konto
   accounts.py        Konten, Sitzungen, Drosselung, Audit-Log (Betriebsdatei)
   security.py        Passwort-Hashing, Token
-  repository.py      Topics und Events: Lesen, Schreiben, Löschen, Verknüpfen, Grabsteine
+  repository.py      Topics und Events: Schreiben, Löschen, Verknüpfen, Grabsteine, Import
+  queries.py         Leseabfragen auf dem Index (Events, Topics, Evidence, Filter)
+  errors.py          Fehlerklassen des Repositorys
   store.py           gezielte Änderungen in den Topic-Dateien (Dateimodus)
   event_input.py     Eingabemodell für Schreibzugriffe, Keys und Zeitangaben
   db.py              SQLite-Schema und Migration
