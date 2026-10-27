@@ -80,9 +80,8 @@ def test_admin_downloads_a_self_contained_report(db_path):
     assert 'src="/static/vendor' not in html
 
 
-def test_report_includes_events_referenced_from_other_topics(db_path, tmp_path):
-    folder = tmp_path / "projekt"
-    folder.mkdir()
+def test_report_includes_events_referenced_from_other_topics(db_path):
+    folder = example_folder(db_path)
     (folder / "projekt.yaml").write_text(
         "topic:\n  key: projekt-x\n  title: Projekt X\n  kind: project\n"
         "events:\n"

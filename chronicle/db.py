@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS events (
     triggered_by  TEXT,
     details       TEXT NOT NULL DEFAULT '',
     home_topic    TEXT NOT NULL,
-    source        TEXT NOT NULL DEFAULT 'import' CHECK (source IN ('import', 'manual')),
     version       INTEGER NOT NULL DEFAULT 1,
     updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
@@ -307,7 +306,6 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     migrate_incident_schema(conn)
     _create_schema(conn)
-    _ensure_column(conn, "events", "source", "TEXT NOT NULL DEFAULT 'import'")
     _ensure_column(conn, "events", "version", "INTEGER NOT NULL DEFAULT 1")
     _ensure_column(conn, "evidence", "mime", "TEXT")
     _ensure_column(conn, "evidence", "size", "INTEGER")

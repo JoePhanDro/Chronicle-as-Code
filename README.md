@@ -335,7 +335,7 @@ chronicle/
   loader.py          Suche, Validierung und Evidence-Prüfung der YAML
   yamlscan.py        Lesen von Fremd-YAML mit Grenzen (Größe, Tiefe, keine Aliase)
   check.py           chronicle check: Ordner prüfen, schreibt nichts
-  importer.py        YAML in die Datenbank importieren
+  importer.py        Index aus den Topic-Dateien aufbauen (Befehl `chronicle.importer`, wie **Neu laden**)
   exporter.py        Datenbank als YAML-Dateien je Topic exportieren
   backup.py          konsistente Kopie der Datenbank
   sync.py, merge.py  Abgleich mit dem Git-Remote und Merge-Treiber für Topic-Dateien

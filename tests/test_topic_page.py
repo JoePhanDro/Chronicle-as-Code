@@ -237,3 +237,17 @@ def test_linked_events_of_other_topics_stay_as_they_are(api_client):
 def test_unknown_topic_gives_404(api_client):
     client = api_client("analyst")
     assert client.post("/topics/gibt-es-nicht/close-events", data={"csrf_token": client.headers["X-CSRF-Token"]}).status_code == 404
+
+
+def test_the_live_dashboard_works_for_a_topic_with_evidence_after_the_index_was_rebuilt(api_client):
+    """The index holds no evidence bytes. The live dashboard serves them through the API and must not need them."""
+    client = api_client("analyst")
+    current = client.get("/api/v1/events/lessons").json()
+    body = {name: current[name] for name in ("key", "t0", "phase", "actor", "system", "action", "status", "triggered_by")}
+    body.update(details="geändert", topic=current["home_topic"], topics=current["topics"], version=current["version"])
+    assert client.put("/api/v1/events/lessons", json=body).status_code == 200  # rebuilds the index from the files
+
+    for path in ("/topics/inc-2026-042/dashboard", "/topics/inc-2026-042/dashboard?embed=1"):
+        response = client.get(path)
+        assert response.status_code == 200, response.text
+        assert "/api/v1/evidence/" in response.text and "keinen gespeicherten Inhalt" not in response.text

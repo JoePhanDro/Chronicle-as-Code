@@ -18,7 +18,7 @@ from .loader import link_below
 
 EVENT_SELECT = """
 SELECT events.pk, events.key, events.t0, events.phase, events.actor, events.system, events.action,
-       events.status, events.triggered_by, events.details, events.home_topic, events.source, events.version
+       events.status, events.triggered_by, events.details, events.home_topic, events.version
 FROM events
 """
 
