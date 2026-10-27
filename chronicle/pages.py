@@ -180,7 +180,6 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             {
                 "user": user,
                 "can_write": user["role"] in WRITER_ROLES,
-                "file_mode": request.app.state.data_dir is not None,  # the "Neu laden" button needs files to load from
                 "reloaded": request.query_params.get("neu_geladen") == "1",
                 **context,
             },
@@ -373,12 +372,8 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         back = _local_path(form.get("next"))
-        data_dir = request.app.state.data_dir
-        if data_dir is None:
-            return render(request, "reload.html", user, status_code=409, back=back,
-                          problems=["Es ist kein Datenordner konfiguriert. Neu laden gibt es nur, wenn der Server mit --data läuft."])
         try:
-            repository.reindex(conn, data_dir)
+            repository.reindex(conn, request.app.state.data_dir)
         except TimelineError as exc:  # a file that fails the checks: nothing was written, the index stays as it was
             problems = getattr(exc, "problems", None) or [str(exc)]
             return render(request, "reload.html", user, status_code=422, back=back, problems=problems)

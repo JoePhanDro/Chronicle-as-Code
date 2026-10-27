@@ -121,14 +121,6 @@ def _replace_import_evidence(
     return before != after
 
 
-def _mark_manual(conn: sqlite3.Connection, event_pk: int) -> None:
-    """Changes in the UI or API keep the event out of later imports (ADR 0003)."""
-    conn.execute(
-        "UPDATE events SET source = 'manual', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE pk = ?",
-        (event_pk,),
-    )
-
-
 def _check_triggers(conn: sqlite3.Connection, triggered_by: Sequence[str], own_key: str | None = None) -> None:
     """Every cause must exist and must not be the event itself. With own_key, cycles are refused too (docs/notation.md, 5c)."""
     for cause in triggered_by:
@@ -548,31 +540,10 @@ def _delete_in_folder(conn: sqlite3.Connection, key: str, data_dir: Path, actor_
 
 
 def create_event(
-    conn: sqlite3.Connection, event: Event, topic_keys: list[str], actor_id: int, ip: str, data_dir: Path | None = None
+    conn: sqlite3.Connection, event: Event, topic_keys: list[str], actor_id: int, ip: str, data_dir: Path
 ) -> dict:
-    """Create an event in its home topic. With data_dir the event is appended to the topic file first (ADR 0008)."""
-    if data_dir is not None:
-        return _create_in_folder(conn, event, topic_keys, data_dir, actor_id, ip)
-    home = topic_keys[0]
-    with conn:
-        for key in topic_keys:
-            _topic_pk(conn, key)
-        if _event_pk(conn, event.key) is not None:
-            raise Conflict(f"Event-Key {event.key!r} ist bereits vergeben")
-        _check_triggers(conn, event.triggered_by, own_key=event.key)
-
-        cursor = conn.execute(
-            """
-            INSERT INTO events (key, t0, phase, actor, system, action, status, triggered_by, details,
-                                home_topic, source, version, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            """,
-            (event.key, *_event_values(event), home),
-        )
-        _set_links(conn, cursor.lastrowid, topic_keys)
-
-    accounts.audit(conn, "event_created", user_id=actor_id, target=event.key, detail=f"topics={','.join(topic_keys)}", ip=ip)
-    return get_event(conn, event.key)
+    """Create an event in its home topic: it is appended to the topic file first, the index follows (ADR 0008)."""
+    return _create_in_folder(conn, event, topic_keys, data_dir, actor_id, ip)
 
 
 def update_event(
@@ -583,10 +554,10 @@ def update_event(
     expected_version: int,
     actor_id: int,
     ip: str,
-    data_dir: Path | None = None,
+    data_dir: Path,
 ) -> dict:
-    """Change an event. With data_dir the change is written to the event's topic file first, and the index is
-    then rebuilt from the folder (ADR 0008). Without it, only the database changes, as before."""
+    """Change an event: the change is written to the event's topic file first, and the index is then rebuilt from the
+    folder (ADR 0008)."""
     row = conn.execute(
         "SELECT pk, version, home_topic FROM events WHERE key = ?", (key,)
     ).fetchone()
@@ -608,26 +579,7 @@ def update_event(
         changed.append("topics")
     if not changed:
         return old  # saving without changes creates no new revision
-    if data_dir is not None:
-        return _update_in_folder(conn, key, event, topic_keys, data_dir, actor_id, ip, changed)
-
-    with conn:
-        for topic_key in topic_keys:
-            _topic_pk(conn, topic_key)
-        conn.execute(
-            """
-            UPDATE events SET t0 = ?, phase = ?, actor = ?, system = ?, action = ?, status = ?,
-                              triggered_by = ?, details = ?, source = 'manual', version = version + 1,
-                              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE pk = ?
-            """,
-            (*_event_values(event), row["pk"]),
-        )
-        _set_links(conn, row["pk"], topic_keys)
-
-    if changed:
-        accounts.audit(conn, "event_updated", user_id=actor_id, target=key, detail=",".join(changed), ip=ip)
-    return get_event(conn, key)
+    return _update_in_folder(conn, key, event, topic_keys, data_dir, actor_id, ip, changed)
 
 
 def _free_evidence_name(data_dir: Path, key: str, name: str, sha256: str) -> tuple[str, bool]:
@@ -730,59 +682,20 @@ def _delete_evidence_in_folder(conn: sqlite3.Connection, evidence_id: int, data_
 
 def add_evidence(
     conn: sqlite3.Connection, key: str, blob: Blob, evidence_type: str, description: str, actor_id: int, ip: str,
-    data_dir: Path | None = None,
+    data_dir: Path,
 ) -> dict:
-    """Attach a checked file to an event. With data_dir the file goes to evidence/ and the topic file names it."""
-    if data_dir is not None:
-        return _add_evidence_in_folder(conn, key, blob, evidence_type, description, data_dir, actor_id, ip)
-    if evidence_type not in EVIDENCE_TYPES:
-        raise Invalid(f"Unbekannter Evidence-Typ {evidence_type!r}")
-    if len(description) > MAX_DESCRIPTION_LENGTH:
-        raise Invalid(f"Die Beschreibung darf höchstens {MAX_DESCRIPTION_LENGTH} Zeichen lang sein")
-
-    with conn:
-        event_pk = _event_pk(conn, key)
-        if event_pk is None:
-            raise NotFound(f"Event {key!r} nicht gefunden")
-        cursor = conn.execute(
-            """
-            INSERT INTO evidence (event_pk, file, type, description, mime, size, sha256, content)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (event_pk, blob.name, evidence_type, description.strip(), blob.mime, blob.size, blob.sha256, blob.content),
-        )
-        _mark_manual(conn, event_pk)
-
-    accounts.audit(conn, "evidence_added", user_id=actor_id, target=key, detail=blob.name, ip=ip)
-    return evidence_meta(conn, cursor.lastrowid)
+    """Attach a checked file to an event: the file goes to evidence/ and the topic file names it."""
+    return _add_evidence_in_folder(conn, key, blob, evidence_type, description, data_dir, actor_id, ip)
 
 
-def delete_evidence(conn: sqlite3.Connection, evidence_id: int, actor_id: int, ip: str, data_dir: Path | None = None) -> None:
-    if data_dir is not None:
-        return _delete_evidence_in_folder(conn, evidence_id, data_dir, actor_id, ip)
-    row = conn.execute(
-        """
-        SELECT evidence.event_pk, evidence.file, events.key
-        FROM evidence JOIN events ON events.pk = evidence.event_pk
-        WHERE evidence.pk = ?
-        """,
-        (evidence_id,),
-    ).fetchone()
-    if row is None:
-        raise NotFound("Evidence nicht gefunden")
-
-    with conn:
-        conn.execute("DELETE FROM evidence WHERE pk = ?", (evidence_id,))
-        _mark_manual(conn, row["event_pk"])
-
-    accounts.audit(conn, "evidence_deleted", user_id=actor_id, target=row["key"], detail=row["file"], ip=ip)
+def delete_evidence(conn: sqlite3.Connection, evidence_id: int, actor_id: int, ip: str, data_dir: Path) -> None:
+    _delete_evidence_in_folder(conn, evidence_id, data_dir, actor_id, ip)
 
 
-def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, data_dir: Path | None = None) -> None:
-    """Delete an event. With data_dir it is removed from its topic file first: the file is the record (ADR 0008),
-    and Git has the earlier version. Without it only the database changes."""
-    row = conn.execute("SELECT pk FROM events WHERE key = ?", (key,)).fetchone()
-    if row is None:
+def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, data_dir: Path) -> None:
+    """Delete an event: it is removed from its topic file first. The file is the record (ADR 0008), and Git has the
+    earlier version."""
+    if _event_pk(conn, key) is None:
         raise NotFound(f"Event {key!r} nicht gefunden")
     dependents = [item["key"] for item in conn.execute(
         "SELECT events.key FROM events, json_each(events.triggered_by) WHERE json_each.value = ? ORDER BY events.key",
@@ -790,21 +703,7 @@ def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, dat
     ).fetchall()]
     if dependents:
         raise Conflict(f"Event wird von {', '.join(dependents)} ausgelöst. Zuerst dort den Verweis entfernen.")
-    if data_dir is not None:
-        return _delete_in_folder(conn, key, data_dir, actor_id, ip)
-
-    with conn:
-        conn.execute("DELETE FROM events WHERE pk = ?", (row["pk"],))  # links and evidence cascade
-    accounts.audit(conn, "event_deleted", user_id=actor_id, target=key, ip=ip)
-
-
-def _set_links(conn: sqlite3.Connection, event_pk: int, topic_keys: list[str]) -> None:
-    conn.execute("DELETE FROM topic_events WHERE event_pk = ?", (event_pk,))
-    for topic_key in topic_keys:
-        conn.execute(
-            "INSERT OR IGNORE INTO topic_events (topic_pk, event_pk) SELECT pk, ? FROM topics WHERE key = ?",
-            (event_pk, topic_key),
-        )
+    _delete_in_folder(conn, key, data_dir, actor_id, ip)
 
 
 # Topics and links changed by hand (issue #26). The home topic of an event never changes.
@@ -849,41 +748,21 @@ def _update_topic_in_folder(
     return get_topic(conn, key)
 
 
-def create_topic(conn: sqlite3.Connection, topic: Topic, actor_id: int, ip: str, data_dir: Path | None = None) -> dict:
-    """Create a topic. With data_dir its file is written first, and the index follows it (ADR 0008)."""
+def create_topic(conn: sqlite3.Connection, topic: Topic, actor_id: int, ip: str, data_dir: Path) -> dict:
+    """Create a topic: its file is written first, and the index follows it (ADR 0008)."""
     if conn.execute("SELECT 1 FROM topics WHERE key = ?", (topic.key,)).fetchone():
         raise Conflict(f"Topic-Key {topic.key!r} ist bereits vergeben")
-    if data_dir is not None:
-        return _create_topic_in_folder(conn, topic, data_dir, actor_id, ip)
-    with conn:
-        conn.execute(
-            "INSERT INTO topics (key, title, kind, summary) VALUES (?, ?, ?, ?)",
-            (topic.key, topic.title, topic.kind, topic.summary),
-        )
-    accounts.audit(conn, "topic_created", user_id=actor_id, target=topic.key, detail=topic.kind, ip=ip)
-    return get_topic(conn, topic.key)
+    return _create_topic_in_folder(conn, topic, data_dir, actor_id, ip)
 
 
 def update_topic(
-    conn: sqlite3.Connection, key: str, topic: Topic, actor_id: int, ip: str, data_dir: Path | None = None
+    conn: sqlite3.Connection, key: str, topic: Topic, actor_id: int, ip: str, data_dir: Path
 ) -> dict:
     current = get_topic(conn, key)
     if current is None:
         raise NotFound(f"Topic {key!r} nicht gefunden")
     changed = [name for name in TOPIC_FIELDS if current[name] != getattr(topic, name)]
-    if data_dir is not None:
-        return _update_topic_in_folder(conn, key, topic, data_dir, actor_id, ip, changed)
-    with conn:
-        conn.execute(
-            """
-            UPDATE topics SET title = ?, kind = ?, summary = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            WHERE key = ?
-            """,
-            (topic.title, topic.kind, topic.summary, key),
-        )
-    if changed:
-        accounts.audit(conn, "topic_updated", user_id=actor_id, target=key, detail=",".join(changed), ip=ip)
-    return get_topic(conn, key)
+    return _update_topic_in_folder(conn, key, topic, data_dir, actor_id, ip, changed)
 
 
 def topic_delete_plan(conn: sqlite3.Connection, key: str) -> dict:
@@ -903,7 +782,7 @@ def topic_delete_plan(conn: sqlite3.Connection, key: str) -> dict:
     return {"events": homes, "blockers": blockers, "evidence": evidence}
 
 
-def delete_topic(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, data_dir: Path | None = None) -> None:
+def delete_topic(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, data_dir: Path) -> None:
     """Delete a topic together with the events that have it as their home. Events of other topics that are only linked
     to it stay. If an event of another topic is triggered by one of the deleted events, nothing is deleted."""
     if get_topic(conn, key) is None:
@@ -913,13 +792,7 @@ def delete_topic(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, dat
         pairs = ", ".join(f"{dependent} (ausgelöst von {cause})" for dependent, cause in plan["blockers"])
         raise Conflict(f"Events anderer Topics hängen an Events dieses Topics: {pairs}. "
                        "Zuerst dort den Verweis entfernen, dann lässt sich das Topic löschen.")
-    if data_dir is not None:
-        return _delete_topic_in_folder(conn, key, plan["events"], data_dir, actor_id, ip)
-    with conn:
-        for event_key in plan["events"]:
-            conn.execute("DELETE FROM events WHERE pk = ?", (_event_pk(conn, event_key),))  # links and evidence cascade
-        conn.execute("DELETE FROM topics WHERE key = ?", (key,))  # links cascade
-    _audit_topic_deleted(conn, key, plan["events"], actor_id, ip)
+    _delete_topic_in_folder(conn, key, plan["events"], data_dir, actor_id, ip)
 
 
 def _audit_topic_deleted(conn: sqlite3.Connection, key: str, events: list[str], actor_id: int, ip: str) -> None:
@@ -959,40 +832,27 @@ def _delete_topic_in_folder(
 
 
 def link_event(
-    conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str, data_dir: Path | None = None
+    conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str, data_dir: Path
 ) -> None:
-    """Link an event to another topic. With data_dir the link is a refs line in that topic's file (ADR 0008)."""
-    if data_dir is not None:
-        with _all_or_nothing(data_dir):
-            if _event_pk(conn, event_key) is None:
-                raise NotFound(f"Event {event_key!r} nicht gefunden")
-            _change_link(conn, event_key, topic_key, present=True, data_dir=data_dir)
-            reindex(conn, data_dir)
-    else:
-        topic_pk = _topic_pk(conn, topic_key)
-        event_pk = _event_pk(conn, event_key)
-        if event_pk is None:
+    """Link an event to another topic: the link is a refs line in that topic's file (ADR 0008)."""
+    with _all_or_nothing(data_dir):
+        if _event_pk(conn, event_key) is None:
             raise NotFound(f"Event {event_key!r} nicht gefunden")
-        with conn:
-            conn.execute("INSERT OR IGNORE INTO topic_events (topic_pk, event_pk) VALUES (?, ?)", (topic_pk, event_pk))
+        _change_link(conn, event_key, topic_key, present=True, data_dir=data_dir)
+        reindex(conn, data_dir)
     accounts.audit(conn, "topic_linked", user_id=actor_id, target=topic_key, detail=event_key, ip=ip)
 
 
 def unlink_event(
-    conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str, data_dir: Path | None = None
+    conn: sqlite3.Connection, topic_key: str, event_key: str, actor_id: int, ip: str, data_dir: Path
 ) -> None:
     row = conn.execute("SELECT pk, home_topic FROM events WHERE key = ?", (event_key,)).fetchone()
     if row is None:
         raise NotFound(f"Event {event_key!r} nicht gefunden")
     if row["home_topic"] == topic_key:
         raise Invalid("Das Heimat-Topic eines Events kann nicht entfernt werden")
-    if data_dir is not None:
-        with _all_or_nothing(data_dir):
-            _change_link(conn, event_key, topic_key, present=False, data_dir=data_dir)
-            reindex(conn, data_dir)
-    else:
-        topic_pk = _topic_pk(conn, topic_key)
-        with conn:
-            conn.execute("DELETE FROM topic_events WHERE topic_pk = ? AND event_pk = ?", (topic_pk, row["pk"]))
+    with _all_or_nothing(data_dir):
+        _change_link(conn, event_key, topic_key, present=False, data_dir=data_dir)
+        reindex(conn, data_dir)
     accounts.audit(conn, "topic_unlinked", user_id=actor_id, target=topic_key, detail=event_key, ip=ip)
 

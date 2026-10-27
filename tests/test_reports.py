@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import app_for, import_example
+from tests.conftest import app_for, example_folder, import_example
 from chronicle import accounts, repository, security
 from chronicle.db import connect
 from chronicle.evidence import check_file
@@ -31,7 +31,8 @@ def db_path(tmp_path):
     conn.close()
     import_example(path)
 
-    # Changes that exist only in the database, not in the YAML file.
+    # Changes made after the import, written to the folder like every change in the app.
+    data = example_folder(path)
     conn = connect(path)
     repository.create_event(
         conn,
@@ -42,8 +43,9 @@ def db_path(tmp_path):
         ["inc-2026-042"],
         anna_id,
         "127.0.0.1",
+        data,
     )
-    repository.add_evidence(conn, "exploit", check_file("probe.png", PNG), "screenshot", "Probe", anna_id, "127.0.0.1")
+    repository.add_evidence(conn, "exploit", check_file("probe.png", PNG), "screenshot", "Probe", anna_id, "127.0.0.1", data)
     conn.close()
     return path
 
@@ -178,7 +180,7 @@ def test_pdf_places_real_images_in_the_technical_report_only(db_path):
     Image.new("RGB", (40, 20), "red").save(image, "PNG")
     conn = connect(db_path)
     anna = conn.execute("SELECT id FROM users WHERE username = 'anna'").fetchone()["id"]
-    repository.add_evidence(conn, "analysis", check_file("echt.png", image.getvalue()), "screenshot", "Echtes Bild", anna, "127.0.0.1")
+    repository.add_evidence(conn, "analysis", check_file("echt.png", image.getvalue()), "screenshot", "Echtes Bild", anna, "127.0.0.1", example_folder(db_path))
     conn.close()
     admin = api_login(db_path, "admin")
     response = admin.get("/api/v1/topics/inc-2026-042/report.pdf")

@@ -56,16 +56,6 @@ def test_a_change_made_outside_the_app_is_refused(folder, conn):
     assert repository.get_event(conn, "analysis")["action"] != "App-Änderung"
 
 
-def test_the_database_mode_is_unchanged_without_a_folder(folder, conn):
-    current, event = edited(conn, "analysis", action="nur in der Datenbank")
-    before = (folder / "timeline.yaml").read_bytes()
-
-    repository.update_event(conn, "analysis", event, current["topics"], current["version"], actor_id=None, ip="test")
-
-    assert (folder / "timeline.yaml").read_bytes() == before
-    assert repository.get_event(conn, "analysis")["action"] == "nur in der Datenbank"
-
-
 @pytest.fixture(autouse=True)
 def insecure_cookies_for_http_tests(monkeypatch):
     monkeypatch.setenv("CHRONICLE_COOKIE_SECURE", "0")  # the test client talks plain HTTP

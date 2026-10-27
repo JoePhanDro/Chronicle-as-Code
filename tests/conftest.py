@@ -40,15 +40,6 @@ def app_for(db_path, **options):
     return create_app(db_path, data_dir=data_dir, **options)
 
 
-def db_mode_app(db_path, **options):
-    """The app without a data folder: the database is the source of truth. This operation ends with ADR 0011, step 3.
-    Tests that use this function check behaviour that only exists there (import rules, tombstones, manual marks) and
-    are deleted together with it."""
-    from chronicle.api import create_app
-
-    return create_app(db_path, **options)
-
-
 @pytest.fixture
 def folder(tmp_path):
     """The example data as a folder; the database is tmp_path / "chronicle.db"."""

@@ -56,11 +56,11 @@ class UserUpdate(BaseModel):
     password: str | None = None
 
 
-def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir: str | Path | None = None) -> FastAPI:
+def create_app(db_path: str | Path, trusted_proxies: str | None = None, *, data_dir: str | Path) -> FastAPI:
     """`trusted_proxies` defaults to CHRONICLE_TRUSTED_PROXIES, see README.
 
-    With `data_dir` the topic files are the source of truth: edits are written to them, then the index is rebuilt
-    (ADR 0008). Without it the database is the source, as before."""
+    The topic files in `data_dir` are the source of truth: edits are written to them, then the index is rebuilt
+    (ADR 0008, ADR 0011)."""
     path = Path(db_path)
     setup_state = SetupState()
 
@@ -70,7 +70,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
         yield
 
     app = FastAPI(title="Chronicle", version=__version__, lifespan=lifespan)
-    app.state.data_dir = Path(data_dir) if data_dir else None
+    app.state.data_dir = Path(data_dir)
     app.state.trusted_proxies = parse_trusted_proxies(
         os.environ.get("CHRONICLE_TRUSTED_PROXIES") if trusted_proxies is None else trusted_proxies
     )
@@ -195,11 +195,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
 
     @app.get("/api/v1/sync/preview")
     def sync_preview(request: Request, _: dict = Depends(writer)) -> dict:
-        data_dir = request.app.state.data_dir
-        if data_dir is None:
-            raise HTTPException(status_code=409, detail="Kein Datenordner konfiguriert")
         try:
-            result = sync.preview(data_dir)
+            result = sync.preview(request.app.state.data_dir)
         except sync.SyncError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {
@@ -211,8 +208,6 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
     def sync_now(request: Request, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(writer)) -> dict:
         """Commit the topic files, take in the remote's state, push. After a merge the index is rebuilt (issue #90)."""
         data_dir = request.app.state.data_dir
-        if data_dir is None:
-            raise HTTPException(status_code=409, detail="Kein Datenordner konfiguriert")
         try:
             result = sync.synchronise(data_dir)
         except sync.SyncError as exc:
@@ -431,5 +426,9 @@ def _announce_setup(path: Path, setup: SetupState) -> None:
     )
 
 
-# Module-level app for `uvicorn chronicle.api:app`. The database path comes from the environment.
-app = create_app(os.environ.get("CHRONICLE_DB", DEFAULT_DB), data_dir=os.environ.get("CHRONICLE_DATA") or None)
+def create_app_from_environment() -> FastAPI:
+    """The app for `uvicorn --factory chronicle.api:create_app_from_environment`. The paths come from the environment."""
+    data_dir = os.environ.get("CHRONICLE_DATA")
+    if not data_dir:
+        raise RuntimeError("CHRONICLE_DATA fehlt: Chronicle braucht einen Datenordner (ADR 0011).")
+    return create_app(os.environ.get("CHRONICLE_DB", DEFAULT_DB), data_dir=data_dir)

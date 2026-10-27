@@ -58,7 +58,7 @@
         <ul id="menu-account" hidden class="absolute right-0 z-20 mt-2 min-w-[12rem] rounded-xl border border-white/10 bg-slate-900 p-1 shadow-2xl shadow-black/40">
           <li class="px-3 py-2 text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></li>
           <li><a href="/hilfe" class="block rounded-lg px-3 py-3 text-slate-300 hover:bg-white/5 hover:text-white">Hilfe</a></li>
-          {% if writer and file_mode %}
+          {% if writer %}
           <li>
             <form method="post" action="/neu-laden">
               <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
@@ -89,7 +89,7 @@
         <svg id="theme-icon-sun" hidden aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
         <svg id="theme-icon-moon" hidden aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
       </button>
-      {% if writer and file_mode %}
+      {% if writer %}
       <form method="post" action="/neu-laden" class="hidden sm:block">
         <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
         <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
