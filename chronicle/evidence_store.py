@@ -9,14 +9,13 @@ import stat
 from pathlib import Path
 
 from . import accounts
-from .errors import Conflict, Invalid, NotFound
+from .errors import Invalid, NotFound
 from .evidence import EVIDENCE_TYPES, MAX_DESCRIPTION_LENGTH, Blob
-from .folder_writes import all_or_nothing, recorded_version
+from .folder_writes import all_or_nothing, file_of_event, recorded_version, store_change
 from .index import reindex
 from .queries import evidence_meta
 from .store import (
     StoreError,
-    VersionConflict,
     add_evidence_to_file,
     remove_evidence_from_file,
     require_no_link,
@@ -75,14 +74,9 @@ def _add_evidence_in_folder(
         if must_write:
             write_new_file(target, blob.content, root=data_dir)
             created.append(target)
-        try:
+        with store_change(located["path"], "Der Beleg wurde nicht angehängt"):
             add_evidence_to_file(data_dir / located["path"], key, item,
                                  expected_version=recorded_version(conn, located["path"]))
-        except VersionConflict as exc:
-            raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                           f"Der Beleg wurde nicht angehängt ({exc}).") from exc
-        except StoreError as exc:
-            raise Invalid(str(exc)) from exc
         reindex(conn, data_dir)
     accounts.audit(conn, "evidence_added", user_id=actor_id, target=key, detail=relative, ip=ip)
     row = conn.execute(
@@ -100,22 +94,15 @@ def _delete_evidence_in_folder(conn: sqlite3.Connection, evidence_id: int, data_
     ).fetchone()
     if row is None:
         raise NotFound("Evidence nicht gefunden")
-    located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (row["key"],)).fetchone()
-    if located is None:
-        raise Invalid(f"Event {row['key']!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    path = file_of_event(conn, row["key"])
     try:
         require_no_link(data_dir, (data_dir / row["file"]).parent)
     except StoreError as exc:
         raise Invalid(str(exc)) from exc
     with all_or_nothing(data_dir):
-        try:
-            remove_evidence_from_file(data_dir / located["path"], row["key"], row["file"],
-                                      expected_version=recorded_version(conn, located["path"]))
-        except VersionConflict as exc:
-            raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                           f"Der Beleg wurde nicht entfernt ({exc}).") from exc
-        except StoreError as exc:
-            raise Invalid(str(exc)) from exc
+        with store_change(path, "Der Beleg wurde nicht entfernt"):
+            remove_evidence_from_file(data_dir / path, row["key"], row["file"],
+                                      expected_version=recorded_version(conn, path))
         reindex(conn, data_dir)
     # The file goes last: until the index has accepted the removal, the topic file still names it.
     (data_dir / row["file"]).unlink(missing_ok=True)

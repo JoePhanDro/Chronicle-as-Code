@@ -6,8 +6,16 @@ import sqlite3
 from pathlib import Path
 
 from . import accounts
-from .errors import Conflict, Invalid, NotFound
-from .folder_writes import all_or_nothing, change_link, change_links, linked_elsewhere, recorded_version
+from .errors import Conflict, Invalid, NotFound, changed_outside
+from .folder_writes import (
+    all_or_nothing,
+    change_link,
+    change_links,
+    file_of_topic,
+    linked_elsewhere,
+    recorded_version,
+    store_change,
+)
 from .index import event_pk_of, reindex
 from .models import Topic
 from .queries import get_topic
@@ -39,20 +47,10 @@ def _create_topic_in_folder(conn: sqlite3.Connection, topic: Topic, data_dir: Pa
 def _update_topic_in_folder(
     conn: sqlite3.Connection, key: str, topic: Topic, data_dir: Path, actor_id: int, ip: str, changed: list[str],
 ) -> dict:
-    located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (key,)).fetchone()
-    if located is None:
-        raise NotFound(f"Topic {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    path = file_of_topic(conn, key)
     with all_or_nothing(data_dir):
-        try:
-            update_topic_in_file(data_dir / located["path"], topic,
-                                 expected_version=recorded_version(conn, located["path"]))
-        except VersionConflict as exc:
-            raise Conflict(
-                f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                f"Die Änderung wurde nicht gespeichert ({exc})."
-            ) from exc
-        except StoreError as exc:
-            raise Invalid(str(exc)) from exc
+        with store_change(path, "Die Änderung wurde nicht gespeichert"):
+            update_topic_in_file(data_dir / path, topic, expected_version=recorded_version(conn, path))
         reindex(conn, data_dir)
     if changed:
         accounts.audit(conn, "topic_updated", user_id=actor_id, target=key, detail=",".join(changed), ip=ip)
@@ -118,14 +116,11 @@ def _delete_topic_in_folder(
 ) -> None:
     """The topic file goes, and with it its events and the links it holds. Links that other files hold to its events
     are removed first. Evidence files stay in the folder; Git has the earlier state (ADR 0008)."""
-    located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (key,)).fetchone()
-    if located is None:
-        raise NotFound(f"Topic {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
-    path = data_dir / located["path"]
+    relative = file_of_topic(conn, key)
+    path = data_dir / relative
     with all_or_nothing(data_dir):
-        if file_version(path) != recorded_version(conn, located["path"]):
-            raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                           "Nichts wurde gelöscht.")
+        if file_version(path) != recorded_version(conn, relative):
+            raise changed_outside(relative, "Nichts wurde gelöscht")
         for event_key in events:
             # One file change per event, with the index following: the next change reads the new version of the file.
             elsewhere = set(linked_elsewhere(conn, event_key))
@@ -137,8 +132,8 @@ def _delete_topic_in_folder(
         with conn:
             conn.execute("DELETE FROM topics WHERE key = ?", (key,))
             conn.execute("DELETE FROM topic_files WHERE topic_key = ?", (key,))
-            conn.execute("DELETE FROM source_files WHERE path = ?", (located["path"],))
-            conn.execute("DELETE FROM event_files WHERE path = ?", (located["path"],))
+            conn.execute("DELETE FROM source_files WHERE path = ?", (relative,))
+            conn.execute("DELETE FROM event_files WHERE path = ?", (relative,))
     _audit_topic_deleted(conn, key, events, actor_id, ip)
 
 
