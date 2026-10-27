@@ -44,17 +44,6 @@
   {% endif %}
 </div>
 
-{% if events %}
-<section class="mb-10">
-  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-    <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Zeitleiste und Zusammenhänge</h2>
-    <a href="/topics/{{ topic.key }}/dashboard" target="_blank" rel="noopener" class="text-xs text-sky-300 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">In neuem Fenster öffnen</a>
-  </div>
-  <iframe src="/topics/{{ topic.key }}/dashboard?embed=1" title="Zeitleiste und Zusammenhänge von {{ topic.title }}"
-          class="h-[75vh] min-h-[480px] w-full rounded-xl border border-white/10 bg-slate-950"></iframe>
-</section>
-{% endif %}
-
 <section class="mb-10">
   <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Events ({{ events|length }})</h2>
   {% if events %}
@@ -69,9 +58,7 @@
         </span>
       </a>
       <span class="flex flex-none items-center gap-3 text-xs">
-        {% if event.home_topic == topic.key %}
-          <span class="rounded-md bg-white/5 px-2 py-0.5 text-slate-300">Heimat</span>
-        {% else %}
+        {% if event.home_topic != topic.key %}
           <span class="rounded-md bg-white/5 px-2 py-0.5 text-slate-400">verknüpft</span>
           {% if can_write %}
           <form method="post" action="/topics/{{ topic.key }}/unlink/{{ event.key }}"
@@ -98,10 +85,11 @@
   {% endif %}
 
   {% if can_write and addable %}
-  <form method="post" action="/topics/{{ topic.key }}/link" class="mt-4 flex flex-wrap items-end gap-3">
+  <form method="post" action="/topics/{{ topic.key }}/link" aria-labelledby="link-heading" class="mt-6 flex flex-wrap items-end gap-3 border-t border-white/10 pt-5">
     <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
     <div class="min-w-[16rem] flex-1">
-      <label for="link-filter" class="{{ label_class }}">Event verknüpfen: Liste filtern</label>
+      <h3 id="link-heading" class="mb-2 text-sm font-medium text-slate-100">Event aus einem anderen Topic verknüpfen</h3>
+      <label for="link-filter" class="{{ label_class }}">Liste filtern</label>
       <input id="link-filter" type="search" autocomplete="off" placeholder="Aktion oder Key" class="{{ input_class }} mb-2" aria-controls="link-event">
       <label for="link-event" class="sr-only">Event</label>
       <select id="link-event" name="event" class="{{ input_class }}">
@@ -115,6 +103,7 @@
     (function () {
       var filter = document.getElementById('link-filter'), select = document.getElementById('link-event'), count = document.getElementById('link-count');
       var all = Array.prototype.map.call(select.options, function (option) { return { value: option.value, text: option.textContent }; });
+      filter.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); select.focus(); } });
       filter.addEventListener('input', function () {
         var words = filter.value.toLowerCase().split(/\s+/).filter(Boolean);
         var shown = all.filter(function (item) { var hay = item.text.toLowerCase(); return words.every(function (word) { return hay.indexOf(word) !== -1; }); });
@@ -126,6 +115,19 @@
   </script>
   {% endif %}
 </section>
+
+{% if events %}
+<section class="mb-10">
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Zeitleiste und Zusammenhänge</h2>
+    <a href="/topics/{{ topic.key }}/dashboard" target="_blank" rel="noopener" class="text-xs text-sky-300 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">In neuem Fenster öffnen</a>
+  </div>
+  <a href="#nach-zeitleiste" class="sr-only focus:not-sr-only focus:mb-2 focus:inline-block focus:text-xs focus:text-sky-300 focus:underline">Zeitleiste überspringen</a>
+  <iframe src="/topics/{{ topic.key }}/dashboard?embed=1" title="Zeitleiste und Zusammenhänge von {{ topic.title }}"
+          class="h-[60vh] min-h-[400px] w-full rounded-xl border border-white/10 bg-slate-950"></iframe>
+</section>
+{% endif %}
+<div id="nach-zeitleiste"></div>
 
 {% if can_write %}
 <details id="bearbeiten" class="rounded-xl border border-white/10" {{ 'open' if errors }}>
