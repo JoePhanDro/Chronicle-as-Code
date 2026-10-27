@@ -23,6 +23,11 @@
              class="{{ input_class }} font-mono {{ 'opacity-60' if mode == 'view' }}">
     </label>
     {% endif %}
+    {% if mode == 'view' %}
+    {# Phase and status are changed on the event page itself; the edit form passes the stored values along. #}
+    <input type="hidden" name="phase" value="{{ f.phase }}">
+    <input type="hidden" name="status" value="{{ f.status }}">
+    {% else %}
     <label class="block">
       <span class="{{ label_class }}">Phase</span>
       <select name="phase" required class="{{ input_class }}">
@@ -35,6 +40,7 @@
         {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if f.status == status }}>{{ status_text.get(status, status) }}</option>{% endfor %}
       </select>
     </label>
+    {% endif %}
   </div>
 </section>
 

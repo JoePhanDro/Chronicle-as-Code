@@ -47,10 +47,36 @@
       {% if editing %}<a href="#bearbeiten" id="edit-link" class="text-sm text-sky-300 hover:underline max-sm:flex max-sm:min-h-11 max-sm:items-center">Bearbeiten</a>{% endif %}
     </div>
     <h1 class="mt-1 text-xl font-semibold text-slate-100 sm:text-2xl">{{ event.action }}</h1>
+    {% if editing %}
+    {% set chip_select = "appearance-none rounded-md border border-white/10 bg-slate-950/70 py-1 pl-7 pr-7 text-sm font-medium text-slate-100 outline-none hover:bg-white/5 focus:border-sky-400/60 max-sm:min-h-11" %}
+    <form method="post" action="/events/{{ event.key }}/mark" class="mt-3 flex flex-wrap items-center gap-2">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <input type="hidden" name="version" value="{{ event.version }}">
+      <label class="relative inline-flex items-center">
+        <span class="sr-only">Phase</span>
+        <span class="pointer-events-none absolute left-2.5 h-2 w-2 rounded-full" style="background: {{ phase_color(event.phase) }}" aria-hidden="true"></span>
+        <select name="phase" class="{{ chip_select }}" onchange="this.form.requestSubmit()">
+          {% for phase in phases %}<option value="{{ phase }}" {{ 'selected' if event.phase == phase }}>{{ phase }}</option>{% endfor %}
+        </select>
+        <span class="pointer-events-none absolute right-2.5 text-[10px] text-slate-400" aria-hidden="true">▾</span>
+      </label>
+      <label class="relative inline-flex items-center">
+        <span class="sr-only">Status</span>
+        <span class="pointer-events-none absolute left-2.5 h-2 w-2 rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>
+        <select name="status" class="{{ chip_select }}" onchange="this.form.requestSubmit()">
+          {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if event.status == status }}>{{ status_text.get(status, status) }}</option>{% endfor %}
+        </select>
+        <span class="pointer-events-none absolute right-2.5 text-[10px] text-slate-400" aria-hidden="true">▾</span>
+      </label>
+      <noscript><button type="submit" class="rounded-md border border-white/10 px-2.5 py-1 text-sm text-slate-200">Speichern</button></noscript>
+      <span role="status" class="text-xs text-emerald-300">{% if saved %}{{ saved }} gespeichert{% endif %}</span>
+    </form>
+    {% else %}
     <p class="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium text-slate-100">
       <span class="inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1"><span class="sr-only">Phase: </span><span class="h-2 w-2 flex-none rounded-full" style="background: {{ phase_color(event.phase) }}" aria-hidden="true"></span>{{ event.phase }}</span>
       <span class="inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1"><span class="sr-only">Status: </span><span class="h-2 w-2 flex-none rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>{{ status_text[event.status] if event.status in status_text else event.status }}</span>
     </p>
+    {% endif %}
     <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-y border-white/10 py-4 text-sm sm:grid-cols-3">
       <div>
         <dt class="text-xs text-slate-400">Zeit (<span data-zone-label>UTC</span>)</dt>
