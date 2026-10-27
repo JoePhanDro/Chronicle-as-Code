@@ -80,7 +80,7 @@ print(row[0] if row else '')
 # With cert.pem and key.pem in the certificate folder the proxy serves those.
 openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=chronicle-test-cert" -addext "subjectAltName=DNS:localhost" \
   -keyout "$own_certs/key.pem" -out "$own_certs/cert.pem" >/dev/null 2>&1
-chmod 644 "$own_certs/key.pem"  # the proxy runs as another user than the one who made the file
+# mktemp makes the folder 700 and openssl the key 600, owned by the runner: the proxy must still be able to read them.
 export CHRONICLE_CERTS_DIR="$own_certs"
 "${COMPOSE[@]}" up -d --force-recreate --no-deps --wait proxy
 served=""

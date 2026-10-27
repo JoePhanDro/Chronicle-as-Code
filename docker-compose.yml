@@ -66,6 +66,9 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+      # Without all capabilities root cannot read a certificate folder or key that belongs to another user
+      # (mode 700 or 600). This one only lets it read and search, it cannot write.
+      - DAC_READ_SEARCH
     security_opt:
       - no-new-privileges:true
     restart: unless-stopped

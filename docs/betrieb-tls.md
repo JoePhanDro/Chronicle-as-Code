@@ -36,7 +36,7 @@ Der Proxy wählt beim Start, woher das Zertifikat kommt. Im Log steht die Wahl (
 | `internal` | Immer ein eigenes Zertifikat aus Caddys lokaler CA, auch wenn Dateien vorliegen. |
 | `acme` | Ein echtes Zertifikat von Let's Encrypt für eine öffentliche Domain. |
 
-**Eigene Dateien:** `cert.pem` (mit Zwischenzertifikaten) und `key.pem` in den Ordner `certs/` legen und den Proxy neu starten (`docker compose up -d --force-recreate proxy`). Der Ordner wird nicht versioniert, ein privater Schlüssel gehört nicht ins Repository. Ein anderer Ordner lässt sich mit `CHRONICLE_CERTS_DIR` angeben.
+**Eigene Dateien:** `cert.pem` (mit Zwischenzertifikaten) und `key.pem` in den Ordner `certs/` legen und den Proxy neu starten (`docker compose up -d --force-recreate proxy`). Der Ordner wird nicht versioniert, ein privater Schlüssel gehört nicht ins Repository. Ein anderer Ordner lässt sich mit `CHRONICLE_CERTS_DIR` angeben. Die Dateirechte können restriktiv sein (z. B. `600` für den Schlüssel): Der Proxy bekommt dafür die Capability `DAC_READ_SEARCH`, die nur Lesen und Durchsuchen erlaubt.
 
 **Eigenes Zertifikat des Proxys:** Das ist das Verhalten ohne Dateien. Das Zertifikat ist selbst signiert. Der Browser warnt, bis das Root-Zertifikat von Caddy installiert ist. Es liegt im Volume `caddy-data` (`pki/authorities/local/root.crt`). Für einen Test auf dem eigenen Rechner genügt die Warnung wegzuklicken.
 
