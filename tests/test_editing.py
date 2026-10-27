@@ -149,7 +149,7 @@ def form_csrf(client):
 
 
 def test_html_create_edit_delete_flow(db_path, monkeypatch):
-    monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "form-1")
+    monkeypatch.setattr("chronicle.page_routes.events.new_event_key", lambda: "form-1")
     client = TestClient(app_for(db_path))
     login_html(client, "anna")
     assert client.get("/events").status_code == 200
@@ -238,7 +238,7 @@ def test_html_pages_redirect_to_login_without_session(db_path):
 
 
 def test_html_new_event_is_stored_in_utc_with_attachments(db_path, monkeypatch):
-    monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "files-1")
+    monkeypatch.setattr("chronicle.page_routes.events.new_event_key", lambda: "files-1")
     client = TestClient(app_for(db_path))
     login_html(client, "anna")
     page = client.get("/events/new").text
@@ -267,7 +267,7 @@ def test_html_new_event_is_stored_in_utc_with_attachments(db_path, monkeypatch):
 
 
 def test_html_bad_attachment_writes_no_event(db_path, monkeypatch):
-    monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "files-2")
+    monkeypatch.setattr("chronicle.page_routes.events.new_event_key", lambda: "files-2")
     client = TestClient(app_for(db_path))
     login_html(client, "anna")
     rejected = client.post(
@@ -287,7 +287,7 @@ def test_html_bad_attachment_writes_no_event(db_path, monkeypatch):
 
 
 def test_html_edit_form_shows_stored_time_in_berlin(db_path, monkeypatch):
-    monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "zeit-1")
+    monkeypatch.setattr("chronicle.page_routes.events.new_event_key", lambda: "zeit-1")
     client = TestClient(app_for(db_path))
     login_html(client, "anna")
     created = client.post("/events/new", data={

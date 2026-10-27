@@ -4,7 +4,7 @@ import pytest
 
 from chronicle import repository
 from chronicle.db import connect
-from chronicle.pages import _local_path, _with_param
+from chronicle.page_routes.general import _local_path, _with_param
 
 
 @pytest.fixture(autouse=True)
