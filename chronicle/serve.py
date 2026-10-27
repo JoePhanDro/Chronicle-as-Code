@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 import uvicorn
@@ -20,6 +21,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
 
+    if args.data is None and not os.environ.get("CHRONICLE_DATA"):
+        print("Warnung: Ohne --data (CHRONICLE_DATA) ist die Datenbank die Quelle der Wahrheit. Dieser Betrieb entfällt, "
+              "siehe docs/adr/0011-files-only-write-path.md.", file=sys.stderr)
     # The app reads its paths from the environment at import time.
     os.environ["CHRONICLE_DB"] = str(args.db)
     if args.data is not None:
