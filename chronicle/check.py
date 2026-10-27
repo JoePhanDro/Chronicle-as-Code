@@ -109,15 +109,11 @@ def check_folder(data_dir: Path, *, evidence: bool = True) -> list[str]:
     return []
 
 
-def link_problems(items: Sequence[tuple[str, Timeline]], known_keys: Collection[str] = ()) -> list[str]:
-    """Problems between files: duplicate keys, unresolvable references, cycles in triggered_by.
-
-    `items` pairs each timeline with its file name for the messages.
-    """
+def _duplicate_problems(items: Sequence[tuple[str, Timeline]]) -> tuple[list[str], dict[str, str]]:
+    """Keys defined twice, and which file defines each event."""
     problems: list[str] = []
     topic_owner: dict[str, str] = {}
     event_owner: dict[str, str] = {}
-
     for name, timeline in items:
         key = timeline.topic.key
         if key in topic_owner:
@@ -129,15 +125,15 @@ def link_problems(items: Sequence[tuple[str, Timeline]], known_keys: Collection[
                 problems.append(f"Event {event.key!r} ist in {event_owner[event.key]} und {name} definiert")
             else:
                 event_owner[event.key] = name
+    return problems, event_owner
 
-    known = set(event_owner) | set(known_keys)
-    for name, timeline in items:
-        for key in timeline.refs:
-            if key not in known:
-                problems.append(f"{name}: refs verweist auf {key!r}, das in keiner Datei definiert ist")
 
-    # The graph has an edge from each event to each event that triggered it. Targets outside the folder
-    # cannot close a cycle within it, so they are not part of the graph.
+def _trigger_problems(
+    items: Sequence[tuple[str, Timeline]], known: Collection[str], event_owner: dict[str, str]
+) -> tuple[list[str], dict[str, list[str]]]:
+    """Problems of single triggered_by entries, and the graph of the valid ones: an edge from each event to each
+    event that triggered it. Targets outside the folder cannot close a cycle within it, so they are not in the graph."""
+    problems: list[str] = []
     triggers: dict[str, list[str]] = {}
     for name, timeline in items:
         for event in timeline.events:
@@ -148,9 +144,22 @@ def link_problems(items: Sequence[tuple[str, Timeline]], known_keys: Collection[
                     problems.append(f"{name}: triggered_by {target!r} bei {event.key!r} ist kein bekannter Event-Key")
                 elif target in event_owner:
                     triggers.setdefault(event.key, []).append(target)
+    return problems, triggers
 
-    problems += cycle_problems(triggers)
-    return problems
+
+def link_problems(items: Sequence[tuple[str, Timeline]], known_keys: Collection[str] = ()) -> list[str]:
+    """Problems between files: duplicate keys, unresolvable references, cycles in triggered_by.
+
+    `items` pairs each timeline with its file name for the messages.
+    """
+    problems, event_owner = _duplicate_problems(items)
+    known = set(event_owner) | set(known_keys)
+    for name, timeline in items:
+        for key in timeline.refs:
+            if key not in known:
+                problems.append(f"{name}: refs verweist auf {key!r}, das in keiner Datei definiert ist")
+    trigger_problems, triggers = _trigger_problems(items, known, event_owner)
+    return [*problems, *trigger_problems, *cycle_problems(triggers)]
 
 
 def cycle_problems(triggers: dict[str, list[str]]) -> list[str]:

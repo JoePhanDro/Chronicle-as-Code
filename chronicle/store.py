@@ -315,6 +315,23 @@ def add_evidence_to_file(path: Path, event_key: str, item: dict, *, expected_ver
     return file_version(path)
 
 
+def _without_evidence(model, event_key: str, file: str):
+    """The model with the evidence entry for `file` taken off the event."""
+    def stripped(known):
+        if known.key != event_key:
+            return known
+        return known.model_copy(update={"evidence": [item for item in known.evidence if item.file != file]})
+
+    return model.model_copy(update={"events": [stripped(known) for known in model.events]})
+
+
+def _drop_evidence_entry(document, event_key: str, file: str) -> None:
+    entry = next(entry for entry in document["events"] if entry["key"] == event_key)
+    entry["evidence"] = [item for item in entry["evidence"] if item["file"] != file]
+    if not entry["evidence"]:
+        del entry["evidence"]
+
+
 def remove_evidence_from_file(path: Path, event_key: str, file: str, *, expected_version: str) -> str:
     """Remove the evidence entry for one file from an event. The file on disk is not touched here."""
     with folder_lock(path.parent):
@@ -326,18 +343,11 @@ def remove_evidence_from_file(path: Path, event_key: str, file: str, *, expected
             raise StoreError(f"Der Beleg {file!r} steht nicht bei {event_key!r} in {path.name}.")
 
         document = _load_document(text)
-        entry = next(entry for entry in document["events"] if entry["key"] == event_key)
-        entry["evidence"] = [item for item in entry["evidence"] if item["file"] != file]
-        if not entry["evidence"]:
-            del entry["evidence"]
+        _drop_evidence_entry(document, event_key, file)
         stream = io.StringIO()
         _yaml().dump(document, stream)
 
-        _verify_read_back(stream.getvalue(), current.model_copy(update={"events": [
-            known.model_copy(update={"evidence": [item for item in known.evidence if item.file != file]})
-            if known.key == event_key else known
-            for known in current.events
-        ]}))
+        _verify_read_back(stream.getvalue(), _without_evidence(current, event_key, file))
         _atomic_write(path, stream.getvalue().encode("utf-8"))
     return file_version(path)
 
