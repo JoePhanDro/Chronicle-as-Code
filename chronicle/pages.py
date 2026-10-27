@@ -462,7 +462,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
 
     # Topics: any logged-in user reads; analysts and admins change topics and links.
 
-    def topic_page(request: Request, conn: sqlite3.Connection, user: dict, key: str, status_code: int = 200, errors: str | None = None):
+    def topic_page(request: Request, conn: sqlite3.Connection, user: dict, key: str, status_code: int = 200, errors: str | None = None, closed: int | None = None):
         topic = repository.get_topic(conn, key)
         if topic is None:
             return render(request, "not_found.html", user, status_code=404)
@@ -470,8 +470,11 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         linked = {event["key"] for event in events}
         addable = [event for event in repository.list_events(conn) if event["key"] not in linked]
         delete_plan = repository.topic_delete_plan(conn, key)
+        unresolved = [event for event in events if event["status"] != "resolved"]
+        closable = [event for event in unresolved if event["home_topic"] == key]
         return render(request, "topic.html", user, status_code=status_code, mode="view", topic=topic,
                       events=events, addable=addable, errors=errors, kinds=TOPIC_KINDS, form=None,
+                      closable=len(closable), foreign_open=len(unresolved) - len(closable), closed=closed,
                       status=repository.most_pressing_status(event["status"] for event in events),
                       delete_plan=delete_plan)
 
@@ -518,7 +521,8 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
     def topic_view(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
         if user is None:
             return RedirectResponse("/login", status_code=303)
-        return topic_page(request, conn, user, key)
+        closed = request.query_params.get("abgeschlossen", "")
+        return topic_page(request, conn, user, key, closed=int(closed) if closed.isdigit() else None)
 
     @router.get("/topics/{key}/dashboard", response_class=HTMLResponse)
     def topic_dashboard_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
@@ -559,6 +563,37 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
             status = 404 if isinstance(exc, repository.NotFound) else 409
             return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
         return RedirectResponse("/topics", status_code=303)
+
+    @router.post("/topics/{key}/close-events", response_class=HTMLResponse)
+    async def close_topic_events_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        """Set every unresolved event that has this topic as its home to resolved, one event after the other."""
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        if repository.get_topic(conn, key) is None:
+            return render(request, "not_found.html", user, status_code=404)
+        done = 0
+        try:
+            for listed in repository.list_topic_events(conn, key):
+                if listed["home_topic"] != key or listed["status"] == "resolved":
+                    continue
+                current = repository.get_event(conn, listed["key"])
+                body = EventWrite.model_validate({
+                    "key": current["key"], "t0": current["t0"], "phase": current["phase"], "actor": current["actor"],
+                    "system": current["system"], "action": current["action"], "status": "resolved",
+                    "triggered_by": current["triggered_by"], "details": current["details"] or "",
+                    "topic": current["home_topic"], "topics": current["topics"],
+                })
+                repository.update_event(conn, current["key"], event_of(body), topic_list(body), current["version"],
+                                        user["id"], client_ip(request), data_dir=request.app.state.data_dir)
+                done += 1
+        except (ValidationError, ValueError, repository.RepositoryError) as exc:
+            code = 409 if isinstance(exc, repository.Conflict) else 422
+            return topic_page(request, conn, user, key, status_code=code, closed=done,
+                              errors=f"{_error_text(exc)} Abgeschlossen wurden bis dahin {done} Events.")
+        return RedirectResponse(f"/topics/{key}?abgeschlossen={done}", status_code=303)
 
     @router.post("/topics/{key}/link", response_class=HTMLResponse)
     async def link_event_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
