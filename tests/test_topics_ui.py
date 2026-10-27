@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import app_for, db_mode_app, import_example
-from chronicle import accounts, repository, security
+from chronicle import accounts, security
 from chronicle.db import connect
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -123,9 +123,6 @@ def test_deleting_a_topic_takes_its_home_events_along(db_path):
     assert anna.delete("/api/v1/topics/inc-2026-042").status_code == 204
     assert anna.get("/api/v1/topics/inc-2026-042").status_code == 404
     assert anna.get("/api/v1/events/feed-cve").status_code == 404
-    conn = connect(db_path)
-    assert "feed-cve" in {tombstone["key"] for tombstone in repository.list_tombstones(conn)}  # an admin can restore them
-    conn.close()
 
 
 def test_events_linked_into_another_topic_stay_when_their_home_goes(db_path):

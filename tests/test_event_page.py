@@ -83,7 +83,7 @@ def test_an_event_that_others_depend_on_has_no_delete_button_but_the_reason(api_
     assert "Event löschen</button>" not in html and 'action="/events/exploit/delete"' not in html
 
 
-def test_without_a_data_folder_the_dialog_points_to_the_tombstones(tmp_path):
+def test_without_a_data_folder_the_dialog_says_it_cannot_be_undone(tmp_path):
     from fastapi.testclient import TestClient
 
     from chronicle import accounts, security
@@ -97,7 +97,7 @@ def test_without_a_data_folder_the_dialog_points_to_the_tombstones(tmp_path):
     client = TestClient(db_mode_app(tmp_path / "chronicle.db"))
     client.post("/api/v1/auth/login", json={"username": "anna", "password": PASSWORD})
     html = client.get("/events/lessons").text
-    assert js("Ein Admin kann es unter Verwaltung, Gelöschte Events wiederherstellen.") in html
+    assert js("Das lässt sich nicht rückgängig machen.") in html
 
 
 def mark(client, key, **fields):
