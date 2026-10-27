@@ -168,7 +168,7 @@ python -m chronicle build data --out site
 
 **Mit Datenordner (`--data` bzw. `CHRONICLE_DATA`):** Die Topic-Dateien sind die Quelle der Wahrheit ([ADR 0008](docs/adr/0008-files-as-source-of-truth.md)). Eine Bearbeitung in der Oberfläche oder über die API ändert nur die betroffenen Felder der Datei. Ein neues Event wird an das Ende der Datei seines Topics geschrieben. Ein gelöschtes Event verschwindet aus der Datei, und es gibt keinen Grabstein: Die Historie liefert Git. Kommentare, Reihenfolge und Layout bleiben erhalten. Danach wird der Index aus den Dateien neu aufgebaut. Hat jemand die Datei außerhalb von Chronicle geändert, schlägt das Speichern mit einem Konflikt fehl, bis `chronicle apply` ausgeführt wurde.
 
-Verknüpfungen zwischen Topics stehen im Dateimodus unter `refs` in der Datei des anderen Topics. Wer ein Event einem weiteren Topic zuordnet, bekommt dort eine Zeile, und wer die Zuordnung entfernt, verliert sie. Beim Löschen eines Events werden seine Verweise aus den anderen Topic-Dateien vorher entfernt.
+Verknüpfungen zwischen Topics stehen im Dateimodus unter `refs` in der Datei des anderen Topics. Wer ein Event einem weiteren Topic zuordnet, bekommt dort eine Zeile, und wer die Zuordnung entfernt, verliert sie. Beim Löschen eines Events werden seine Verweise aus den anderen Topic-Dateien vorher entfernt. Wer ein Topic löscht, löscht dessen Datei samt allen Events, die dort ihr Heimat-Topic haben (die Anhänge bleiben im Ordner `evidence/` liegen). Hängt ein Event eines anderen Topics an einem davon, wird nichts gelöscht.
 
 Anhänge liegen im Dateimodus als Dateien unter `evidence/<Event-Key>/` im Datenordner. Die Topic-Datei nennt Pfad, Typ und Beschreibung. Gleiche Namen mit anderem Inhalt bekommen eine Nummer, nichts wird überschrieben. Ein Anhang, der bereits am Event hängt, wird nicht doppelt angelegt. Der Ordner `evidence/` gehört in die Synchronisation (z. B. OneDrive), nicht in Git (ADR 0008).
 
@@ -253,7 +253,7 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | GET | `/events/{key}` | angemeldet | ein Event mit Evidence-Metadaten und Topics |
 | POST | `/topics` | analyst, admin | Topic anlegen (`title`, `kind`, `summary`). `key` ist optional, ohne Key vergibt der Server einen (`tp-<Datum>-<zufällig>`) |
 | PUT | `/topics/{key}` | analyst, admin | Titel, Art oder Zusammenfassung ändern. Der Key bleibt |
-| DELETE | `/topics/{key}` | analyst, admin | Topic löschen (409, solange Heimat-Events darin liegen) |
+| DELETE | `/topics/{key}` | analyst, admin | Topic samt seinen Heimat-Events löschen (409, wenn Events anderer Topics an diesen Events hängen) |
 | POST | `/topics/{key}/events` | analyst, admin | Event mit dem Topic verknüpfen (JSON `{event}`) |
 | DELETE | `/topics/{key}/events/{event_key}` | analyst, admin | Verknüpfung lösen. Das Heimat-Topic eines Events lässt sich nicht lösen (422) |
 | POST | `/events` | analyst, admin | Event anlegen (`topic` = Heimat, `topics` = weitere). `key` ist optional, ohne Key vergibt der Server einen (`ev-<Datum>-<zufällig>`). Evidence im Body gibt es nicht, siehe unten |

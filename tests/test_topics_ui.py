@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from chronicle import accounts, security
+from chronicle import accounts, repository, security
 from chronicle.api import create_app
 from chronicle.db import connect
 from chronicle.importer import import_folder
@@ -119,11 +119,22 @@ def test_title_can_change_but_key_cannot(db_path):
     assert moved.status_code == 422
 
 
-def test_topic_with_home_events_cannot_be_deleted(db_path):
+def test_deleting_a_topic_takes_its_home_events_along(db_path):
     anna = api_login(db_path, "anna")
-    response = anna.delete("/api/v1/topics/inc-2026-042")
-    assert response.status_code == 409
-    assert "feed-cve" in response.json()["detail"]
+    assert anna.delete("/api/v1/topics/inc-2026-042").status_code == 204
+    assert anna.get("/api/v1/topics/inc-2026-042").status_code == 404
+    assert anna.get("/api/v1/events/feed-cve").status_code == 404
+    conn = connect(db_path)
+    assert "feed-cve" in {tombstone["key"] for tombstone in repository.list_tombstones(conn)}  # an admin can restore them
+    conn.close()
+
+
+def test_events_linked_into_another_topic_stay_when_their_home_goes(db_path):
+    anna = api_login(db_path, "anna")
+    anna.post("/api/v1/topics", json=topic_body())
+    assert anna.post("/api/v1/topics/projekt-x/events", json={"event": "feed-cve"}).status_code in (200, 201, 204)  # home elsewhere
+    assert anna.delete("/api/v1/topics/projekt-x").status_code == 204
+    assert anna.get("/api/v1/events/feed-cve").status_code == 200
 
 
 def test_empty_topic_can_be_deleted(db_path):

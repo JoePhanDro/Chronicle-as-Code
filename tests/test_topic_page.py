@@ -54,8 +54,8 @@ def test_analyst_edit_panel_is_closed_and_delete_sits_inside_it(api_client):
     panel = html[html.index('<details id="bearbeiten"'):]
     assert panel.startswith('<details id="bearbeiten" class="rounded-xl border border-white/10" >')  # closed
     assert 'id="edit-link"' in html
-    # a topic that is the home of events cannot be deleted: the button is replaced by the reason
-    assert "Heimat von 7 Events" in panel and "Topic löschen</button>" not in panel
+    # a topic that is the home of events takes them along: the button says how many
+    assert "Entfernt das Topic samt seinen 7 Events" in panel and "Topic mit 7 Events löschen</button>" in panel
 
 
 def test_delete_of_an_empty_topic_names_title_and_key_in_the_confirmation(api_client):
@@ -171,3 +171,21 @@ def test_topic_list_edge_follows_the_phase_of_the_latest_event(api_client):
     row = html.split('href="/topics/inc-2026-042"')[1].split("</li>")[0]
     assert "left-1.5" in row and "background: #3b82f6" in row and "· Lessons Learned" in row  # latest event is the post-mortem
     assert "left-1.5" not in html.split('href="/topics/leer"')[1].split("</li>")[0]  # no events, no phase, no edge
+
+
+def test_delete_dialog_names_the_events_the_evidence_and_the_way_back(api_client):
+    html = api_client("analyst").get("/topics/inc-2026-042").text  # file mode
+    question = js("Topic „INC-2026-042: Ausnutzung von CVE-2026-XXXX“ (inc-2026-042) und 7 Events (analysis, containment, exploit, feed-cve, lessons …) löschen?\n\n")
+    assert question in html
+    assert js("Die Datei des Topics wird gelöscht; den früheren Stand liefert Git, Evidence-Dateien bleiben im Ordner liegen.") in html
+
+
+def test_a_topic_whose_events_trigger_events_elsewhere_has_no_delete_button_but_the_reason(api_client):
+    client = api_client("analyst")
+    create_empty_topic(client)
+    body = {"key": "fremd-1", "t0": "2026-10-27T10:00:00+02:00", "phase": "Activity", "actor": "A", "action": "Folge",
+            "status": "open", "triggered_by": ["lessons"], "topic": "leer", "topics": ["leer"]}
+    assert client.post("/api/v1/events", json=body).status_code == 201
+    html = client.get("/topics/inc-2026-042").text
+    assert "Nicht löschbar: Events anderer Topics hängen an Events dieses Topics" in html
+    assert 'href="/events/fremd-1"' in html and "löschen</button>" not in html.split('id="bearbeiten"')[1]
