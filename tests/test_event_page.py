@@ -155,3 +155,21 @@ def test_a_failed_edit_opens_the_panel_again(api_client):
 
 def test_markdown_headings_in_details_stay_below_the_page_title():
     assert ":root:root .prose-chronicle h1 { font-size: 1.25em; }" in INPUT_CSS  # 17.5px under a 20px title
+
+
+def test_evidence_upload_is_folded_away_and_opens_again_after_a_failed_upload(api_client):
+    client = api_client("analyst")
+    html = client.get("/events/lessons").text
+    assert '<details id="evidence-add" class="mt-4 rounded-xl border border-white/10" >' in html and "Evidence hinzufügen" in html
+    token = client.headers["X-CSRF-Token"]
+    failed = client.post("/events/lessons/evidence", data={"csrf_token": token, "type": "log"},
+                         files={"file": ("a.exe", b"x", "application/octet-stream")})
+    assert failed.status_code == 422
+    assert '<details id="evidence-add" class="mt-4 rounded-xl border border-white/10" open>' in failed.text
+    assert '<details id="bearbeiten" class="rounded-xl border border-white/10" >' in failed.text  # the edit panel stays closed
+
+
+def test_chips_say_that_they_can_be_changed_and_the_panel_names_what_it_holds(api_client):
+    html = api_client("analyst").get("/events/lessons").text
+    assert 'title="Phase ändern"' in html and 'title="Status ändern"' in html
+    assert "Weitere Felder bearbeiten · Event löschen</summary>" in html

@@ -427,7 +427,7 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         except (ValueError, repository.RepositoryError) as exc:
             status = 404 if isinstance(exc, repository.NotFound) else 422
             return render(request, "event.html", user, status_code=status, mode="view",
-                          event=repository.get_event(conn, key), errors=_error_text(exc),
+                          event=repository.get_event(conn, key), errors=_error_text(exc), upload_failed=True,
                           **form_context(conn, form=None))
         return RedirectResponse(f"/events/{key}", status_code=303)
 
