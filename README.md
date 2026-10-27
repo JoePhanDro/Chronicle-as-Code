@@ -369,6 +369,7 @@ DESIGN.md            Designsystem (Farben, Typografie, hell und dunkel, Komponen
 npm ci && npm run build:css      # nach jeder Template-Änderung mit neuen Tailwind-Klassen
 ruff check .                     # Lint
 pytest                           # Tests (requirements-dev.txt)
+coverage run --source=chronicle -m pytest -q && coverage report   # Abdeckung
 pytest -m browser                # Browser-Tests (einmalig: python -m playwright install chromium)
 ```
 

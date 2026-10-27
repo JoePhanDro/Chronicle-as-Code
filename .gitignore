@@ -4,6 +4,7 @@ chronicle/static/app.css
 .env
 __pycache__/
 .pytest_cache/
+.coverage
 /export/
 /backup/
 .DS_Store

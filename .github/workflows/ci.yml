@@ -76,7 +76,11 @@ jobs:
         run: ruff check .
 
       - name: Unit tests
-        run: pytest -q
+        run: coverage run --source=chronicle -m pytest -q
+
+      # The coverage is only reported, there is no threshold yet (issue #129).
+      - name: Coverage
+        run: coverage report --skip-covered
 
       - name: Render dashboard and check its JavaScript
         run: python scripts/check_dashboard.py "$RUNNER_TEMP/dashboard"
