@@ -27,6 +27,30 @@
 {% else %}
 {% set status_dot = {'open': 'bg-rose-500', 'in_progress': 'bg-amber-500 motion-safe:animate-pulse', 'resolved': 'bg-emerald-500'} %}
 {% set last = events | map(attribute='t0') | max if events else None %}
+{% macro event_row(event) %}
+  <li class="flex items-center justify-between gap-4 px-4 py-3">
+    <a href="/events/{{ event.key }}" data-list-row class="flex min-w-0 items-start gap-3 hover:underline">
+      <span class="mt-1.5 h-1.5 w-1.5 flex-none rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>
+      <span class="min-w-0">
+        <span class="block truncate text-sm text-slate-100">{{ event.action }}</span>
+        <span class="font-mono text-xs text-slate-400">{{ event.t0[:16].replace('T', ' ') }} · {{ event.phase }} · {{ event.key }}{% if event.status in status_text %} · <span class="font-sans">{{ status_text[event.status] }}</span>{% endif %}</span>
+      </span>
+    </a>
+    <span class="flex flex-none items-center gap-3 text-xs">
+      {% if event.home_topic != topic.key %}
+        <span class="rounded-md bg-white/5 px-2 py-0.5 text-slate-400">verknüpft</span>
+        {% if can_write %}
+        <form method="post" action="/topics/{{ topic.key }}/unlink/{{ event.key }}"
+              onsubmit='return confirm({{ ("Verknüpfung lösen?\n\n" ~ event.action ~ " (" ~ event.key ~ ") bleibt in seinem Heimat-Topic erhalten und verschwindet nur aus diesem Topic.") | tojson }});'>
+          <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+          <button type="submit" class="py-2 text-rose-300 hover:underline">Lösen</button>
+        </form>
+        {% endif %}
+      {% endif %}
+    </span>
+  </li>
+{% endmacro %}
+
 <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
   <div class="min-w-0">
     <div class="font-mono text-xs text-slate-400">{{ topic.key }} · {{ topic.kind }}</div>
@@ -45,33 +69,24 @@
 </div>
 
 <section class="mb-10">
-  <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Events ({{ events|length }})</h2>
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Events ({{ events|length }})</h2>
+    {% if can_write and addable %}<a href="#verknuepfen" id="link-open" class="text-xs text-sky-300 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">Event aus anderem Topic verknüpfen</a>{% endif %}
+  </div>
   {% if events %}
-  <ul class="divide-y divide-white/10 rounded-xl border border-white/10" aria-label="Events dieses Topics">
-    {% for event in events %}
-    <li class="flex items-center justify-between gap-4 px-4 py-3">
-      <a href="/events/{{ event.key }}" data-list-row class="flex min-w-0 items-start gap-3 hover:underline">
-        <span class="mt-1.5 h-1.5 w-1.5 flex-none rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>
-        <span class="min-w-0">
-          <span class="block truncate text-sm text-slate-100">{{ event.action }}</span>
-          <span class="font-mono text-xs text-slate-400">{{ event.t0[:16].replace('T', ' ') }} · {{ event.phase }} · {{ event.key }}{% if event.status in status_text %} · <span class="font-sans">{{ status_text[event.status] }}</span>{% endif %}</span>
-        </span>
-      </a>
-      <span class="flex flex-none items-center gap-3 text-xs">
-        {% if event.home_topic != topic.key %}
-          <span class="rounded-md bg-white/5 px-2 py-0.5 text-slate-400">verknüpft</span>
-          {% if can_write %}
-          <form method="post" action="/topics/{{ topic.key }}/unlink/{{ event.key }}"
-                onsubmit='return confirm({{ ("Verknüpfung lösen?\n\n" ~ event.action ~ " (" ~ event.key ~ ") bleibt in seinem Heimat-Topic erhalten und verschwindet nur aus diesem Topic.") | tojson }});'>
-            <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-            <button type="submit" class="py-2 text-rose-300 hover:underline">Lösen</button>
-          </form>
-          {% endif %}
-        {% endif %}
-      </span>
-    </li>
-    {% endfor %}
-  </ul>
+  <div class="rounded-xl border border-white/10">
+    <ul class="divide-y divide-white/10" aria-label="Events dieses Topics">
+      {% for event in events[:5] %}{{ event_row(event) }}{% endfor %}
+    </ul>
+    {% if events | length > 5 %}
+    <details class="border-t border-white/10">
+      <summary class="cursor-pointer select-none px-4 py-3 text-sm text-sky-300 hover:bg-white/5">Weitere {{ events | length - 5 }} {{ 'Event' if events | length - 5 == 1 else 'Events' }} anzeigen</summary>
+      <ul class="divide-y divide-white/10 border-t border-white/10" aria-label="Weitere Events dieses Topics">
+        {% for event in events[5:] %}{{ event_row(event) }}{% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+  </div>
   {% else %}
   <div class="rounded-xl border border-dashed border-white/10 px-6 py-10 text-center">
     <p class="text-sm font-medium text-slate-100">Noch keine Events in diesem Topic</p>
@@ -84,36 +99,6 @@
   </div>
   {% endif %}
 
-  {% if can_write and addable %}
-  <form method="post" action="/topics/{{ topic.key }}/link" aria-labelledby="link-heading" class="mt-6 flex flex-wrap items-end gap-3 border-t border-white/10 pt-5">
-    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-    <div class="min-w-[16rem] flex-1">
-      <h3 id="link-heading" class="mb-2 text-sm font-medium text-slate-100">Event aus einem anderen Topic verknüpfen</h3>
-      <label for="link-filter" class="{{ label_class }}">Liste filtern</label>
-      <input id="link-filter" type="search" autocomplete="off" placeholder="Aktion oder Key" class="{{ input_class }} mb-2" aria-controls="link-event">
-      <label for="link-event" class="sr-only">Event</label>
-      <select id="link-event" name="event" class="{{ input_class }}">
-        {% for event in addable %}<option value="{{ event.key }}">{{ event.action }} ({{ event.key }})</option>{% endfor %}
-      </select>
-      <p id="link-count" class="mt-1 text-xs text-slate-400" aria-live="polite"></p>
-    </div>
-    <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Verknüpfen</button>
-  </form>
-  <script>
-    (function () {
-      var filter = document.getElementById('link-filter'), select = document.getElementById('link-event'), count = document.getElementById('link-count');
-      var all = Array.prototype.map.call(select.options, function (option) { return { value: option.value, text: option.textContent }; });
-      filter.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); select.focus(); } });
-      filter.addEventListener('input', function () {
-        var words = filter.value.toLowerCase().split(/\s+/).filter(Boolean);
-        var shown = all.filter(function (item) { var hay = item.text.toLowerCase(); return words.every(function (word) { return hay.indexOf(word) !== -1; }); });
-        select.innerHTML = '';
-        shown.forEach(function (item) { var option = document.createElement('option'); option.value = item.value; option.textContent = item.text; select.appendChild(option); });
-        count.textContent = words.length ? (shown.length ? shown.length + ' von ' + all.length + (all.length === 1 ? ' Event' : ' Events') : 'Kein Event gefunden') : '';
-      });
-    })();
-  </script>
-  {% endif %}
 </section>
 
 {% if events %}
@@ -148,6 +133,37 @@
     <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Speichern</button>
   </form>
 
+  {% if can_write and addable %}
+  <form method="post" action="/topics/{{ topic.key }}/link" aria-labelledby="link-heading" class="mt-8 flex max-w-2xl flex-wrap items-end gap-3 border-t border-white/10 pt-5">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <div class="min-w-[16rem] flex-1">
+      <h2 id="verknuepfen" class="mb-2 scroll-mt-4 text-sm font-medium text-slate-100"><span id="link-heading">Event aus einem anderen Topic verknüpfen</span></h2>
+      <label for="link-filter" class="{{ label_class }}">Liste filtern</label>
+      <input id="link-filter" type="search" autocomplete="off" placeholder="Aktion oder Key" class="{{ input_class }} mb-2" aria-controls="link-event">
+      <label for="link-event" class="sr-only">Event</label>
+      <select id="link-event" name="event" class="{{ input_class }}">
+        {% for event in addable %}<option value="{{ event.key }}">{{ event.action }} ({{ event.key }})</option>{% endfor %}
+      </select>
+      <p id="link-count" class="mt-1 text-xs text-slate-400" aria-live="polite"></p>
+    </div>
+    <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Verknüpfen</button>
+  </form>
+  <script>
+    (function () {
+      var filter = document.getElementById('link-filter'), select = document.getElementById('link-event'), count = document.getElementById('link-count');
+      var all = Array.prototype.map.call(select.options, function (option) { return { value: option.value, text: option.textContent }; });
+      filter.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); select.focus(); } });
+      filter.addEventListener('input', function () {
+        var words = filter.value.toLowerCase().split(/\s+/).filter(Boolean);
+        var shown = all.filter(function (item) { var hay = item.text.toLowerCase(); return words.every(function (word) { return hay.indexOf(word) !== -1; }); });
+        select.innerHTML = '';
+        shown.forEach(function (item) { var option = document.createElement('option'); option.value = item.value; option.textContent = item.text; select.appendChild(option); });
+        count.textContent = words.length ? (shown.length ? shown.length + ' von ' + all.length + (all.length === 1 ? ' Event' : ' Events') : 'Kein Event gefunden') : '';
+      });
+    })();
+  </script>
+  {% endif %}
+
   <div class="mt-8 max-w-2xl border-t border-white/10 pt-5">
     <h2 class="text-sm font-medium text-slate-100">Topic löschen</h2>
     {% if home_events %}
@@ -165,8 +181,17 @@
 </details>
 <script>
   (function () {
-    var link = document.getElementById('edit-link'), panel = document.getElementById('bearbeiten');
-    if (!link || !panel) return;
+    var link = document.getElementById('edit-link'), panel = document.getElementById('bearbeiten'), linkOpen = document.getElementById('link-open');
+    if (!panel) return;
+    if (linkOpen) linkOpen.addEventListener('click', function (event) {
+      event.preventDefault();
+      panel.open = true;
+      var heading = document.getElementById('verknuepfen');
+      if (heading) heading.scrollIntoView({ block: 'start' });
+      var filter = document.getElementById('link-filter');
+      if (filter) filter.focus({ preventScroll: true });
+    });
+    if (!link) return;
     link.addEventListener('click', function (event) {
       event.preventDefault();
       panel.open = true;

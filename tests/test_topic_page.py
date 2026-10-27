@@ -130,3 +130,28 @@ def test_topic_list_offers_a_filter_only_when_it_is_long(api_client):
     html = client.get("/topics").text
     assert 'id="topic-filter"' in html and 'id="topic-status"' in html and 'data-status=""' in html
     assert "event.key === 'Enter'" in html  # the filter never submits anything
+
+
+def test_link_form_lives_in_the_edit_panel_with_an_entry_point_above_the_list(api_client):
+    client = api_client("analyst")
+    create_empty_topic(client)
+    html = client.get("/topics/leer").text
+    assert 'id="link-open"' in html and html.index('id="link-open"') < html.index('id="bearbeiten"')
+    assert html.index('id="bearbeiten"') < html.index('id="verknuepfen"') < html.index('id="link-filter"')
+
+
+def test_viewers_get_no_link_form_and_no_entry_point(api_client):
+    html = api_client("viewer").get("/topics/inc-2026-042").text
+    assert 'id="verknuepfen"' not in html and 'id="link-open"' not in html
+
+
+def test_long_event_lists_show_five_rows_and_fold_the_rest(api_client):
+    client = api_client("analyst")
+    html = client.get("/topics/inc-2026-042").text  # seven events
+    assert "Weitere 2 Events anzeigen" in html
+    shown = html.split('aria-label="Events dieses Topics"')[1].split("</ul>")[0]
+    assert shown.count('href="/events/') == 5
+    assert html.count('href="/events/') >= 7  # the folded ones are still in the page
+    create_empty_topic(client, key="kurz")
+    client.post("/topics/kurz/link", data={"event": "feed-cve", "csrf_token": client.headers["X-CSRF-Token"]})
+    assert "Weitere" not in client.get("/topics/kurz").text
