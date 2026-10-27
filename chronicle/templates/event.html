@@ -175,13 +175,21 @@
         <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Speichern</button>
       </form>
 
-      <div class="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
-        <p class="max-w-md text-sm text-slate-400">Das Event wird mit seinen {{ event.evidence | length }} Evidence-Dateien entfernt. {% if effects %}Es löst {{ effects | length }} weitere{{ 's' if effects | length == 1 }} Event{{ 's' if effects | length != 1 }} aus: Der Server lehnt das Löschen ab, bis dort der Verweis entfernt ist.{% endif %}</p>
-        <form method="post" action="/events/{{ event.key }}/delete"
-              onsubmit='return confirm({{ ("Event „" ~ event.action ~ "“ (" ~ event.key ~ ") wirklich löschen?") | tojson }});'>
+      <div class="mt-8 max-w-2xl border-t border-white/10 pt-5">
+        <h2 class="text-sm font-medium text-slate-100">Event löschen</h2>
+        {% if effects %}
+        <p class="mt-1 text-sm text-slate-400">Nicht löschbar: Dieses Event löst {{ effects | length }} {{ 'weiteres Event' if effects | length == 1 else 'weitere Events' }} aus ({% for other in effects %}<a href="/events/{{ other.key }}" class="text-sky-300 hover:underline">{{ other.key }}</a>{{ ', ' if not loop.last }}{% endfor %}). Zuerst dort den Verweis auf dieses Event entfernen, dann lässt es sich löschen.</p>
+        {% else %}
+        {% set evidence_count = event.evidence | length %}
+        {% set evidence_text = 'Dabei ' ~ ('wird 1 Evidence-Datei' if evidence_count == 1 else 'werden ' ~ evidence_count ~ ' Evidence-Dateien') ~ ' entfernt.' if evidence_count else 'Es hat keine Evidence-Dateien.' %}
+        {% set restore_text = 'Die Datei des Topics ändert sich; den früheren Stand liefert Git.' if file_mode else 'Ein Admin kann es unter Verwaltung, Gelöschte Events wiederherstellen.' %}
+        <p class="mt-1 text-sm text-slate-400">{{ evidence_text }} {{ restore_text }}</p>
+        <form method="post" action="/events/{{ event.key }}/delete" class="mt-3"
+              onsubmit='return confirm({{ ("Event „" ~ event.action ~ "“ (" ~ event.key ~ ") löschen?\n\n" ~ evidence_text ~ " " ~ restore_text) | tojson }});'>
           <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
           <button type="submit" class="rounded-lg border border-rose-400/30 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-500/10">Event löschen</button>
         </form>
+        {% endif %}
       </div>
     </div>
   </details>
