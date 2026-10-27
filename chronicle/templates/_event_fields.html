@@ -116,14 +116,46 @@
 <section class="{{ section_class }}">
   <h2 class="{{ heading_class }}">Verknüpfungen</h2>
   <div class="space-y-5">
-    <label class="block">
-      <span class="{{ label_class }}">Ausgelöst durch (beliebig viele, mit Strg bzw. Cmd)</span>
-      <select name="triggered_by" multiple size="5" class="{{ input_class }}">
+    <fieldset data-cause-picker>
+      <legend class="{{ label_class }}">Ausgelöst durch (beliebig viele)</legend>
+      <input type="search" data-cause-filter autocomplete="off" placeholder="Events filtern: Aktion oder Key" aria-label="Events filtern"
+             class="{{ input_class }} mb-2">
+      <div class="max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-slate-950/70">
         {% for choice in event_choices if choice.key != f.key %}
-        <option value="{{ choice.key }}" {{ 'selected' if choice.key in (f.triggered_by or []) }}>{{ choice.t0[:16].replace('T', ' ') }} · {{ choice.action }} ({{ choice.key }})</option>
+        <label data-cause-row data-text="{{ (choice.action ~ ' ' ~ choice.key) | lower }}" class="flex cursor-pointer items-start gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5">
+          <input type="checkbox" name="triggered_by" value="{{ choice.key }}" {{ 'checked' if choice.key in (f.triggered_by or []) }} class="mt-0.5 accent-sky-400">
+          <span class="min-w-0"><span class="font-mono text-xs text-slate-400">{{ choice.t0[:16].replace('T', ' ') }}</span> · {{ choice.action }} <span class="font-mono text-xs text-slate-400">({{ choice.key }})</span></span>
+        </label>
+        {% else %}
+        <p class="px-3 py-2 text-sm text-slate-400">Noch keine anderen Events.</p>
         {% endfor %}
-      </select>
-    </label>
+        <p data-cause-none hidden class="px-3 py-2 text-sm text-slate-400">Kein Event gefunden.</p>
+      </div>
+      <p data-cause-count role="status" aria-live="polite" class="mt-1 text-xs text-slate-400"></p>
+    </fieldset>
+    <script>
+      (function () {
+        var picker = document.currentScript.previousElementSibling;
+        var filter = picker.querySelector('[data-cause-filter]'), rows = picker.querySelectorAll('[data-cause-row]');
+        var count = picker.querySelector('[data-cause-count]'), none = picker.querySelector('[data-cause-none]');
+        function selected() { return picker.querySelectorAll('input[type=checkbox]:checked').length; }
+        function show() {
+          var words = filter.value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+          rows.forEach(function (row) {
+            var hit = words.every(function (word) { return row.dataset.text.indexOf(word) !== -1; });
+            row.classList.toggle('hidden', !hit); // a class: the row's own display utility beats the hidden attribute
+            if (hit) shown += 1;
+          });
+          none.hidden = shown !== 0 || !rows.length;
+          var chosen = selected();
+          count.textContent = chosen ? chosen + (chosen === 1 ? ' Event ausgewählt' : ' Events ausgewählt') : '';
+        }
+        filter.addEventListener('input', show);
+        filter.addEventListener('keydown', function (event) { if (event.key === 'Enter') event.preventDefault(); });
+        picker.addEventListener('change', show);
+        show();
+      })();
+    </script>
 
     {% if mode == 'new' %}
     <label class="block">

@@ -293,7 +293,7 @@ def test_html_new_event_is_stored_in_utc_with_attachments(db_path, monkeypatch):
     page = client.get("/events/new").text
     assert 'type="date"' in page and 'name="t0_zone"' in page
     assert '<option value="Activity"' in page
-    assert '<option value="siem-alert"' in page  # the trigger is picked from existing events
+    assert 'name="triggered_by" value="siem-alert"' in page  # the trigger is picked from existing events
 
     created = client.post(
         "/events/new",
