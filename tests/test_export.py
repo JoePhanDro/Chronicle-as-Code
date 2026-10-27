@@ -93,7 +93,7 @@ def test_export_then_import_into_an_empty_database_gives_the_same_export(source_
     import_folder(fresh, first)
 
     second = tmp_path / "export-2"
-    export_database(fresh, second)
+    export_database(fresh, second, first)  # the index holds no bytes, the evidence is in the folder that was imported
     assert tree(first) == tree(second)
 
 

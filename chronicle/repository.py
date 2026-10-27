@@ -16,7 +16,7 @@ from __future__ import annotations
 from .errors import Conflict, Invalid, NotFound, RepositoryError
 from .evidence_store import add_evidence, delete_evidence
 from .events import create_event, delete_event, update_event
-from .index import ImportReport, import_timeline, import_timelines, reindex, write_index
+from .index import ImportReport, build_index, import_timeline, import_timelines, reindex
 from .queries import (
     EventFilter,
     count_events,

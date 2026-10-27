@@ -85,33 +85,35 @@ def _build(conn, data_dir: Path | None = None) -> tuple[dict[str, bytes], Export
 
 def topic_document(
     conn, key: str, *, expand_refs: bool = False, evidence_ids: dict[str, int] | None = None,
-    data_dir: Path | None = None,
+    data_dir: Path | None = None, with_content: bool = True,
 ) -> tuple[dict, dict[str, bytes]] | None:
     """One topic in the import format, plus the evidence contents it refers to. Used for reports.
 
     With expand_refs, events from other topics that are linked to this one are written out in full
     instead of as keys. With evidence_ids, the database id of each evidence file is added to it, by its path in the document.
+    Without with_content the evidence files are not read and the returned dict of contents is empty: the live
+    dashboard serves them through the API and needs only their ids.
     """
     topic = repository.get_topic(conn, key)
     if topic is None:
         return None
     return _topic_document(conn, topic, ExportReport(), expand_refs=expand_refs, evidence_ids=evidence_ids,
-                           data_dir=data_dir)
+                           data_dir=data_dir, with_content=with_content)
 
 
 def _topic_document(
     conn, topic: dict, report: ExportReport, *, expand_refs: bool = False, evidence_ids: dict[str, int] | None = None,
-    data_dir: Path | None = None,
+    data_dir: Path | None = None, with_content: bool = True,
 ) -> tuple[dict, dict[str, bytes]]:
     files: dict[str, bytes] = {}
     events = []
     refs = []
     for event in repository.list_topic_events(conn, topic["key"]):
         if event["home_topic"] == topic["key"]:
-            events.append(_event_document(conn, event, files, report, evidence_ids, data_dir))
+            events.append(_event_document(conn, event, files, report, evidence_ids, data_dir, with_content))
         elif expand_refs:
             events.append(_event_document(conn, repository.get_event(conn, event["key"]), files, report, evidence_ids,
-                                          data_dir))
+                                          data_dir, with_content))
         else:
             refs.append(event["key"])
 
@@ -132,7 +134,7 @@ def _yaml_bytes(document: dict) -> bytes:
 
 def _event_document(
     conn, event: dict, files: dict[str, bytes], report: ExportReport, evidence_ids: dict[str, int] | None = None,
-    data_dir: Path | None = None,
+    data_dir: Path | None = None, with_content: bool = True,
 ) -> dict:
     document = {
         "key": event["key"],
@@ -152,14 +154,15 @@ def _event_document(
     used: set[str] = set()
     evidence = []
     for item in event["evidence"]:
-        content = repository.get_evidence_content(conn, item["id"], data_dir)["content"]
-        if content is None:
-            raise ExportError(
-                f"Evidence {item['file']!r} von {event['key']!r} hat keinen gespeicherten Inhalt. "
-                "Bitte den Import erneut ausführen, im Dateimodus mit --data den Datenordner angeben."
-            )
         relative = _evidence_path(event["key"], item["file"], used)
-        files[relative] = content
+        if with_content:
+            content = repository.get_evidence_content(conn, item["id"], data_dir)["content"]
+            if content is None:
+                raise ExportError(
+                    f"Evidence {item['file']!r} von {event['key']!r} hat keinen gespeicherten Inhalt. "
+                    "Bitte den Import erneut ausführen, im Dateimodus mit --data den Datenordner angeben."
+                )
+            files[relative] = content
         if evidence_ids is not None:
             evidence_ids[relative] = item["id"]
         entry = {"file": relative, "type": item["type"]}

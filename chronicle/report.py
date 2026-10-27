@@ -50,7 +50,7 @@ def make_report(
 def make_dashboard(conn: sqlite3.Connection, topic_key: str, *, embedded: bool = False) -> str:
     """The dashboard for the app. Evidence is loaded from the login-protected API, not embedded."""
     evidence_ids: dict[str, int] = {}
-    found = topic_document(conn, topic_key, expand_refs=True, evidence_ids=evidence_ids)
+    found = topic_document(conn, topic_key, expand_refs=True, evidence_ids=evidence_ids, with_content=False)
     if found is None:
         raise repository.NotFound(f"Topic {topic_key!r} nicht gefunden")
     document, _ = found

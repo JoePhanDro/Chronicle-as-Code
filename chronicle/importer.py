@@ -1,4 +1,4 @@
-"""Import a timeline.yaml into the database: python -m chronicle.importer --db ... --data ..."""
+"""Build the index from the topic files: python -m chronicle.importer --db ... --data ..."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 from .check import load_named_folder
 from .db import connect
 from .loader import CheckFailed, TimelineError
-from .repository import ImportReport, write_index
+from .repository import ImportReport, build_index
 
 
 def import_folder(db_path: str | Path, data_dir: str | Path) -> list[ImportReport]:
@@ -21,7 +21,7 @@ def import_folder(db_path: str | Path, data_dir: str | Path) -> list[ImportRepor
     named = load_named_folder(data, known_keys=_known_event_keys(db_path))
     conn = connect(db_path)
     try:
-        return write_index(conn, data, named)
+        return build_index(conn, data, named)
     finally:
         conn.close()
 
@@ -40,9 +40,7 @@ def _known_event_keys(db_path: str | Path) -> set[str]:
 def print_reports(reports: list[ImportReport]) -> None:
     for report in reports:
         print(f"Topic importiert: {report.topic}")
-        print(f"  angelegt: {len(report.created)}, aktualisiert: {len(report.updated)}, übersprungen: {len(report.skipped)}")
-        for key, reason in report.skipped:
-            print(f"  übersprungen {key}: {reason}")
+        print(f"  angelegt: {len(report.created)}, aktualisiert: {len(report.updated)}")
 
 
 def main(argv: list[str] | None = None) -> int:

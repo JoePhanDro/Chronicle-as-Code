@@ -92,3 +92,31 @@ def test_changed_evidence_bumps_the_version_of_its_event(tmp_path):
     assert conn.execute("SELECT version FROM events WHERE key = 'a1'").fetchone()[0] == 2
     conn.close()
     assert report.updated == ["a1"]
+
+
+def test_the_importer_follows_the_files_when_an_event_or_a_link_is_removed(tmp_path):
+    """The importer builds the same index as 'Neu laden': what is gone from the files is gone from the index (ADR 0011)."""
+    import sqlite3
+
+    from chronicle.importer import import_folder
+
+    folder = tmp_path / "data"
+    folder.mkdir()
+    event = "    t0: 2026-10-14T08:00:00+02:00\n    phase: Exploit\n    actor: X\n    action: {}\n    status: open\n"
+    (folder / "a.yaml").write_text(
+        "topic:\n  key: a\n  title: A\nevents:\n  - key: a1\n" + event.format("eins") + "  - key: a2\n" + event.format("zwei"),
+        encoding="utf-8")
+    (folder / "b.yaml").write_text("topic:\n  key: b\n  title: B\nrefs:\n  - a1\n", encoding="utf-8")
+    db = tmp_path / "chronicle.db"
+    import_folder(db, folder)
+
+    (folder / "a.yaml").write_text("topic:\n  key: a\n  title: A\nevents:\n  - key: a1\n" + event.format("eins"), encoding="utf-8")
+    (folder / "b.yaml").write_text("topic:\n  key: b\n  title: B\n", encoding="utf-8")  # the ref is gone too
+    import_folder(db, folder)
+
+    conn = sqlite3.connect(db)
+    try:
+        assert [row[0] for row in conn.execute("SELECT key FROM events")] == ["a1"]
+        assert conn.execute("SELECT COUNT(*) FROM topic_events JOIN topics ON topics.pk = topic_pk WHERE topics.key = 'b'").fetchone()[0] == 0
+    finally:
+        conn.close()

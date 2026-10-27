@@ -3,7 +3,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import app_for, import_example
+from tests.conftest import app_for, example_folder, import_example
 from chronicle import accounts, security
 from chronicle.db import connect
 
@@ -66,7 +66,7 @@ def test_report_still_embeds_evidence_and_keeps_its_snapshot_notice(db_path):
     conn = connect(db_path)
     accounts.create_user(conn, "chef", security.hash_password(PASSWORD), "admin")
     user_id = conn.execute("SELECT id FROM users WHERE username = 'chef'").fetchone()["id"]
-    filename, body = make_report(conn, "inc-2026-042", user_id, "127.0.0.1")
+    filename, body = make_report(conn, "inc-2026-042", user_id, "127.0.0.1", data_dir=example_folder(db_path))
     conn.close()
     text = body.decode("utf-8")
     assert filename == "bericht-inc-2026-042.html"
