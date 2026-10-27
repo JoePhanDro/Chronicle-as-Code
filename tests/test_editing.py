@@ -136,16 +136,6 @@ def test_delete_blocked_while_another_event_depends_on_it(db_path):
     assert "siem-alert" in response.json()["detail"]
 
 
-def test_deleted_event_is_not_recreated_by_import(db_path):
-    anna = api_login(db_path, "anna", db_mode=True)
-    assert anna.delete("/api/v1/events/lessons").status_code == 204
-    assert anna.get("/api/v1/events/lessons").status_code == 404
-
-    (report,) = import_example(db_path)
-    assert ("lessons", "in der Oberfläche gelöscht") in report.skipped
-    assert anna.get("/api/v1/events/lessons").status_code == 404
-
-
 def test_manually_edited_event_is_not_overwritten_by_import(db_path):
     anna = api_login(db_path, "anna", db_mode=True)
     current = anna.get("/api/v1/events/analysis").json()

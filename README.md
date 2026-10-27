@@ -55,7 +55,7 @@ docker compose run --rm -v "$PWD/export:/export" --entrypoint python api \
   -m chronicle.exporter --db /db/chronicle.db --out /export
 ```
 
-Gelöschte Events, die nur als Grabstein vorliegen, stellt man vorher unter **Verwaltung, Gelöschte Events** wieder her.
+Grabsteine (gelöschte Events der älteren Version) gibt es nicht mehr, ihre Tabellen werden beim ersten Öffnen der Datenbank entfernt. Was dort nur als Grabstein vorliegt, geht verloren. Vorher mit der alten Version unter **Verwaltung, Gelöschte Events** wiederherstellen und exportieren.
 
 **Erster Start ohne `.env`:** Solange kein Konto existiert, schreibt der Server beim Start einen Einmal-Code ins Log:
 
@@ -192,12 +192,12 @@ python -m chronicle build data --out site
 
 **Ohne Datenordner (entfällt, [ADR 0011](docs/adr/0011-files-only-write-path.md)):** Der Server startet noch ohne `--data`, warnt aber. Die Datenbank ist dann nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
 
-- Ein erneuter Import überschreibt keine Events, die in der Oberfläche bearbeitet wurden. Gelöschte Events kehren nicht zurück. Beides meldet der Import.
+- Ein erneuter Import überschreibt keine Events, die in der Oberfläche bearbeitet wurden. Das meldet der Import. Ein in der Oberfläche gelöschtes Event kommt beim nächsten Import wieder, wenn die Datei es noch enthält.
 - Ein Import entfernt keine Topic-Verknüpfungen. Die ändert man in der Oberfläche.
 - Jede Änderung erhöht die Version eines Events. Wer auf einer veralteten Fassung speichert, bekommt `409` und muss neu laden.
 - Ein Event, das ein anderes auslöst, lässt sich nicht löschen, solange der Verweis besteht.
-- Ein gelöschtes Event hinterlässt einen Grabstein mit seiner letzten Fassung. Admins stellen es unter **Verwaltung, Gelöschte Events** wieder her oder entfernen den Grabstein endgültig.
-- Wer ein Topic löscht, löscht auch die Events, die dort ihr Heimat-Topic haben (jedes mit Grabstein). Zum Wiederherstellen legt man das Topic zuerst neu an, denn ein Event braucht sein Heimat-Topic.
+- Ein gelöschtes Event lässt sich nicht wiederherstellen.
+- Wer ein Topic löscht, löscht auch die Events, die dort ihr Heimat-Topic haben.
 - Evidence wird nur über `GET /api/v1/evidence/{id}` ausgeliefert, und nur an angemeldete Nutzer. Dateien können Analyst und Admin in der Oberfläche oder über die API hochladen und entfernen. Uploads ändern das Event wie eine Bearbeitung: Ein erneuter Import überschreibt es nicht.
 
 **Nach einem Update** auf diese Version einmal den Import ausführen (`docker compose --profile import run --rm importer`). Evidence, die vorher nur als Pfad vorlag, bekommt dabei seinen Inhalt. Bis dahin antwortet der Download mit 404.
@@ -251,7 +251,6 @@ Die Oberfläche ist serverseitig gerendert, Formulare sind mit einem CSRF-Token 
 | `/events/{key}` | angemeldet | Details mit Phase und Status, Beschreibung (Markdown, auch Mermaid-Diagramme), Auslöser und Folgen, Evidence mit Vorschau, Topics. Analyst und Admin ändern Phase und Status direkt über die beiden Auswahlfelder im Kopf, bearbeiten die übrigen Felder im Bereich „Weitere Felder bearbeiten“, laden Evidence hoch und löschen das Event |
 | `/reports` | admin | Topics mit Download des HTML-Berichts und der PDFs |
 | `/admin/users` | admin | Konten anlegen, Rolle und Status ändern, Passwort setzen, Sperre aufheben |
-| `/admin/grabsteine` | admin | gelöschte Events (nur ohne Datenordner) wiederherstellen oder endgültig entfernen |
 | `/admin/audit` | admin | Audit-Log, filterbar nach Aktion, Benutzer und Datum |
 
 Mermaid-Diagramme in Event-Beschreibungen werden im Browser gezeichnet. Die Bibliothek lädt dafür vom CDN und nur, wenn ein Diagramm auf der Seite steht. Die Diagramme übernehmen die Farben des gewählten Designs.
@@ -299,7 +298,7 @@ Die Antworten sind JSON. Eine interaktive Beschreibung der API gibt es noch nich
 |---|---|
 | `viewer` | lesen |
 | `analyst` | lesen, Topics und Events anlegen, ändern und löschen, Events verknüpfen, Evidence hochladen und entfernen |
-| `admin` | alles, plus Benutzer, Audit-Log, Berichte, gelöschte Events und Sperr-Passwort |
+| `admin` | alles, plus Benutzer, Audit-Log, Berichte und Sperr-Passwort |
 
 - Passwörter mit Argon2id gehasht, Mindestlänge 12 Zeichen.
 - **Sperre (Lesen ohne Konto):** Ein Admin setzt unter „Einstellungen“ ein Sperr-Passwort. Dann lesen Besucher ohne Konto nur nach Eingabe dieses Passworts auf der Anmeldeseite. Der Server liefert vorher keine Daten aus. Ändern dürfen weiter nur Konten mit Rolle `analyst` oder `admin`. Entsperren gilt pro Browser, Passwort ändern oder Sperre aufheben beendet alle Entsperrungen ([ADR 0007](docs/adr/0007-reading-lock.md)).
@@ -319,13 +318,13 @@ Der Standard-Stack hat kein TLS und bindet nur auf `127.0.0.1`. Für einen Betri
 chronicle/
   api.py             HTTP-App: API, Bootstrap-Admin, Einmal-Code für /setup
   pages.py           Oberfläche: Topics, Events, Evidence, Suche, Neu laden (Formulare)
-  admin_pages.py     Verwaltung: Konten, Sperre, gelöschte Events, Audit-Log
+  admin_pages.py     Verwaltung: Konten, Sperre, Audit-Log
   administration.py  Regeln für Konten und Sperren, von API und Verwaltung gemeinsam genutzt
   auth.py            Anmeldung, Sitzung, CSRF, Rollen
   reading_lock.py    Lesesperre mit Passwort für Besucher ohne Konto
   accounts.py        Konten, Sitzungen, Drosselung, Audit-Log (Betriebsdatei)
   security.py        Passwort-Hashing, Token
-  repository.py      Topics und Events: Schreiben, Löschen, Verknüpfen, Grabsteine, Import
+  repository.py      Topics und Events: Schreiben, Löschen, Verknüpfen, Import
   queries.py         Leseabfragen auf dem Index (Events, Topics, Evidence, Filter)
   errors.py          Fehlerklassen des Repositorys
   store.py           gezielte Änderungen in den Topic-Dateien (Dateimodus)

@@ -67,7 +67,7 @@ def test_admin_sees_reports_and_administration(db_path):
 
     assert menu_links(html, "menu-views") == ["/events", "/topics", "/reports"]
     assert menu_links(html, "menu-new") == ["/events/new", "/topics/new"]
-    assert menu_links(html, "menu-admin") == ["/admin/users", "/admin/grabsteine", "/admin/audit"]
+    assert menu_links(html, "menu-admin") == ["/admin/users", "/admin/audit"]
 
 
 def test_header_is_the_same_on_every_page(db_path):

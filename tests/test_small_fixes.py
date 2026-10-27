@@ -23,7 +23,7 @@ def test_sign_in_pages_apply_the_chosen_theme(name):
     assert "localStorage.getItem('chronicle.theme')" in text and "dataset.theme = theme" in text
 
 
-@pytest.mark.parametrize("name", ["events", "admin_users", "admin_audit", "admin_tombstones"])
+@pytest.mark.parametrize("name", ["events", "admin_users", "admin_audit"])
 def test_every_column_header_has_a_scope(name):
     text = (TEMPLATES / f"{name}.html").read_text(encoding="utf-8")
     assert "<th " in text and text.count("<th ") == text.count('<th scope="col"')

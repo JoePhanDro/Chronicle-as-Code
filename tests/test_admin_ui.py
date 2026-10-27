@@ -219,3 +219,23 @@ def test_api_audit_takes_the_same_filters(db_path):
     entries = chef.get("/api/v1/audit?action=user_created&actor=chef").json()
     assert [entry["target"] for entry in entries] == ["neu-api"]
     assert chef.get("/api/v1/audit?since=4102444800").json() == []  # nothing after 2100-01-01
+
+
+def test_tombstones_are_gone_the_page_and_the_tables(tmp_path):
+    """ADR 0011: a deleted event is removed from its file, Git has the earlier version."""
+    path = tmp_path / "alt.db"
+    conn = connect(path)
+    conn.execute("CREATE TABLE deleted_events (key TEXT PRIMARY KEY)")
+    conn.execute("CREATE TABLE deleted_evidence (pk INTEGER PRIMARY KEY, event_key TEXT)")
+    conn.commit()
+    conn.close()
+    conn = connect(path)  # opening drops what an older version left behind
+    tables = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    conn.close()
+    assert "deleted_events" not in tables and "deleted_evidence" not in tables
+
+
+def test_the_tombstone_page_no_longer_exists(api_client):
+    admin = api_client("admin")
+    assert admin.get("/admin/grabsteine").status_code == 404
+    assert "grabsteine" not in admin.get("/").text
