@@ -84,6 +84,21 @@ def test_event_page_draws_its_mermaid_diagram(login, app_url):
     expect(page.locator(".mermaid-diagram svg")).to_be_visible(timeout=60_000)
 
 
+def test_mermaid_diagram_is_redrawn_in_the_other_theme(login, app_url):
+    page = login("anna")
+    page.goto(f"{app_url}/events/exploit")
+    node = page.locator(".mermaid-diagram svg .node rect, .mermaid-diagram svg .node polygon").first
+    expect(node).to_be_visible(timeout=60_000)
+    before = node.evaluate("element => getComputedStyle(element).fill")
+
+    page.locator("#theme-toggle").click()
+    expect(page.locator("html")).to_have_attribute("data-theme", re.compile("light|dark"))
+    page.wait_for_function(
+        "before => { const n = document.querySelector('.mermaid-diagram svg .node rect, .mermaid-diagram svg .node polygon');"
+        " return n && getComputedStyle(n).fill !== before; }", arg=before, timeout=15_000)
+    assert page.locator(".mermaid-diagram").count() == 1
+
+
 def test_header_search_finds_events(login):
     page = login("viewer")
 
