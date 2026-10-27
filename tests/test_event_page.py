@@ -187,3 +187,16 @@ def test_causes_are_a_filterable_checklist_with_the_stored_ones_checked(api_clie
     assert 'value="exploit"' not in picker  # an event is not its own cause
     assert 'value="siem-alert" ' in picker and "siem-alert\" checked" not in picker
     assert "event.key === 'Enter'" in picker + html  # the filter never submits the form
+
+
+def test_details_typed_in_a_browser_with_crlf_line_ends_are_saved_with_lf(api_client):
+    """A textarea sends CRLF. The file mode used to refuse every save of multi-line details (read-back mismatch)."""
+    client = api_client("analyst")
+    current = client.get("/api/v1/events/analysis").json()
+    body = {name: current[name] for name in ("key", "t0", "phase", "actor", "system", "action", "status", "triggered_by")}
+    body.update(details="erste Zeile\r\n\r\nzweite Zeile\rdritte", topic=current["home_topic"], topics=current["topics"],
+                version=current["version"])
+    response = client.put("/api/v1/events/analysis", json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["details"] == "erste Zeile\n\nzweite Zeile\ndritte"
+    assert client.get("/api/v1/events/analysis").json()["details"] == "erste Zeile\n\nzweite Zeile\ndritte"
