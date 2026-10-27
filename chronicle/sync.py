@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import accounts
 from .check import load_named_folder
 from .loader import TOPIC_SUFFIXES, CheckFailed, TimelineError, decode_topic_bytes, parse_timeline
 from .models import Event, Timeline, Topic
@@ -241,6 +242,12 @@ def synchronise(data_dir: Path) -> SyncResult:
         return result
     except StoreError as exc:  # the lock file is a link, a folder, ...
         raise SyncError(str(exc)) from exc
+
+
+def audit_run(conn, user_id: int, ip: str, result: SyncResult) -> None:
+    """Record a run in the audit log, whoever started it (page or API)."""
+    accounts.audit(conn, "sync", user_id=user_id, target="remote", ip=ip,
+                   detail=f"committed={result.committed},merged={result.merged},conflicts={len(result.conflicts)}")
 
 
 def _current_branch(data_dir: Path) -> str:
