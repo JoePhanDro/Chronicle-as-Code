@@ -176,19 +176,24 @@ def build_index(conn: sqlite3.Connection, data_dir: Path, named: list) -> list[I
         # follows.
         for key in indexed - defined:
             conn.execute("DELETE FROM events WHERE key = ?", (key,))
-        # Links are the files' truth too: a link that is no longer under refs (or on the event) is removed.
-        # import_timelines alone only adds links, so this is where removals happen.
-        stale = [row for row in conn.execute(
-            "SELECT topics.key AS topic, events.key AS event FROM topic_events "
-            "JOIN topics ON topics.pk = topic_events.topic_pk JOIN events ON events.pk = topic_events.event_pk"
-        ).fetchall() if row["event"] in defined and (row["topic"], row["event"]) not in wanted]
-        for row in stale:
+        _remove_stale_links(conn, defined, wanted)
+    return reports
+
+
+def _remove_stale_links(conn: sqlite3.Connection, defined: set[str], wanted: set[tuple[str, str]]) -> None:
+    # Links are the files' truth too: a link that is no longer under refs (or on the event) is removed.
+    # import_timelines alone only adds links, so this is where removals happen.
+    rows = conn.execute(
+        "SELECT topics.key AS topic, events.key AS event FROM topic_events "
+        "JOIN topics ON topics.pk = topic_events.topic_pk JOIN events ON events.pk = topic_events.event_pk"
+    ).fetchall()
+    for row in rows:
+        if row["event"] in defined and (row["topic"], row["event"]) not in wanted:
             conn.execute(
                 "DELETE FROM topic_events WHERE topic_pk = (SELECT pk FROM topics WHERE key = ?) "
                 "AND event_pk = (SELECT pk FROM events WHERE key = ?)",
                 (row["topic"], row["event"]),
             )
-    return reports
 
 
 def _record_files(conn: sqlite3.Connection, data_dir: Path, named: list) -> None:
@@ -206,12 +211,8 @@ def _record_files(conn: sqlite3.Connection, data_dir: Path, named: list) -> None
             )
 
 
-def _write_topic(
-    conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[str, Blob]
-) -> ImportReport:
+def _refuse_foreign_events(conn: sqlite3.Connection, timeline: Timeline) -> None:
     topic = timeline.topic
-    report = ImportReport(topic=topic.key)
-
     for event in timeline.events:
         row = conn.execute("SELECT home_topic FROM events WHERE key = ?", (event.key,)).fetchone()
         if row is not None and row["home_topic"] != topic.key:
@@ -220,6 +221,8 @@ def _write_topic(
                 f"In {topic.key!r} bitte per refs referenzieren."
             )
 
+
+def _upsert_topic(conn: sqlite3.Connection, topic) -> None:
     conn.execute(
         """
         INSERT INTO topics (key, title, kind, summary, updated_at)
@@ -233,50 +236,64 @@ def _write_topic(
         (topic.key, topic.title, topic.kind, topic.summary),
     )
 
-    for event in timeline.events:
-        existed = event_pk_of(conn, event.key) is not None
-        # An existing event is only touched when a field differs, so an unchanged re-import keeps the version
-        # (a bump would make an open editor fail with 409).
-        cursor = conn.execute(
-            """
-            INSERT INTO events
-                (key, t0, phase, actor, system, action, status, triggered_by, details,
-                 home_topic, version, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-            ON CONFLICT (key) DO UPDATE SET
-                t0 = excluded.t0,
-                phase = excluded.phase,
-                actor = excluded.actor,
-                system = excluded.system,
-                action = excluded.action,
-                status = excluded.status,
-                triggered_by = excluded.triggered_by,
-                details = excluded.details,
-                version = events.version + 1,
-                updated_at = excluded.updated_at
-            WHERE events.t0 IS NOT excluded.t0
-               OR events.phase IS NOT excluded.phase
-               OR events.actor IS NOT excluded.actor
-               OR events.system IS NOT excluded.system
-               OR events.action IS NOT excluded.action
-               OR events.status IS NOT excluded.status
-               OR events.triggered_by IS NOT excluded.triggered_by
-               OR events.details IS NOT excluded.details
-            """,
-            (event.key, *event_values(event), topic.key),
+
+def _write_event(
+    conn: sqlite3.Connection, topic_key: str, event, blobs: Mapping[str, Blob], report: ImportReport
+) -> None:
+    existed = event_pk_of(conn, event.key) is not None
+    # An existing event is only touched when a field differs, so an unchanged re-import keeps the version
+    # (a bump would make an open editor fail with 409).
+    cursor = conn.execute(
+        """
+        INSERT INTO events
+            (key, t0, phase, actor, system, action, status, triggered_by, details,
+             home_topic, version, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        ON CONFLICT (key) DO UPDATE SET
+            t0 = excluded.t0,
+            phase = excluded.phase,
+            actor = excluded.actor,
+            system = excluded.system,
+            action = excluded.action,
+            status = excluded.status,
+            triggered_by = excluded.triggered_by,
+            details = excluded.details,
+            version = events.version + 1,
+            updated_at = excluded.updated_at
+        WHERE events.t0 IS NOT excluded.t0
+           OR events.phase IS NOT excluded.phase
+           OR events.actor IS NOT excluded.actor
+           OR events.system IS NOT excluded.system
+           OR events.action IS NOT excluded.action
+           OR events.status IS NOT excluded.status
+           OR events.triggered_by IS NOT excluded.triggered_by
+           OR events.details IS NOT excluded.details
+        """,
+        (event.key, *event_values(event), topic_key),
+    )
+    event_pk = event_pk_of(conn, event.key)
+    evidence_changed = _replace_import_evidence(conn, event_pk, event, blobs)
+    if existed and evidence_changed and cursor.rowcount == 0:
+        # Evidence counts as an edit of the event, so it bumps the version too.
+        conn.execute(
+            "UPDATE events SET version = version + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE pk = ?",
+            (event_pk,),
         )
-        event_pk = event_pk_of(conn, event.key)
-        evidence_changed = _replace_import_evidence(conn, event_pk, event, blobs)
-        if existed and evidence_changed and cursor.rowcount == 0:
-            # Evidence counts as an edit of the event, so it bumps the version too.
-            conn.execute(
-                "UPDATE events SET version = version + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE pk = ?",
-                (event_pk,),
-            )
-        if not existed:
-            report.created.append(event.key)
-        elif cursor.rowcount or evidence_changed:
-            report.updated.append(event.key)
+    if not existed:
+        report.created.append(event.key)
+    elif cursor.rowcount or evidence_changed:
+        report.updated.append(event.key)
+
+
+def _write_topic(
+    conn: sqlite3.Connection, timeline: Timeline, blobs: Mapping[str, Blob]
+) -> ImportReport:
+    topic = timeline.topic
+    report = ImportReport(topic=topic.key)
+    _refuse_foreign_events(conn, timeline)
+    _upsert_topic(conn, topic)
+    for event in timeline.events:
+        _write_event(conn, topic.key, event, blobs, report)
     return report
 
 
