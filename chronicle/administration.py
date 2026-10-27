@@ -28,6 +28,39 @@ def create_account(conn: sqlite3.Connection, actor_id: int, username: str, passw
     return accounts.get_user(conn, user_id)
 
 
+def _account_changes(role: str | None, active: bool | None, password: str | None) -> dict:
+    """The columns to change for the values that were given."""
+    changes: dict = {}
+    if role is not None:
+        changes["role"] = role
+    if active is not None:
+        changes["active"] = int(active)
+    if password is not None:
+        try:
+            changes["password_hash"] = security.hash_password(password)
+        except security.PasswordPolicyError as exc:
+            raise repository.Invalid(str(exc)) from exc
+        changes["must_change_password"] = 1  # the user chooses their own password at the next login
+    return changes
+
+
+def _keep_an_admin(conn: sqlite3.Connection, target: dict, role: str | None, active: bool | None) -> None:
+    """Never leave the system without an active admin."""
+    was_active_admin = target["role"] == "admin" and target["active"]
+    loses_admin = (role is not None and role != "admin") or active is False
+    if was_active_admin and loses_admin and accounts.count_active_admins(conn) <= 1:
+        raise repository.Conflict("Der letzte aktive Admin kann nicht herabgestuft oder deaktiviert werden")
+
+
+def _audit_account_changes(conn: sqlite3.Connection, actor_id: int, username: str, changes: dict, ip: str) -> None:
+    if "password_hash" in changes:
+        accounts.audit(conn, "password_reset", user_id=actor_id, target=username, ip=ip)
+    other_changes = sorted(name for name in changes if name not in ("password_hash", "must_change_password"))
+    if other_changes:
+        accounts.audit(conn, "user_updated", user_id=actor_id, target=username,
+                       detail=",".join(other_changes), ip=ip)
+
+
 def update_account(
     conn: sqlite3.Connection,
     actor_id: int,
@@ -42,35 +75,14 @@ def update_account(
     if target is None:
         raise repository.NotFound("Benutzer nicht gefunden")
 
-    changes: dict = {}
-    if role is not None:
-        changes["role"] = role
-    if active is not None:
-        changes["active"] = int(active)
-    if password is not None:
-        try:
-            changes["password_hash"] = security.hash_password(password)
-        except security.PasswordPolicyError as exc:
-            raise repository.Invalid(str(exc)) from exc
-        changes["must_change_password"] = 1  # the user chooses their own password at the next login
-
-    # Never leave the system without an active admin.
-    was_active_admin = target["role"] == "admin" and target["active"]
-    loses_admin = (role is not None and role != "admin") or active is False
-    if was_active_admin and loses_admin and accounts.count_active_admins(conn) <= 1:
-        raise repository.Conflict("Der letzte aktive Admin kann nicht herabgestuft oder deaktiviert werden")
-
+    changes = _account_changes(role, active, password)
+    _keep_an_admin(conn, target, role, active)
     accounts.update_user(conn, user_id, **changes)
 
     # Changing role, deactivating or resetting the password ends the user's sessions.
     if changes:
         accounts.delete_sessions_of_user(conn, user_id)
-    if "password_hash" in changes:
-        accounts.audit(conn, "password_reset", user_id=actor_id, target=target["username"], ip=ip)
-    other_changes = sorted(name for name in changes if name not in ("password_hash", "must_change_password"))
-    if other_changes:
-        accounts.audit(conn, "user_updated", user_id=actor_id, target=target["username"],
-                       detail=",".join(other_changes), ip=ip)
+    _audit_account_changes(conn, actor_id, target["username"], changes, ip)
     return accounts.get_user(conn, user_id)
 
 

@@ -24,21 +24,27 @@ MINUTES = [f"{minute:02d}" for minute in range(60)]
 EVENTS_PAGE_SIZE = 50
 
 
+def _raw(form, name: str) -> str:
+    return form.get(name) or ""
+
+
+def _field(form, name: str) -> str:
+    return _raw(form, name).strip()
+
+
 def _payload_from_form(form, topic_home: str | None = None) -> dict:
-    topics = form.getlist("topics")
     return {
-        "key": (form.get("key") or "").strip(),
-        "t0": t0_from_parts(form.get("t0_date") or "", form.get("t0_hour") or "",
-                            form.get("t0_minute") or "", form.get("t0_zone") or ""),
-        "phase": form.get("phase") or "",
-        "actor": (form.get("actor") or "").strip(),
-        "system": (form.get("system") or "").strip() or None,
-        "action": (form.get("action") or "").strip(),
-        "status": form.get("status") or "",
-        "triggered_by": [key.strip() for key in form.getlist("triggered_by") if key.strip()],
-        "details": form.get("details") or "",
-        "topic": topic_home or form.get("topic") or "",
-        "topics": topics,
+        "key": _field(form, "key"),
+        "t0": t0_from_parts(_raw(form, "t0_date"), _raw(form, "t0_hour"), _raw(form, "t0_minute"), _raw(form, "t0_zone")),
+        "phase": _raw(form, "phase"),
+        "actor": _field(form, "actor"),
+        "system": _field(form, "system") or None,
+        "action": _field(form, "action"),
+        "status": _raw(form, "status"),
+        "triggered_by": [key for key in map(str.strip, form.getlist("triggered_by")) if key],
+        "details": _raw(form, "details"),
+        "topic": topic_home or _raw(form, "topic"),
+        "topics": form.getlist("topics"),
     }
 
 
