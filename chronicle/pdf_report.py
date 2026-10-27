@@ -54,31 +54,39 @@ def _text(value: str) -> str:
     return escape(_plain(value))
 
 
+_INLINE_MARKUP = {
+    "strong_open": "<b>", "strong_close": "</b>",
+    "em_open": "<i>", "em_close": "</i>",
+    "s_open": "<strike>", "s_close": "</strike>",
+    "softbreak": "<br/>", "hardbreak": "<br/>",
+}
+
+
 def _inline(token) -> str:
     out: list[str] = []
     for child in token.children or []:
-        match child.type:
-            case "text":
-                out.append(_text(child.content))
-            case "softbreak" | "hardbreak":
-                out.append("<br/>")
-            case "code_inline":
-                out.append(f'<font face="Courier">{_text(child.content)}</font>')
-            case "strong_open":
-                out.append("<b>")
-            case "strong_close":
-                out.append("</b>")
-            case "em_open":
-                out.append("<i>")
-            case "em_close":
-                out.append("</i>")
-            case "s_open":
-                out.append("<strike>")
-            case "s_close":
-                out.append("</strike>")
-            case "image":
-                out.append(_text(child.content))  # evidence images are listed below the details, not placed in the text
+        if child.type in _INLINE_MARKUP:
+            out.append(_INLINE_MARKUP[child.type])
+        elif child.type == "text" or child.type == "image":
+            out.append(_text(child.content))  # evidence images are listed below the details, not placed in the text
+        elif child.type == "code_inline":
+            out.append(f'<font face="Courier">{_text(child.content)}</font>')
     return "".join(out)
+
+
+def _simple_block(tokens: list, index: int):
+    """The flowable of a heading, paragraph, code block or rule; None for any other token."""
+    token = tokens[index]
+    match token.type:
+        case "heading_open":
+            return Paragraph(_inline(tokens[index + 1]), H3)
+        case "paragraph_open":
+            return Paragraph(_inline(tokens[index + 1]), BODY)
+        case "fence" | "code_block":
+            return Preformatted(_plain(token.content.rstrip("\n")), CODE)
+        case "hr":
+            return HRFlowable(width="100%", color=RULE)
+    return None
 
 
 def _blocks(markdown: str) -> list:
@@ -87,20 +95,12 @@ def _blocks(markdown: str) -> list:
     flowables: list = []
     stack: list[tuple[str, list[ListItem]]] = []
     item_parts: list[list] = []
-    index = 0
 
     def add(flowable) -> None:
         (item_parts[-1] if item_parts else flowables).append(flowable)
 
-    while index < len(tokens):
-        token = tokens[index]
+    for index, token in enumerate(tokens):
         match token.type:
-            case "heading_open":
-                add(Paragraph(_inline(tokens[index + 1]), H3))
-            case "paragraph_open":
-                add(Paragraph(_inline(tokens[index + 1]), BODY))
-            case "fence" | "code_block":
-                add(Preformatted(_plain(token.content.rstrip("\n")), CODE))
             case "bullet_list_open" | "ordered_list_open":
                 stack.append(("1" if token.type == "ordered_list_open" else "bullet", []))
             case "list_item_open":
@@ -111,11 +111,10 @@ def _blocks(markdown: str) -> list:
             case "bullet_list_close" | "ordered_list_close":
                 kind, items = stack.pop()
                 add(ListFlowable(items, bulletType=kind, bulletFontSize=8, leftIndent=14))
-            case "blockquote_open":
-                pass
-            case "hr":
-                add(HRFlowable(width="100%", color=RULE))
-        index += 1
+            case _:
+                flowable = _simple_block(tokens, index)
+                if flowable is not None:
+                    add(flowable)
     return flowables
 
 
@@ -185,6 +184,26 @@ def _image(content: bytes, max_width: float) -> Image | None:
     return Image(io.BytesIO(content), width=width * scale, height=height * scale, hAlign="LEFT")
 
 
+def _event_block(event: Event, events: list[Event], titles: dict[str, str]) -> list:
+    """The heading of an event: title, facts and how it is connected to the other events."""
+    facts = [_when(event.t0), event.phase.value, STATUS_LABELS[event.status], event.actor]
+    if event.system:
+        facts.append(event.system)
+    block: list = [
+        HRFlowable(width="100%", color=RULE, spaceBefore=6, spaceAfter=6),
+        Paragraph(f"{_event_dot(event.phase)} {_text(event.action)}", EVENT_TITLE),
+        Paragraph(" · ".join(_text(fact) for fact in facts) + f" · <font face=\"Courier\">{_text(event.key)}</font>", SMALL),
+    ]
+    if event.triggered_by:
+        causes = ", ".join(f"{_text(titles.get(key, key))}" for key in event.triggered_by)
+        block.append(Paragraph(f"Ausgelöst durch: {causes}", SMALL))
+    effects = [other.action for other in events if event.key in other.triggered_by]
+    if effects:
+        block.append(Paragraph("Löste aus: " + ", ".join(_text(title) for title in effects), SMALL))
+    block.append(Spacer(1, 4))
+    return block
+
+
 def _technical(timeline: Timeline, evidence: dict[str, bytes], content_width: float) -> list:
     events = sorted(timeline.events, key=lambda e: (e.t0, e.key))
     titles = {event.key: event.action for event in events}
@@ -192,23 +211,8 @@ def _technical(timeline: Timeline, evidence: dict[str, bytes], content_width: fl
     if not events:
         return flowables + [Paragraph("Noch keine Events.", BODY)]
     for event in events:
-        facts = [_when(event.t0), event.phase.value, STATUS_LABELS[event.status], event.actor]
-        if event.system:
-            facts.append(event.system)
-        block: list = [
-            HRFlowable(width="100%", color=RULE, spaceBefore=6, spaceAfter=6),
-            Paragraph(f"{_event_dot(event.phase)} {_text(event.action)}", EVENT_TITLE),
-            Paragraph(" · ".join(_text(fact) for fact in facts) + f" · <font face=\"Courier\">{_text(event.key)}</font>", SMALL),
-        ]
-        if event.triggered_by:
-            causes = ", ".join(f"{_text(titles.get(key, key))}" for key in event.triggered_by)
-            block.append(Paragraph(f"Ausgelöst durch: {causes}", SMALL))
-        effects = [other.action for other in events if event.key in other.triggered_by]
-        if effects:
-            block.append(Paragraph("Löste aus: " + ", ".join(_text(title) for title in effects), SMALL))
-        block.append(Spacer(1, 4))
         details = _blocks(event.details)
-        flowables.append(KeepTogether(block + details[:1]))  # the heading never stands alone at the foot of a page
+        flowables.append(KeepTogether(_event_block(event, events, titles) + details[:1]))  # the heading never stands alone at the foot of a page
         flowables += details[1:]
         for item in event.evidence:
             flowables += _evidence(item, evidence.get(item.file), content_width)
