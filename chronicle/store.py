@@ -137,18 +137,22 @@ def update_event_in_file(path: Path, key: str, event: Event, *, expected_version
     return file_version(path)
 
 
+def _compose(text: str, name: str):
+    try:
+        scan(text)  # the file may come from Git, and the C composer crashes on deep input
+        return yaml.compose(text, Loader=YAML_LOADER)
+    except YamlRejected as exc:
+        raise StoreError(f"{one_line(name)}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise StoreError(f"{one_line(name)}: {describe_yaml_error(exc)}") from exc
+
+
 def _entry_span(text: str, key: str, name: str) -> tuple[int, int]:
     """Where the entry of one event sits in the file text: from its first key to the end of its last line.
 
     The YAML composer gives the positions, so the file is not loaded into objects to find the entry.
     """
-    try:
-        scan(text)  # the file may come from Git, and the C composer crashes on deep input
-        root = yaml.compose(text, Loader=YAML_LOADER)
-    except YamlRejected as exc:
-        raise StoreError(f"{one_line(name)}: {exc}") from exc
-    except yaml.YAMLError as exc:
-        raise StoreError(f"{one_line(name)}: {describe_yaml_error(exc)}") from exc
+    root = _compose(text, name)
     fields = root.value if isinstance(root, yaml.MappingNode) else []
     events = next((value for field, value in fields if field.value == "events"), None)
     for entry in events.value if events is not None else []:
@@ -474,24 +478,25 @@ def _verify_read_back(text: str, expected: Timeline) -> None:
         raise StoreError("Die geänderte Datei würde sich beim Lesen anders verhalten als geplant, deshalb wird nichts geschrieben.")
 
 
+def _stored_values(event: Event) -> dict:
+    """The value each field has in the file; None where the field is left out."""
+    return {
+        "t0": event.t0.isoformat(),
+        "phase": event.phase.value,
+        "actor": event.actor,
+        "system": event.system,
+        "action": event.action,
+        "status": event.status.value,
+        "triggered_by": list(event.triggered_by) or None,
+        "details": _text(event.details) or None,
+    }
+
+
 def _set_changed_fields(item, old: Event, new: Event) -> None:
     """Write only the fields that differ. A field without a value is removed, so the file keeps only what is set."""
-    if old.t0 != new.t0:
-        item["t0"] = new.t0.isoformat()
-    if old.phase != new.phase:
-        item["phase"] = new.phase.value
-    if old.actor != new.actor:
-        item["actor"] = new.actor
-    if old.system != new.system:
-        _put(item, "system", new.system)
-    if old.action != new.action:
-        item["action"] = new.action
-    if old.status != new.status:
-        item["status"] = new.status.value
-    if old.triggered_by != new.triggered_by:
-        _put(item, "triggered_by", list(new.triggered_by) or None)
-    if old.details != new.details:
-        _put(item, "details", _text(new.details) or None)
+    for field, value in _stored_values(new).items():
+        if getattr(old, field) != getattr(new, field):
+            _put(item, field, value)
 
 
 def _put(item, field: str, value) -> None:
