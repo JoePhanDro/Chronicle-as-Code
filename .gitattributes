@@ -1,0 +1,2 @@
+chronicle/static/vendor/*.js -diff linguist-vendored
+chronicle/static/vendor/*.css -diff linguist-vendored

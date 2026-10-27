@@ -28,8 +28,8 @@ def stored_contents(folder):
         raw.close()
 
 
-def test_the_index_holds_no_attachment_bytes_after_a_file_mode_edit(folder, conn):
-    assert any(content is not None for content in stored_contents(folder))  # the apply run stored them
+def test_the_index_holds_no_attachment_bytes_after_the_import_and_after_an_edit(folder, conn):
+    assert stored_contents(folder) and all(content is None for content in stored_contents(folder))  # the import
 
     edit_in_file_mode(conn, folder)
 

@@ -38,12 +38,16 @@ def test_analyst_creates_edits_and_deletes_an_event(login, app_url):
     assert page.url == f"{app_url}/events/{key}"
 
     edit_form = page.locator(f'form[action="/events/{key}/edit"]')
+    expect(edit_form.locator("input[name=action]")).to_be_hidden()  # the edit panel starts closed
+    page.get_by_role("link", name="Bearbeiten").click()
+    expect(edit_form.locator("input[name=action]")).to_be_focused()
     edit_form.locator("input[name=action]").fill("UI-Test Ereignis geändert")
     edit_form.get_by_role("button", name="Speichern").click()
     expect(page.get_by_role("heading", name="UI-Test Ereignis geändert")).to_be_visible()
 
+    page.get_by_role("link", name="Bearbeiten").click()  # saving closes the panel again; delete sits inside it
     page.on("dialog", lambda dialog: dialog.accept())  # the delete button asks for confirmation
-    page.get_by_role("button", name="Löschen").click()
+    page.get_by_role("button", name="Event löschen").click()
 
     expect(page).to_have_url(f"{app_url}/events")
     expect(page.get_by_role("link", name="UI-Test Ereignis geändert")).to_have_count(0)
@@ -78,6 +82,45 @@ def test_event_page_draws_its_mermaid_diagram(login, app_url):
     page.goto(f"{app_url}/events/exploit")
 
     expect(page.locator(".mermaid-diagram svg")).to_be_visible(timeout=60_000)
+
+
+def test_mermaid_diagram_is_redrawn_in_the_other_theme(login, app_url):
+    page = login("anna")
+    page.goto(f"{app_url}/events/exploit")
+    node = page.locator(".mermaid-diagram svg .node rect, .mermaid-diagram svg .node polygon").first
+    expect(node).to_be_visible(timeout=60_000)
+    before = node.evaluate("element => getComputedStyle(element).fill")
+
+    page.locator("#theme-toggle").click()
+    expect(page.locator("html")).to_have_attribute("data-theme", re.compile("light|dark"))
+    page.wait_for_function(
+        "before => { const n = document.querySelector('.mermaid-diagram svg .node rect, .mermaid-diagram svg .node polygon');"
+        " return n && getComputedStyle(n).fill !== before; }", arg=before, timeout=15_000)
+    assert page.locator(".mermaid-diagram").count() == 1
+
+
+def test_causes_are_picked_from_a_filterable_checklist_and_saved(login, app_url):
+    page = login("anna")
+    page.goto(f"{app_url}/events/analysis")
+    page.get_by_role("link", name="Bearbeiten").click()
+    picker = page.locator("[data-cause-picker]")
+    expect(picker.locator('input[value="exploit"]')).to_be_checked()
+
+    picker.get_by_label("Events filtern").fill("siem")
+    expect(picker.locator("[data-cause-row]:visible")).to_have_count(1)
+    picker.locator('input[value="siem-alert"]').check()
+    expect(picker.locator("[data-cause-count]")).to_have_text("2 Events ausgewählt")
+    picker.get_by_label("Events filtern").press("Enter")  # does not submit the form
+    expect(page).to_have_url(f"{app_url}/events/analysis")
+
+    page.locator('form[action="/events/analysis/edit"]').get_by_role("button", name="Speichern").click()
+    expect(page.get_by_role("link", name="Ungewöhnliche Requests auf /api/upload")).to_be_visible()
+
+    page.get_by_role("link", name="Bearbeiten").click()  # put the data back for the other tests
+    picker = page.locator("[data-cause-picker]")
+    picker.locator('input[value="siem-alert"]').uncheck()
+    page.locator('form[action="/events/analysis/edit"]').get_by_role("button", name="Speichern").click()
+    expect(page.get_by_role("link", name="Ungewöhnliche Requests auf /api/upload")).to_have_count(0)
 
 
 def test_header_search_finds_events(login):

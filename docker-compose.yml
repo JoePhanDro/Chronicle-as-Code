@@ -1,23 +1,31 @@
-# Chronicle API stack. Setup:
+# Chronicle stack: the API behind a TLS proxy (Caddy). Only port 443 serves the app, port 80 redirects to it.
 #   cp .env.example .env                                 # set CHRONICLE_ADMIN_USER / _PASSWORD
-#   docker compose --profile import run --rm importer    # once per incident, not on every `up`
-#   docker compose up -d api                             # then open http://localhost:8000/login
+#   docker compose --profile import run --rm importer    # builds the index from ./data, once and after outside changes
+#   docker compose up -d                                 # then open https://localhost/login
+# Certificate: ./certs/cert.pem and ./certs/key.pem if both exist, otherwise Caddy makes its own (self-signed, the
+# browser warns). A public domain can get a real one: CHRONICLE_TLS=acme (docs/betrieb-tls.md).
+# For local development without TLS: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# The topic files in ./data are the source of truth (ADR 0008, ADR 0011): the API writes edits into them, so the
+# folder must be writable for user 1000 (see README).
 
 services:
   api:
     build: .
     image: chronicle-dashboard:local
     entrypoint: ["python", "-m", "chronicle.serve"]
-    command: ["--db", "/db/chronicle.db", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["--db", "/db/chronicle.db", "--data", "/data", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       CHRONICLE_ADMIN_USER: ${CHRONICLE_ADMIN_USER:-}
       CHRONICLE_ADMIN_PASSWORD: ${CHRONICLE_ADMIN_PASSWORD:-}
       CHRONICLE_DB: /db/chronicle.db
-    ports:
-      # Localhost only. Put a TLS reverse proxy in front before exposing this anywhere else.
-      - "127.0.0.1:8000:8000"
+      # The proxy is the only peer whose X-Forwarded-For counts (chronicle/auth.py).
+      CHRONICLE_TRUSTED_PROXIES: ${CHRONICLE_PROXY_IP:-172.30.0.10}
+      # The session cookie travels over HTTPS only.
+      CHRONICLE_COOKIE_SECURE: "1"
+    # No published port: the API is reachable only through the proxy.
     volumes:
       - chronicle-db:/db
+      - ./data:/data
     read_only: true
     tmpfs:
       - /tmp
@@ -32,7 +40,40 @@ services:
       timeout: 5s
       retries: 3
 
-  # Reads ./data and stores the timeline in the database. Only runs with --profile import.
+  proxy:
+    image: caddy:2-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      CHRONICLE_HOSTNAME: ${CHRONICLE_HOSTNAME:-localhost}
+      # Empty: own files if present, otherwise self-signed. Or: files | internal | acme.
+      CHRONICLE_TLS: ${CHRONICLE_TLS:-}
+    ports:
+      - "${CHRONICLE_HTTP_PORT:-80}:80"
+      - "${CHRONICLE_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/proxy-entrypoint.sh:/entrypoint.sh:ro
+      - ${CHRONICLE_CERTS_DIR:-./certs}:/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      default:
+        ipv4_address: ${CHRONICLE_PROXY_IP:-172.30.0.10}
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      # Without all capabilities root cannot read a certificate folder or key that belongs to another user
+      # (mode 700 or 600). This one only lets it read and search, it cannot write.
+      - DAC_READ_SEARCH
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  # Builds the index (the database) from ./data. Only runs with --profile import.
   importer:
     build: .
     image: chronicle-dashboard:local
@@ -52,3 +93,11 @@ services:
 
 volumes:
   chronicle-db:
+  caddy-data:
+  caddy-config:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${CHRONICLE_SUBNET:-172.30.0.0/24}

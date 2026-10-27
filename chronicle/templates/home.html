@@ -7,30 +7,38 @@
 <h1 class="text-xl font-semibold text-slate-100">Chronicle</h1>
 <p class="mt-1 text-sm text-slate-400">Ereignisse und Topics festhalten, Belege zuordnen und Berichte erstellen.</p>
 
-<div class="mt-8 grid gap-4 sm:grid-cols-2">
-  <a href="/events" class="rounded-xl border border-white/10 px-5 py-4 hover:border-sky-400/50 hover:bg-white/[.02]">
-    <span class="block text-sm font-semibold text-slate-100">Ereignisse</span>
-    <span class="mt-1 block text-sm text-slate-400">Zeitlich geordnetes Protokoll aller Vorfälle</span>
-  </a>
-  <a href="/topics" class="rounded-xl border border-white/10 px-5 py-4 hover:border-sky-400/50 hover:bg-white/[.02]">
-    <span class="block text-sm font-semibold text-slate-100">Topics</span>
-    <span class="mt-1 block text-sm text-slate-400">Vorfälle und Projekte, denen Ereignisse zugeordnet sind</span>
-  </a>
-  {% if user.role == 'admin' %}
-  <a href="/reports" class="rounded-xl border border-white/10 px-5 py-4 hover:border-sky-400/50 hover:bg-white/[.02]">
-    <span class="block text-sm font-semibold text-slate-100">Berichte</span>
-    <span class="mt-1 block text-sm text-slate-400">Zusammenfassungen für Lessons Learned</span>
-  </a>
-  {% endif %}
-  {% if user.role in ['admin', 'analyst'] %}
-  <a href="/events/new" class="rounded-xl border border-sky-400/30 bg-sky-400/5 px-5 py-4 hover:border-sky-400/60">
-    <span class="block text-sm font-semibold text-sky-200">Neues Ereignis</span>
-    <span class="mt-1 block text-sm text-slate-400">Eine neue Aktion im Protokoll erfassen</span>
-  </a>
-  <a href="/topics/new" class="rounded-xl border border-sky-400/30 bg-sky-400/5 px-5 py-4 hover:border-sky-400/60">
-    <span class="block text-sm font-semibold text-sky-200">Neues Topic</span>
-    <span class="mt-1 block text-sm text-slate-400">Einen Vorfall oder ein Projekt anlegen</span>
-  </a>
-  {% endif %}
-</div>
+<section class="mt-8" aria-labelledby="home-open">
+  <h2 id="home-open" class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Ansehen</h2>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <a href="/events" class="rounded-xl border border-white/10 px-5 py-4 hover:border-sky-400/50 hover:bg-white/[.02]">
+      <span class="block text-sm font-semibold text-slate-100">Ereignisse</span>
+      <span class="mt-1 block text-sm text-slate-400">Zeitlich geordnetes Protokoll aller Vorfälle</span>
+    </a>
+    <a href="/topics" class="rounded-xl border border-white/10 px-5 py-4 hover:border-sky-400/50 hover:bg-white/[.02]">
+      <span class="block text-sm font-semibold text-slate-100">Topics</span>
+      <span class="mt-1 block text-sm text-slate-400">Vorfälle und Projekte, denen Ereignisse zugeordnet sind</span>
+    </a>
+    {% if user.role == 'admin' %}
+    <a href="/reports" class="rounded-xl border border-white/10 px-5 py-4 hover:border-sky-400/50 hover:bg-white/[.02]">
+      <span class="block text-sm font-semibold text-slate-100">Berichte</span>
+      <span class="mt-1 block text-sm text-slate-400">HTML und PDF zu einem Topic, auch für Lessons Learned</span>
+    </a>
+    {% endif %}
+  </div>
+</section>
+{% if user.role in ['admin', 'analyst'] %}
+<section class="mt-10 border-t border-white/10 pt-6" aria-labelledby="home-new">
+  <h2 id="home-new" class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Neu anlegen</h2>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <a href="/events/new" class="rounded-xl border border-sky-400/30 bg-sky-400/5 px-5 py-4 hover:border-sky-400/60">
+      <span class="block text-sm font-semibold text-sky-200">Neues Ereignis</span>
+      <span class="mt-1 block text-sm text-slate-400">Eine neue Aktion im Protokoll erfassen</span>
+    </a>
+    <a href="/topics/new" class="rounded-xl border border-sky-400/30 bg-sky-400/5 px-5 py-4 hover:border-sky-400/60">
+      <span class="block text-sm font-semibold text-sky-200">Neues Topic</span>
+      <span class="mt-1 block text-sm text-slate-400">Einen Vorfall oder ein Projekt anlegen</span>
+    </a>
+  </div>
+</section>
+{% endif %}
 {% endblock %}

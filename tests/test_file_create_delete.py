@@ -56,19 +56,6 @@ def test_an_event_another_one_depends_on_cannot_be_deleted(folder, conn):
         repository.delete_event(conn, "analysis", actor_id=None, ip="test", data_dir=folder)
 
 
-def test_an_event_that_exists_only_in_the_database_survives_a_file_mode_edit(folder, conn):
-    # Created in database mode, so it is in no file. An edit in file mode rebuilds the index and must keep it.
-    repository.create_event(conn, new_event(key="nur-db"), ["inc-2026-042"], actor_id=None, ip="test")
-    current = repository.get_event(conn, "analysis")
-    event = Event.model_validate({k: current[k] for k in ("key", "t0", "phase", "actor", "system", "action", "status",
-                                                          "triggered_by", "details")} | {"action": "geändert"})
-
-    repository.update_event(conn, "analysis", event, current["topics"], current["version"], actor_id=None, ip="test",
-                            data_dir=folder)
-
-    assert repository.get_event(conn, "nur-db") is not None
-
-
 @pytest.fixture(autouse=True)
 def insecure_cookies_for_http_tests(monkeypatch):
     monkeypatch.setenv("CHRONICLE_COOKIE_SECURE", "0")

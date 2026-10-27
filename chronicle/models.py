@@ -6,6 +6,7 @@ instead of silently dropping data.
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
@@ -43,11 +44,18 @@ class Status(StrEnum):
     RESOLVED = "resolved"
 
 
+# The status words the interface shows; the stored values stay English. Phase names stay English too: they are the terms of the data model.
+STATUS_LABELS: dict[Status, str] = {
+    Status.OPEN: "offen",
+    Status.IN_PROGRESS: "in Arbeit",
+    Status.RESOLVED: "abgeschlossen",
+}
+
 EvidenceType = Literal["screenshot", "log", "report", "other"]
 
 
 class Evidence(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     file: str = Field(min_length=1, description="Path relative to the timeline.yaml folder")
     type: EvidenceType
@@ -58,12 +66,12 @@ class Evidence(BaseModel):
     def _relative_path_only(cls, value: str) -> str:
         path = PurePosixPath(value.replace("\\", "/"))
         if path.is_absolute() or ".." in path.parts or ":" in path.parts[0]:
-            raise ValueError(f"evidence path must be relative and stay inside the data folder: {value!r}")
+            raise ValueError("evidence path must be relative and stay inside the data folder")
         return path.as_posix()
 
 
 class Event(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     key: str = Field(
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
@@ -81,6 +89,13 @@ class Event(BaseModel):
     )
     details: str = Field(default="", description="Markdown body shown in the detail view")
     evidence: list[Evidence] = Field(default_factory=list)
+
+    @field_validator("details")
+    @classmethod
+    def _unix_line_ends(cls, value: str) -> str:
+        # Browsers send a textarea with CRLF. A YAML block scalar reads that back as LF, so a file would never match
+        # what was written. The text is stored with LF.
+        return value.replace("\r\n", "\n").replace("\r", "\n")
 
     @field_validator("t0")
     @classmethod
@@ -112,7 +127,7 @@ TopicKind = Literal["incident", "vulnerability", "project", "special", "other"]
 
 
 class Topic(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
     title: str = Field(min_length=1)
@@ -120,10 +135,16 @@ class Topic(BaseModel):
     summary: str = ""
 
 
+class TopicCreate(Topic):
+    """Topic for a new record. Without a key the server generates one (see new_topic_key)."""
+
+    key: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+
+
 class Timeline(BaseModel):
     """One topic file: the topic, the events it defines and references to events defined elsewhere."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     topic: Topic
     events: list[Event] = Field(default_factory=list)
@@ -132,7 +153,8 @@ class Timeline(BaseModel):
     @model_validator(mode="after")
     def _check_local_keys(self) -> Timeline:
         keys = [event.key for event in self.events]
-        duplicates = sorted({key for key in keys if keys.count(key) > 1})
+        counts = Counter(keys)  # list.count per key was quadratic: seconds for 10,000 events (issue #125)
+        duplicates = sorted(key for key, count in counts.items() if count > 1)
         if duplicates:
             raise ValueError(f"duplicate event keys: {duplicates}")
         overlap = sorted(set(keys) & set(self.refs))

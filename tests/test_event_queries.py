@@ -4,8 +4,8 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for
 from chronicle import accounts, repository, security
-from chronicle.api import create_app
 from chronicle.db import connect
 from chronicle.importer import import_folder
 
@@ -109,7 +109,7 @@ def test_api_pages_the_event_list(imported_db, monkeypatch):
     accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
     conn.close()
 
-    client = TestClient(create_app(imported_db))
+    client = TestClient(app_for(imported_db))
     assert client.post("/api/v1/auth/login", json={"username": "viewer", "password": PASSWORD}).status_code == 200
 
     everything = client.get("/api/v1/events").json()
@@ -125,6 +125,6 @@ def test_api_rejects_out_of_range_paging(imported_db, monkeypatch, params):
     accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
     conn.close()
 
-    client = TestClient(create_app(imported_db))
+    client = TestClient(app_for(imported_db))
     client.post("/api/v1/auth/login", json={"username": "viewer", "password": PASSWORD})
     assert client.get("/api/v1/events", params=params).status_code == 422

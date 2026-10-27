@@ -19,10 +19,15 @@
     {% else %}
     <label class="block">
       <span class="{{ label_class }}">Key (eindeutig)</span>
-      <input name="key" value="{{ f.key or '' }}" required {{ 'readonly' if mode == 'view' }} pattern="[A-Za-z0-9][A-Za-z0-9._-]{0,99}"
+      <input name="key" value="{{ f.key or '' }}" required {{ 'readonly' if mode == 'view' }} pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,99}"
              class="{{ input_class }} font-mono {{ 'opacity-60' if mode == 'view' }}">
     </label>
     {% endif %}
+    {% if mode == 'view' %}
+    {# Phase and status are changed on the event page itself; the edit form passes the stored values along. #}
+    <input type="hidden" name="phase" value="{{ f.phase }}">
+    <input type="hidden" name="status" value="{{ f.status }}">
+    {% else %}
     <label class="block">
       <span class="{{ label_class }}">Phase</span>
       <select name="phase" required class="{{ input_class }}">
@@ -32,9 +37,10 @@
     <label class="block">
       <span class="{{ label_class }}">Status</span>
       <select name="status" required class="{{ input_class }}">
-        {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if f.status == status }}>{{ status.replace('_', ' ') }}</option>{% endfor %}
+        {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if f.status == status }}>{{ status_text.get(status, status) }}</option>{% endfor %}
       </select>
     </label>
+    {% endif %}
   </div>
 </section>
 
@@ -58,12 +64,39 @@
       </select>
     </label>
     <label class="block">
-      <span class="{{ label_class }}">Zeitzone</span>
+      <span class="{{ label_class }}">Zeitzone der Eingabe</span>
       <select name="t0_zone" required class="{{ input_class }}">
         {% for zone in timezones %}<option value="{{ zone }}" {{ 'selected' if f.t0_zone == zone }}>{{ zone }}</option>{% endfor %}
       </select>
     </label>
   </div>
+  <p data-utc-note class="mt-3 font-mono text-xs text-slate-400"></p>
+  <script>
+    // The form takes the time in one zone, the app shows and stores UTC: say what the entry comes to in UTC.
+    (function () {
+      var script = document.currentScript, section = script.parentNode;
+      var form = section.closest('form'), note = section.querySelector('[data-utc-note]');
+      function field(name) { return form.elements[name]; }
+      function toUtc(day, hour, minute, zone) {
+        var parts = day.split('-').map(Number);
+        var guess = Date.UTC(parts[0], parts[1] - 1, parts[2], Number(hour), Number(minute));
+        if (zone === 'UTC') return new Date(guess);
+        var seen = {};
+        new Intl.DateTimeFormat('en-GB', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
+          .formatToParts(new Date(guess)).forEach(function (part) { seen[part.type] = Number(part.value); });
+        var offset = Date.UTC(seen.year, seen.month - 1, seen.day, seen.hour, seen.minute) - guess;
+        return new Date(guess - offset);
+      }
+      function show() {
+        var day = field('t0_date').value;
+        if (!day) { note.textContent = ''; return; }
+        var utc = toUtc(day, field('t0_hour').value, field('t0_minute').value, field('t0_zone').value);
+        note.textContent = 'Gespeichert als ' + utc.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+      }
+      ['t0_date', 't0_hour', 't0_minute', 't0_zone'].forEach(function (name) { field(name).addEventListener('input', show); });
+      show();
+    })();
+  </script>
 </section>
 
 <section class="{{ section_class }}">
@@ -83,14 +116,46 @@
 <section class="{{ section_class }}">
   <h2 class="{{ heading_class }}">Verknüpfungen</h2>
   <div class="space-y-5">
-    <label class="block">
-      <span class="{{ label_class }}">Ausgelöst durch (beliebig viele, mit Strg bzw. Cmd)</span>
-      <select name="triggered_by" multiple size="5" class="{{ input_class }}">
+    <fieldset data-cause-picker>
+      <legend class="{{ label_class }}">Ausgelöst durch (beliebig viele)</legend>
+      <input type="search" data-cause-filter autocomplete="off" placeholder="Events filtern: Aktion oder Key" aria-label="Events filtern"
+             class="{{ input_class }} mb-2">
+      <div class="max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-slate-950/70">
         {% for choice in event_choices if choice.key != f.key %}
-        <option value="{{ choice.key }}" {{ 'selected' if choice.key in (f.triggered_by or []) }}>{{ choice.t0[:16].replace('T', ' ') }} · {{ choice.action }} ({{ choice.key }})</option>
+        <label data-cause-row data-text="{{ (choice.action ~ ' ' ~ choice.key) | lower }}" class="flex cursor-pointer items-start gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5">
+          <input type="checkbox" name="triggered_by" value="{{ choice.key }}" {{ 'checked' if choice.key in (f.triggered_by or []) }} class="mt-0.5 accent-sky-400">
+          <span class="min-w-0"><span class="font-mono text-xs text-slate-400">{{ choice.t0[:16].replace('T', ' ') }}</span> · {{ choice.action }} <span class="font-mono text-xs text-slate-400">({{ choice.key }})</span></span>
+        </label>
+        {% else %}
+        <p class="px-3 py-2 text-sm text-slate-400">Noch keine anderen Events.</p>
         {% endfor %}
-      </select>
-    </label>
+        <p data-cause-none hidden class="px-3 py-2 text-sm text-slate-400">Kein Event gefunden.</p>
+      </div>
+      <p data-cause-count role="status" aria-live="polite" class="mt-1 text-xs text-slate-400"></p>
+    </fieldset>
+    <script>
+      (function () {
+        var picker = document.currentScript.previousElementSibling;
+        var filter = picker.querySelector('[data-cause-filter]'), rows = picker.querySelectorAll('[data-cause-row]');
+        var count = picker.querySelector('[data-cause-count]'), none = picker.querySelector('[data-cause-none]');
+        function selected() { return picker.querySelectorAll('input[type=checkbox]:checked').length; }
+        function show() {
+          var words = filter.value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+          rows.forEach(function (row) {
+            var hit = words.every(function (word) { return row.dataset.text.indexOf(word) !== -1; });
+            row.classList.toggle('hidden', !hit); // a class: the row's own display utility beats the hidden attribute
+            if (hit) shown += 1;
+          });
+          none.hidden = shown !== 0 || !rows.length;
+          var chosen = selected();
+          count.textContent = chosen ? chosen + (chosen === 1 ? ' Event ausgewählt' : ' Events ausgewählt') : '';
+        }
+        filter.addEventListener('input', show);
+        filter.addEventListener('keydown', function (event) { if (event.key === 'Enter') event.preventDefault(); });
+        picker.addEventListener('change', show);
+        show();
+      })();
+    </script>
 
     {% if mode == 'new' %}
     <label class="block">

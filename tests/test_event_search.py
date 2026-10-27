@@ -6,8 +6,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for
 from chronicle import accounts, repository, security
-from chronicle.api import create_app
 from chronicle.db import connect
 from chronicle.repository import EventFilter
 
@@ -22,7 +22,7 @@ def insecure_cookies(monkeypatch):
 
 
 def login(db_path, username):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -117,7 +117,7 @@ def test_event_list_page_applies_the_filters(search_db):
     html = viewer.get("/events", params={"q": "siem", "status": "resolved"}).text
     assert "Webshell entfernt" in html
     assert "Alarm" not in html
-    assert "1 Events gefunden" in html
+    assert "1 Event gefunden" in html
     assert "Filter zurücksetzen" in html
 
 

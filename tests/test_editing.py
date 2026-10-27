@@ -5,10 +5,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for, import_example
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
-from chronicle.importer import import_folder
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 PASSWORD = "correct horse battery"
@@ -28,12 +27,12 @@ def db_path(tmp_path):
     accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
     conn.close()
-    import_folder(path, DATA_DIR)
+    import_example(path)
     return path
 
 
 def api_login(db_path, username):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -68,16 +67,6 @@ def test_viewer_cannot_write(db_path):
     viewer = api_login(db_path, "viewer")
     assert viewer.post("/api/v1/events", json=new_event()).status_code == 403
     assert viewer.delete("/api/v1/events/exploit").status_code == 403
-
-
-def test_analyst_creates_event_and_it_is_listed(db_path):
-    anna = api_login(db_path, "anna")
-    response = anna.post("/api/v1/events", json=new_event())
-    assert response.status_code == 201
-    assert response.json()["version"] == 1
-    assert response.json()["source"] == "manual"
-    assert response.json()["topics"] == ["inc-2026-042"]
-    assert len(anna.get("/api/v1/topics/inc-2026-042/events").json()) == 8
 
 
 def test_api_generates_key_when_none_is_sent(db_path):
@@ -136,44 +125,6 @@ def test_delete_blocked_while_another_event_depends_on_it(db_path):
     assert "siem-alert" in response.json()["detail"]
 
 
-def test_deleted_event_is_not_recreated_by_import(db_path):
-    anna = api_login(db_path, "anna")
-    assert anna.delete("/api/v1/events/lessons").status_code == 204
-    assert anna.get("/api/v1/events/lessons").status_code == 404
-
-    (report,) = import_folder(db_path, DATA_DIR)
-    assert ("lessons", "in der Oberfläche gelöscht") in report.skipped
-    assert anna.get("/api/v1/events/lessons").status_code == 404
-
-
-def test_manually_edited_event_is_not_overwritten_by_import(db_path):
-    anna = api_login(db_path, "anna")
-    current = anna.get("/api/v1/events/analysis").json()
-    body = writable(current, action="Von Hand korrigiert")
-    assert anna.put("/api/v1/events/analysis", json=body).status_code == 200
-
-    (report,) = import_folder(db_path, DATA_DIR)
-    assert ("analysis", "in der Oberfläche bearbeitet") in report.skipped
-    assert anna.get("/api/v1/events/analysis").json()["action"] == "Von Hand korrigiert"
-
-
-def test_import_keeps_links_added_in_the_ui(db_path, tmp_path):
-    anna = api_login(db_path, "anna")
-    # Create a second topic through a new import file, then link an existing event to it in the UI.
-    second = tmp_path / "second"
-    second.mkdir()
-    (second / "timeline.yaml").write_text(
-        "topic:\n  key: projekt-x\n  title: Projekt X\n  kind: project\nevents: []\nrefs: []\n"
-    )
-    import_folder(db_path, second)
-    current = anna.get("/api/v1/events/containment").json()
-    body = writable(current, topics=["projekt-x"])
-    assert anna.put("/api/v1/events/containment", json=body).status_code == 200
-
-    import_folder(db_path, DATA_DIR)
-    assert set(anna.get("/api/v1/events/containment").json()["topics"]) == {"inc-2026-042", "projekt-x"}
-
-
 def test_every_change_is_audited_without_content(db_path):
     anna = api_login(db_path, "anna")
     anna.post("/api/v1/events", json=new_event("audit-1"))
@@ -199,7 +150,7 @@ def form_csrf(client):
 
 def test_html_create_edit_delete_flow(db_path, monkeypatch):
     monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "form-1")
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     login_html(client, "anna")
     assert client.get("/events").status_code == 200
     assert "Neues Event" in client.get("/events").text
@@ -239,7 +190,7 @@ def test_html_create_edit_delete_flow(db_path, monkeypatch):
 
 
 def test_html_rejects_missing_csrf_and_shows_validation_errors(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     login_html(client, "anna")
     base = {"key": "x-1", "t0_date": "2026-10-15", "t0_hour": "09", "t0_minute": "00", "t0_zone": "Europe/Berlin", "phase": "Analysis", "actor": "A",
             "action": "B", "status": "open", "topic": "inc-2026-042", "topics": []}
@@ -253,7 +204,7 @@ def test_html_rejects_missing_csrf_and_shows_validation_errors(db_path):
 
 
 def test_html_new_event_gets_generated_key(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     login_html(client, "anna")
     assert 'name="key"' not in client.get("/events/new").text
 
@@ -271,7 +222,7 @@ def test_html_new_event_gets_generated_key(db_path):
 
 
 def test_html_viewer_sees_list_but_no_write_pages(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     login_html(client, "viewer")
     assert client.get("/events").status_code == 200
     assert "Neues Event" not in client.get("/events").text
@@ -280,7 +231,7 @@ def test_html_viewer_sees_list_but_no_write_pages(db_path):
 
 
 def test_html_pages_redirect_to_login_without_session(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.get("/events", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
@@ -288,12 +239,12 @@ def test_html_pages_redirect_to_login_without_session(db_path):
 
 def test_html_new_event_is_stored_in_utc_with_attachments(db_path, monkeypatch):
     monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "files-1")
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     login_html(client, "anna")
     page = client.get("/events/new").text
     assert 'type="date"' in page and 'name="t0_zone"' in page
     assert '<option value="Activity"' in page
-    assert '<option value="siem-alert"' in page  # the trigger is picked from existing events
+    assert 'name="triggered_by" value="siem-alert"' in page  # the trigger is picked from existing events
 
     created = client.post(
         "/events/new",
@@ -312,12 +263,12 @@ def test_html_new_event_is_stored_in_utc_with_attachments(db_path, monkeypatch):
     assert datetime.fromisoformat(stored["t0"]) == datetime(2026, 10, 15, 7, 30, tzinfo=UTC)
     assert stored["phase"] == "Activity"
     assert stored["triggered_by"] == ["siem-alert"]
-    assert [item["file"] for item in stored["evidence"]] == ["one.png", "two.png"]
+    assert [item["file"].rsplit("/", 1)[-1] for item in stored["evidence"]] == ["one.png", "two.png"]  # evidence/<key>/ in the folder
 
 
 def test_html_bad_attachment_writes_no_event(db_path, monkeypatch):
     monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "files-2")
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     login_html(client, "anna")
     rejected = client.post(
         "/events/new",
@@ -337,7 +288,7 @@ def test_html_bad_attachment_writes_no_event(db_path, monkeypatch):
 
 def test_html_edit_form_shows_stored_time_in_berlin(db_path, monkeypatch):
     monkeypatch.setattr("chronicle.pages.new_event_key", lambda: "zeit-1")
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     login_html(client, "anna")
     created = client.post("/events/new", data={
         "csrf_token": form_csrf(client), "t0_date": "2026-01-15", "t0_hour": "09",

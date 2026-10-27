@@ -10,22 +10,38 @@ changed are touched (ruamel.yaml round trip).
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import hashlib
 import io
 import os
+import secrets
+import stat
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError as RuamelError
 from ruamel.yaml.scalarstring import LiteralScalarString
 
-from .loader import _YAML_LOADER, TimelineError
+from .loader import TimelineError, link_below, read_topic_text
 from .models import Event, Evidence, Timeline, Topic
 from .schema import SCHEMA_URL
+from .yamlscan import (
+    MAX_YAML_BYTES,
+    TOO_LARGE,
+    YAML_LOADER,
+    YamlRejected,
+    describe_validation_error,
+    describe_yaml_error,
+    load_yaml,
+    one_line,
+    scan,
+)
 
 LOCK_FILE = ".chronicle.lock"
 HEADER = f"# yaml-language-server: $schema={SCHEMA_URL}\n"  # only for new files; existing files keep their header
@@ -43,9 +59,28 @@ class EventNotInFile(StoreError):
     """The event is not defined in the file it was looked up in."""
 
 
+def require_no_link(root: Path, path: Path) -> None:
+    """Refuse a path below the data folder `root` that goes through a link. `root` itself may be one (a mount)."""
+    link = link_below(root, path)
+    if link is not None:
+        raise StoreError(f"{link.relative_to(root).as_posix()} ist ein Link. Links sind im Datenordner nicht erlaubt.")
+
+
 def file_version(path: Path) -> str:
-    """The version of a topic file: the SHA-256 of its bytes."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """The version of a topic file: the SHA-256 of its bytes. Read in pieces, so any size is hashed in constant memory."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_text(path: Path) -> str:
+    """The text of a topic file for a change. A file over the size limit or without UTF-8 is a StoreError."""
+    try:
+        return read_topic_text(path)
+    except TimelineError as exc:
+        raise StoreError(str(exc)) from exc
 
 
 def dump_timeline(timeline: Timeline) -> str:
@@ -75,25 +110,86 @@ def update_event_in_file(path: Path, key: str, event: Event, *, expected_version
     """
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
-        current = _read_model(text)
-        old = next((item for item in current.events if item.key == key), None)
-        if old is None:
-            raise EventNotInFile(f"Event {key!r} steht nicht in {path.name}.")
+        text = _read_text(path)
+        start, end = _entry_span(text, key, path.name)
+        entry = text[start:end]
+        old = _entry_event(entry)
 
-        document = _yaml().load(text)
-        item = next(entry for entry in document["events"] if entry["key"] == key)
+        # Only the entry of this event goes through the round trip. Parsing the whole file here took seconds for a
+        # file of 10,000 events (issue #125); the rest of the file stays as it is, byte for byte.
+        prefix = "events:\n  - "
+        item = _load_document(prefix + entry)["events"][0]
         _set_changed_fields(item, old, event)
         stream = io.StringIO()
-        _yaml().dump(document, stream)
-
-        expected = current.model_copy(update={"events": [
-            event.model_copy(update={"evidence": old.evidence}) if known.key == key else known
-            for known in current.events
-        ]})
-        _verify_read_back(stream.getvalue(), expected)
-        _atomic_write(path, stream.getvalue().encode("utf-8"))
+        _yaml().dump({"events": [item]}, stream)
+        if not stream.getvalue().startswith(prefix):
+            raise StoreError("Der geänderte Eintrag hat eine andere Form als erwartet, deshalb wird nichts geschrieben.")
+        new_entry = stream.getvalue()[len(prefix):]
+        _verify_read_back_entry(new_entry, event.model_copy(update={"evidence": old.evidence}))
+        new_text = text[:start] + new_entry + text[end:]
+        _check_size(new_text)
+        try:
+            scan(new_text)  # the entry was checked alone; the node limit is the file's
+        except YamlRejected as exc:
+            raise StoreError(f"Die Datei würde mit dieser Änderung die Grenzen überschreiten: {exc}. "
+                             "Es wird nichts geschrieben.") from exc
+        _atomic_write(path, new_text.encode("utf-8"))
     return file_version(path)
+
+
+def _entry_span(text: str, key: str, name: str) -> tuple[int, int]:
+    """Where the entry of one event sits in the file text: from its first key to the end of its last line.
+
+    The YAML composer gives the positions, so the file is not loaded into objects to find the entry.
+    """
+    try:
+        scan(text)  # the file may come from Git, and the C composer crashes on deep input
+        root = yaml.compose(text, Loader=YAML_LOADER)
+    except YamlRejected as exc:
+        raise StoreError(f"{one_line(name)}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise StoreError(f"{one_line(name)}: {describe_yaml_error(exc)}") from exc
+    fields = root.value if isinstance(root, yaml.MappingNode) else []
+    events = next((value for field, value in fields if field.value == "events"), None)
+    for entry in events.value if events is not None else []:
+        entry_key = next(value for field, value in entry.value if field.value == "key")
+        if entry_key.value == key:
+            return entry.start_mark.index, _line_end(text, _last_index(entry))
+    raise EventNotInFile(f"Event {key!r} steht nicht in {name}.")
+
+
+def _last_index(node) -> int:
+    """The position after the last character of a YAML node."""
+    if isinstance(node, yaml.MappingNode):
+        return max(_last_index(value) for _, value in node.value)
+    if isinstance(node, yaml.SequenceNode):
+        return max(_last_index(value) for value in node.value)
+    return node.end_mark.index
+
+
+def _line_end(text: str, position: int) -> int:
+    """The start of the line after position, or position itself if it is already at a line start."""
+    if position == 0 or text[position - 1] == "\n":
+        return position
+    newline = text.find("\n", position)
+    return len(text) if newline == -1 else newline + 1
+
+
+def _entry_event(entry: str) -> Event:
+    """The event of one entry text, validated with the same model as a whole topic file."""
+    try:
+        document = load_yaml("events:\n  - " + entry)
+        return Timeline.model_validate({"topic": {"key": "entry", "title": "entry"}, "events": document["events"]}).events[0]
+    except YamlRejected as exc:
+        raise StoreError(f"Die Datei ist nach der Änderung nicht lesbar, deshalb wird nichts geschrieben: {exc}") from exc
+    except ValidationError as exc:
+        raise StoreError("Die Datei ist nach der Änderung nicht lesbar, deshalb wird nichts geschrieben: "
+                         f"{describe_validation_error(exc)}") from exc
+
+
+def _verify_read_back_entry(entry: str, expected: Event) -> None:
+    if _entry_event(entry) != expected:
+        raise StoreError("Der geänderte Eintrag würde sich beim Lesen anders verhalten als geplant, deshalb wird nichts geschrieben.")
 
 
 def create_topic_file(path: Path, topic: Topic) -> str:
@@ -105,12 +201,12 @@ def update_topic_in_file(path: Path, topic: Topic, *, expected_version: str) -> 
     """Change the title, kind and summary of the topic a file defines. The key does not change. Returns the new version."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if current.topic.key != topic.key:
             raise StoreError(f"{path.name} gehört zum Topic {current.topic.key!r}, nicht zu {topic.key!r}.")
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         section = document["topic"]
         section["title"] = topic.title
         section["kind"] = topic.kind
@@ -127,12 +223,12 @@ def add_event_to_file(path: Path, event: Event, *, expected_version: str) -> str
     """Append a new event to a topic file. Returns the new version of the file."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if any(known.key == event.key for known in current.events):
             raise StoreError(f"Event {event.key!r} steht bereits in {path.name}.")
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         document.setdefault("events", []).append(_event_document(event))
         stream = io.StringIO()
         _yaml().dump(document, stream)
@@ -146,12 +242,12 @@ def remove_event_from_file(path: Path, key: str, *, expected_version: str) -> st
     """Remove one event from a topic file. Its lines go with it; everything else stays. Returns the new version."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if not any(known.key == key for known in current.events):
             raise EventNotInFile(f"Event {key!r} steht nicht in {path.name}.")
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         document["events"] = [entry for entry in document["events"] if entry["key"] != key]
         if not document["events"]:
             del document["events"]
@@ -172,12 +268,12 @@ def set_ref_in_file(path: Path, key: str, *, present: bool, expected_version: st
     """
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         if present == (key in current.refs):
             return file_version(path)
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         if present:
             document.setdefault("refs", []).append(key)
             refs = [*current.refs, key]
@@ -198,13 +294,13 @@ def add_evidence_to_file(path: Path, event_key: str, item: dict, *, expected_ver
     """Add one evidence entry (file, type, description) to an event in its topic file. Returns the new version."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         event = next((known for known in current.events if known.key == event_key), None)
         if event is None:
             raise EventNotInFile(f"Event {event_key!r} steht nicht in {path.name}.")
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         entry = next(entry for entry in document["events"] if entry["key"] == event_key)
         entry.setdefault("evidence", []).append(item)
         stream = io.StringIO()
@@ -223,13 +319,13 @@ def remove_evidence_from_file(path: Path, event_key: str, file: str, *, expected
     """Remove the evidence entry for one file from an event. The file on disk is not touched here."""
     with folder_lock(path.parent):
         _check_version(path, expected_version)
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
         current = _read_model(text)
         event = next((known for known in current.events if known.key == event_key), None)
         if event is None or not any(item.file == file for item in event.evidence):
             raise StoreError(f"Der Beleg {file!r} steht nicht bei {event_key!r} in {path.name}.")
 
-        document = _yaml().load(text)
+        document = _load_document(text)
         entry = next(entry for entry in document["events"] if entry["key"] == event_key)
         entry["evidence"] = [item for item in entry["evidence"] if item["file"] != file]
         if not entry["evidence"]:
@@ -251,8 +347,12 @@ def restore_file(path: Path, data: bytes) -> None:
     _atomic_write(path, data)
 
 
-def write_new_file(path: Path, data: bytes) -> None:
-    """Write a binary file that must not exist yet (an attachment). Atomic, like the topic files."""
+def write_new_file(path: Path, data: bytes, *, root: Path) -> None:
+    """Write a binary file that must not exist yet (an attachment). Atomic, like the topic files.
+
+    `root` is the data folder. No folder between it and the file may be a link, or the file would land outside.
+    """
+    require_no_link(root, path.parent)
     if path.exists():
         raise StoreError(f"{path.name} existiert bereits.")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -282,7 +382,7 @@ def folder_lock(folder: Path) -> Iterator[None]:
     if key in _held.folders:
         yield
         return
-    with _thread_lock(key), (folder / LOCK_FILE).open("a") as handle:
+    with _thread_lock(key), _open_lock_file(folder) as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         _held.folders.add(key)
         try:
@@ -290,6 +390,26 @@ def folder_lock(folder: Path) -> Iterator[None]:
         finally:
             _held.folders.discard(key)
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _open_lock_file(folder: Path):
+    """The lock file, created if missing. A link under that name is an error: it would lock or create its target.
+
+    So is anything that is not a regular file (a folder, a pipe).
+    """
+    try:
+        descriptor = os.open(folder / LOCK_FILE, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o666)
+    except OSError as exc:
+        if exc.errno in (errno.ELOOP, errno.EISDIR):
+            raise StoreError(f"{LOCK_FILE} ist ein Link oder ein Ordner. Der Datenordner wird nicht beschrieben.") from exc
+        raise
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise StoreError(f"{LOCK_FILE} ist keine gewöhnliche Datei. Der Datenordner wird nicht beschrieben.")
+        return os.fdopen(descriptor, "r+b")
+    except BaseException:
+        os.close(descriptor)
+        raise
 
 
 def _yaml() -> YAML:
@@ -310,15 +430,36 @@ def _check_version(path: Path, expected_version: str | None) -> None:
     raise VersionConflict(f"{path.name} wurde inzwischen geändert. Bitte neu laden, bevor du speicherst.")
 
 
+def _load_document(text: str):
+    """The round-trip document of a text that passed the scan. ruamel (YAML 1.2) can still refuse what libyaml read
+    (a tab after a value, a Unicode line break): the message names the place, not the content."""
+    try:
+        return _yaml().load(text)
+    except RuamelError as exc:
+        raise StoreError(f"Die Datei lässt sich nicht bearbeiten: {describe_yaml_error(exc)}") from exc
+    except RecursionError as exc:
+        raise StoreError("Die Datei lässt sich nicht bearbeiten: zu tief verschachtelt") from exc
+
+
+def _check_size(text: str) -> None:
+    """A topic file over the limit could not be read back by the next load, so it is not written."""
+    if len(text.encode("utf-8")) > MAX_YAML_BYTES:
+        raise StoreError(f"Die Datei würde mit dieser Änderung zu groß: {TOO_LARGE}. Es wird nichts geschrieben.")
+
+
 def _read_model(text: str) -> Timeline:
     try:
-        return Timeline.model_validate(yaml.load(text, Loader=_YAML_LOADER))
-    except (yaml.YAMLError, ValueError) as exc:
+        return Timeline.model_validate(load_yaml(text))
+    except YamlRejected as exc:
         raise StoreError(f"Die Datei ist nach der Änderung nicht lesbar, deshalb wird nichts geschrieben: {exc}") from exc
+    except ValidationError as exc:
+        raise StoreError("Die Datei ist nach der Änderung nicht lesbar, deshalb wird nichts geschrieben: "
+                         f"{describe_validation_error(exc)}") from exc
 
 
 def _verify_read_back(text: str, expected: Timeline) -> None:
     """The text must read back as exactly the timeline it should hold. Otherwise nothing is written."""
+    _check_size(text)
     if _read_model(text) != expected:
         raise StoreError("Die geänderte Datei würde sich beim Lesen anders verhalten als geplant, deshalb wird nichts geschrieben.")
 
@@ -356,12 +497,32 @@ def _text(value: str):
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("wb") as handle:
-        handle.write(data)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    """Write path atomically: a new temporary file next to it, then rename. Never follows a link.
+
+    The temporary name is random and the file is created exclusively (O_EXCL, O_NOFOLLOW), so a link that
+    sits in the folder under any name is not written through. A target that is a link is refused. The file keeps its
+    mode; a new file gets the mode the umask gives it (the open call applies it).
+    """
+    try:
+        existing = path.lstat()
+    except FileNotFoundError:
+        existing = None
+    if existing is not None and stat.S_ISLNK(existing.st_mode):
+        raise StoreError(f"{path.name} ist ein Link und wird nicht beschrieben.")
+
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            if existing is not None:
+                os.fchmod(handle.fileno(), stat.S_IMODE(existing.st_mode))
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def _document(timeline: Timeline) -> dict:

@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-25T12:00:00Z",
+  "title": "Design System: Chronicle",
+  "extensions": {
+    "colorMeta": {
+      "ledger-black": {
+        "role": "neutral",
+        "displayName": "Ledger Black",
+        "canonical": "#020617",
+        "tonalRamp": [
+          "#020617",
+          "#0f172a",
+          "#1e293b",
+          "#334155",
+          "#475569",
+          "#64748b",
+          "#94a3b8",
+          "#f1f5f9"
+        ]
+      },
+      "signal-sky": {
+        "role": "primary",
+        "displayName": "Signal Sky",
+        "canonical": "#38bdf8",
+        "tonalRamp": [
+          "#082f49",
+          "#075985",
+          "#0369a1",
+          "#0284c7",
+          "#0ea5e9",
+          "#38bdf8",
+          "#7dd3fc",
+          "#e0f2fe"
+        ]
+      },
+      "dusk-violet": {
+        "role": "secondary",
+        "displayName": "Dusk Violet",
+        "canonical": "#8b5cf6",
+        "tonalRamp": [
+          "#2e1065",
+          "#4c1d95",
+          "#5b21b6",
+          "#6d28d9",
+          "#7c3aed",
+          "#8b5cf6",
+          "#a78bfa",
+          "#ede9fe"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "Page headings."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Keys, roles, timestamps."
+      }
+    },
+    "shadows": [
+      {
+        "name": "floating",
+        "value": "0 25px 50px -12px rgba(0,0,0,0.4)",
+        "purpose": "Menus and dialogs."
+      },
+      {
+        "name": "glow",
+        "value": "0 25px 50px -12px rgba(14,165,233,0.1)",
+        "purpose": "Login card only. Backdrop blur (14px) is for panels over content: the login card and the dashboard's graph legend."
+      }
+    ],
+    "motion": [
+      {
+        "name": "pulse",
+        "value": "1.8s infinite",
+        "purpose": "In-progress status dot."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Gradient call to action, one per view.",
+      "html": "<button class=\"ds-btn-primary\">Neues Topic</button>",
+      "css": ".ds-btn-primary{background:linear-gradient(to right,#38bdf8,#8b5cf6);color:#020617;padding:8px 16px;border:0;border-radius:8px;font:600 14px Inter,system-ui,sans-serif;cursor:pointer;transition:filter .15s}.ds-btn-primary:hover{filter:brightness(1.1)}.ds-btn-primary:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Hairline button for ordinary actions.",
+      "html": "<button class=\"ds-btn-secondary\">Abmelden</button>",
+      "css": ".ds-btn-secondary{background:transparent;color:#e2e8f0;padding:6px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;font:400 14px Inter,system-ui,sans-serif;cursor:pointer}.ds-btn-secondary:hover{background:rgba(255,255,255,.05)}.ds-btn-secondary:focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Dark field with sky focus border.",
+      "html": "<input class=\"ds-input\" placeholder=\"Suchen (/)\">",
+      "css": ".ds-input{width:176px;background:rgba(2,6,23,.7);color:#f1f5f9;padding:6px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;font:400 14px Inter,system-ui,sans-serif;outline:none}.ds-input::placeholder{color:#7183a0}.ds-input:focus{border-color:rgba(56,189,248,.6);box-shadow:0 0 0 2px rgba(56,189,248,.2)}.ds-input:focus-visible{outline:2px solid #38bdf8;outline-offset:0}"
+    },
+    {
+      "name": "List Row",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Hairline list entry with title, mono meta and count.",
+      "html": "<div class=\"ds-list\"><a class=\"ds-row\" href=\"#\"><span><span class=\"ds-t\">INC-2026-042</span><br><span class=\"ds-m\">inc-2026-042 · incident</span></span><span class=\"ds-c\">12 Events</span></a></div>",
+      "css": ".ds-list{border:1px solid rgba(255,255,255,.1);border-radius:12px;font-family:Inter,system-ui,sans-serif}.ds-row{display:flex;justify-content:space-between;gap:16px;padding:12px 16px;text-decoration:none}.ds-row:hover{background:rgba(255,255,255,.03)}.ds-t{color:#f1f5f9;font-size:14px;font-weight:500}.ds-m{color:#7183a0;font:12px JetBrains Mono,ui-monospace,monospace}.ds-c{color:#94a3b8;font-size:12px}"
+    },
+    {
+      "name": "Menu Trigger",
+      "kind": "nav",
+      "refersTo": "menu",
+      "description": "Ghost header disclosure button.",
+      "html": "<button class=\"ds-menu\">Ansichten <span aria-hidden=\"true\">▾</span></button>",
+      "css": ".ds-menu{background:transparent;color:#94a3b8;border:0;padding:4px 8px;border-radius:8px;font:14px Inter,system-ui,sans-serif;cursor:pointer}.ds-menu:hover{background:rgba(255,255,255,.05);color:#fff}.ds-menu:focus-visible{outline:2px solid #7dd3fc}"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "status",
+      "description": "Dot plus label; in progress pulses.",
+      "html": "<span class=\"ds-chip\"><i class=\"ds-dot\"></i>in_progress</span>",
+      "css": ".ds-chip{color:#94a3b8;font:12px JetBrains Mono,ui-monospace,monospace}.ds-dot{display:inline-block;width:6px;height:6px;border-radius:9999px;margin-right:6px;background:#f59e0b;animation:ds-pulse 1.8s infinite}@keyframes ds-pulse{50%{opacity:.4}}"
+    },
+    {
+      "name": "Table Header",
+      "kind": "custom",
+      "refersTo": "table",
+      "description": "Uppercase faint labels on a white 3 % band.",
+      "html": "<table class=\"ds-table\"><thead><tr><th>Zeit</th><th>Akteur</th></tr></thead><tbody><tr><td>2026-10-14 08:40</td><td>Angreifer</td></tr></tbody></table>",
+      "css": ".ds-table{width:100%;text-align:left;font:14px Inter,system-ui,sans-serif;color:#e2e8f0;border-collapse:collapse}.ds-table th{background:rgba(255,255,255,.03);color:#7183a0;font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;padding:8px 16px}.ds-table td{padding:12px 16px;border-top:1px solid rgba(255,255,255,.1)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Incident Ledger",
+    "overview": "Chronicle looks like a well-kept log: near-black slate surfaces, one-pixel hairlines, small sober type, and colour that appears only when it means something. Dark is the default; light is a scale inversion of the same palette.",
+    "keyCharacteristics": [
+      "Dark-first, light by scale inversion; both are first-class.",
+      "Hairline borders (white at 10 %) instead of fills or shadows to separate regions.",
+      "Sky is the single interface accent; violet only in the primary gradient and for system entities.",
+      "Phase and status colours carry data meaning and are never reused as decoration.",
+      "German copy, short labels, monospaced keys and timestamps."
+    ],
+    "rules": [
+      {
+        "name": "The Colour Is Data Rule",
+        "body": "Red, yellow, orange, green, blue and rose are reserved for phases, statuses and errors.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Voice Rule",
+        "body": "Sky is the only interface accent.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mirror Rule",
+        "body": "Colours go through themed variables so the light theme inverts automatically.",
+        "section": "colors"
+      },
+      {
+        "name": "The Identifier Rule",
+        "body": "Keys, roles and times are monospace; prose never is.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "If it doesn't float, it doesn't cast.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do separate regions with a 1px hairline (white at 10 %) before reaching for a fill or shadow.",
+      "Do write every colour through the themed variables so light and dark both work.",
+      "Do use the gradient primary button once per view; everything else is secondary or ghost.",
+      "Do set keys, roles and timestamps in JetBrains Mono at 12px.",
+      "Do keep German labels short and let the table density setting apply to any new table.",
+      "Do keep phase and status colours identical across list, timeline, graph and report."
+    ],
+    "donts": [
+      "Don't use red, yellow, orange, green or blue for anything but phase, status or error meaning.",
+      "Don't add a second interface accent next to sky.",
+      "Don't put shadows on lists, tables or in-page cards.",
+      "Don't add colour halos or glows to cards, buttons, dots or logos. Phase colour is an edge or a ring, never a glow.",
+      "Don't hard-code dark-theme hex values in templates.",
+      "Don't add new external font or script requests.",
+      "Don't remove or replace the focus outline; a colour change alone is not a focus indicator."
+    ]
+  }
+}

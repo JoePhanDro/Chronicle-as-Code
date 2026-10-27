@@ -1,3 +1,4 @@
+import shutil
 import stat
 from pathlib import Path
 
@@ -53,11 +54,10 @@ def source_db(tmp_path):
     user_id = accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     conn.close()
 
-    import_folder(path, DATA_DIR)
-    project_dir = tmp_path / "projekt"
-    project_dir.mkdir()
-    (project_dir / "projekt.yaml").write_text(PROJECT, encoding="utf-8")
-    import_folder(path, project_dir)
+    data = tmp_path / "data"  # the files are the source of truth (ADR 0011)
+    shutil.copytree(DATA_DIR, data)
+    (data / "projekt.yaml").write_text(PROJECT, encoding="utf-8")
+    import_folder(path, data)
 
     conn = connect(path)
     repository.create_event(
@@ -69,17 +69,23 @@ def source_db(tmp_path):
         ["inc-2026-042", "projekt-x"],
         user_id,
         "127.0.0.1",
+        data,
     )
     repository.add_evidence(
-        conn, "exploit", check_file("probe.png", PNG), "screenshot", "Probe", user_id, "127.0.0.1"
+        conn, "exploit", check_file("probe.png", PNG), "screenshot", "Probe", user_id, "127.0.0.1", data
     )
     conn.close()
     return path
 
 
+def export(db, out):
+    """The export of a database whose evidence lives in the data folder next to it."""
+    return export_database(db, out, Path(db).parent / "data")
+
+
 def test_export_then_import_into_an_empty_database_gives_the_same_export(source_db, tmp_path):
     first = tmp_path / "export-1"
-    report = export_database(source_db, first)
+    report = export(source_db, first)
     assert (report.topics, report.events) == (2, 9)
     assert report.evidence == 3  # two sample files and the upload
 
@@ -87,12 +93,12 @@ def test_export_then_import_into_an_empty_database_gives_the_same_export(source_
     import_folder(fresh, first)
 
     second = tmp_path / "export-2"
-    export_database(fresh, second)
+    export_database(fresh, second, first)  # the index holds no bytes, the evidence is in the folder that was imported
     assert tree(first) == tree(second)
 
 
 def test_roundtrip_keeps_cross_topic_links_and_evidence(source_db, tmp_path):
-    export_database(source_db, tmp_path / "export")
+    export(source_db, tmp_path / "export")
     fresh = tmp_path / "fresh.db"
     import_folder(fresh, tmp_path / "export")
 
@@ -106,7 +112,7 @@ def test_roundtrip_keeps_cross_topic_links_and_evidence(source_db, tmp_path):
 
 
 def test_export_writes_one_yaml_per_topic_in_the_import_format(source_db, tmp_path):
-    export_database(source_db, tmp_path / "export")
+    export(source_db, tmp_path / "export")
 
     document = yaml.safe_load((tmp_path / "export" / "projekt-x.yaml").read_text(encoding="utf-8"))
     assert document["topic"]["title"] == "Projekt X: Härtung"
@@ -116,7 +122,7 @@ def test_export_writes_one_yaml_per_topic_in_the_import_format(source_db, tmp_pa
 
 
 def test_multiline_details_are_written_as_literal_blocks(source_db, tmp_path):
-    export_database(source_db, tmp_path / "export")
+    export(source_db, tmp_path / "export")
     text = (tmp_path / "export" / "projekt-x.yaml").read_text(encoding="utf-8")
     assert "details: |" in text
     assert "Erster Absatz mit **Markdown**." in text
@@ -140,7 +146,7 @@ def test_export_of_a_missing_database_is_an_error(tmp_path):
 
 
 def test_export_cli_reports_the_counts(source_db, tmp_path, capsys):
-    assert export_main(["--db", str(source_db), "--out", str(tmp_path / "out")]) == 0
+    assert export_main(["--db", str(source_db), "--out", str(tmp_path / "out"), "--data", str(tmp_path / "data")]) == 0
     assert "2 Topics, 9 Events, 3 Evidence-Dateien" in capsys.readouterr().out
 
 
@@ -225,3 +231,13 @@ def test_backup_cli_writes_a_timestamped_file_into_a_folder(source_db, tmp_path,
     assert len(written) == 1  # the index copy; the operations copy sits beside it as chronicle-*.ops.db
     assert len(list(folder.glob("chronicle-*.ops.db"))) == 1
     assert str(written[0]) in capsys.readouterr().out
+
+
+def test_a_topic_file_over_the_size_limit_is_reported(source_db, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("chronicle.exporter.MAX_YAML_BYTES", 3000)  # the sample topic is bigger, the project topic is not
+
+    code = export_main(["--db", str(source_db), "--out", str(tmp_path / "export"), "--data", str(tmp_path / "data")])
+
+    assert code == 0
+    assert (tmp_path / "export" / "inc-2026-042.yaml").exists()  # the export is written all the same
+    assert "Warnung: inc-2026-042.yaml ist größer als" in capsys.readouterr().err

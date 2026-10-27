@@ -4,7 +4,7 @@
 <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
   <div>
     <h1 class="text-xl font-semibold text-slate-100">Ereignisse</h1>
-    <p class="text-sm text-slate-400">{{ total }} Events{% if filtered %} gefunden{% endif %}{% if topic %} im Topic <span class="text-slate-200">{{ topic.title }}</span>{% endif %}{% if query.system %} im System <span class="text-slate-200">{{ query.system }}</span>{% endif %}, zeitlich sortiert (<span data-zone-label>UTC</span>)</p>
+    <p class="text-sm text-slate-400">{{ total | count_events }}{% if filtered %} gefunden{% endif %}{% if topic %} im Topic <span class="text-slate-200">{{ topic.title }}</span>{% endif %}{% if query.system %} im System <span class="text-slate-200">{{ query.system }}</span>{% endif %}, zeitlich sortiert (<span data-zone-label>UTC</span>)</p>
   </div>
   {% if can_write %}
   <a href="/events/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Neues Event</a>
@@ -35,7 +35,7 @@
     <span class="mb-1 block text-xs font-medium text-slate-400">Status</span>
     <select name="status" class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
       <option value="">alle</option>
-      {% for item in statuses %}<option value="{{ item.value }}" {{ 'selected' if query.get('status') == item.value }}>{{ item.value.replace('_', ' ') }}</option>{% endfor %}
+      {% for item in statuses %}<option value="{{ item.value }}" {{ 'selected' if query.get('status') == item.value }}>{{ status_text.get(item.value, item.value) }}</option>{% endfor %}
     </select>
   </label>
   <label class="block">
@@ -64,11 +64,11 @@
   <table class="w-full text-left text-sm">
     <thead class="bg-white/[.03] text-xs uppercase tracking-wide text-slate-500">
       <tr>
-        <th class="px-4 py-2 font-medium">Zeit (<span data-zone-label>UTC</span>)</th>
-        <th class="px-4 py-2 font-medium">Phase</th>
-        <th class="px-4 py-2 font-medium">Aktion</th>
-        <th class="px-4 py-2 font-medium">Akteur</th>
-        <th class="px-4 py-2 font-medium">Status</th>
+        <th scope="col" class="px-4 py-2 font-medium">Zeit (<span data-zone-label>UTC</span>)</th>
+        <th scope="col" class="px-4 py-2 font-medium">Phase</th>
+        <th scope="col" class="px-4 py-2 font-medium">Aktion</th>
+        <th scope="col" class="px-4 py-2 font-medium">Akteur</th>
+        <th scope="col" class="px-4 py-2 font-medium">Status</th>
       </tr>
     </thead>
     <tbody class="divide-y divide-white/5">
@@ -78,7 +78,7 @@
         <td class="px-4 py-2 text-xs text-slate-300">{{ event.phase }}</td>
         <td class="px-4 py-2"><a href="/events/{{ event.key }}" class="text-sky-300 hover:underline">{{ event.action }}</a></td>
         <td class="px-4 py-2 text-slate-400">{{ event.actor }}</td>
-        <td class="px-4 py-2 text-xs text-slate-400">{{ event.status.replace('_', ' ') }}</td>
+        <td class="px-4 py-2 text-xs text-slate-400">{{ status_text.get(event.status, event.status) }}</td>
       </tr>
       {% endfor %}
     </tbody>

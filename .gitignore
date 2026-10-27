@@ -11,3 +11,9 @@ __pycache__/
 # Write lock and temporary files of the topic writer (issue #89)
 .chronicle.lock
 .*.yaml.tmp
+.*.yaml.*.tmp
+
+# Own TLS certificate of the proxy (docs/betrieb-tls.md): the private key must never be committed
+/certs/*
+!/certs/.gitkeep
+!/certs/README.md

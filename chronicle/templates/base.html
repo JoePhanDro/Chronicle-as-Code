@@ -1,11 +1,11 @@
 {% macro menu(id, label, entries, align_end=false) -%}
 <div class="relative" data-menu>
-  <button type="button" class="flex items-center gap-1 rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white" aria-expanded="false" aria-controls="{{ id }}">
+  <button type="button" class="flex items-center gap-1 rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white max-sm:min-h-11" aria-expanded="false" aria-controls="{{ id }}">
     {{ label }}<span class="text-xs" aria-hidden="true">▾</span>
   </button>
   <ul id="{{ id }}" hidden class="absolute left-0 z-20 {{ 'max-sm:left-auto max-sm:right-0' if align_end }} mt-2 min-w-[12rem] rounded-xl border border-white/10 bg-slate-900 p-1 shadow-2xl shadow-black/40">
     {% for href, text in entries %}
-    <li><a href="{{ href }}" class="block rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white">{{ text }}</a></li>
+    <li><a href="{{ href }}" class="block rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white max-sm:py-3">{{ text }}</a></li>
     {% endfor %}
   </ul>
 </div>
@@ -38,39 +38,82 @@
   {% block head %}{% endblock %}
 </head>
 <body class="min-h-screen bg-slate-950 font-sans text-slate-200 antialiased">
+  <a href="#main" class="sr-only rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50">Zum Inhalt springen</a>
   {% set writer = user.role in ['admin', 'analyst'] %}
-  <header class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-6 py-3">
-    <nav aria-label="Hauptmenü" class="flex flex-wrap items-center gap-1 text-sm">
-      <a href="/" class="mr-3 font-semibold text-slate-100">Chronicle</a>
+  <header class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-white/10 px-4 py-2 sm:px-6 sm:py-3">
+    <nav aria-label="Hauptmenü" class="flex w-full flex-wrap items-center gap-1 text-sm sm:w-auto">
+      <a href="/" class="mr-3 font-semibold text-slate-100 max-sm:flex max-sm:min-h-11 max-sm:items-center">Chronicle</a>
       {{ menu("menu-views", "Ansichten", [("/events", "Ereignisse"), ("/topics", "Topics")] + ([("/reports", "Berichte")] if user.role == 'admin' else [])) }}
       {% if writer %}
       {{ menu("menu-new", "Neu", [("/events/new", "Ereignis"), ("/topics/new", "Topic")], align_end=true) }}
       {% endif %}
       {% if user.role == 'admin' %}
-      {{ menu("menu-admin", "Verwaltung", [("/admin/users", "Benutzer"), ("/admin/grabsteine", "Gelöschte Events"), ("/admin/audit", "Audit-Log")], align_end=true) }}
+      {{ menu("menu-admin", "Verwaltung", [("/admin/users", "Benutzer"), ("/admin/audit", "Audit-Log")], align_end=true) }}
       {% endif %}
+      {# Small screens: the account controls share one menu, so the header stays two rows. #}
+      <div class="relative sm:hidden" data-menu>
+        <button type="button" class="flex min-h-11 items-center gap-1 rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white" aria-expanded="false" aria-controls="menu-account">
+          Konto<span class="text-xs" aria-hidden="true">▾</span>
+        </button>
+        <ul id="menu-account" hidden class="absolute right-0 z-20 mt-2 min-w-[12rem] rounded-xl border border-white/10 bg-slate-900 p-1 shadow-2xl shadow-black/40">
+          <li class="px-3 py-2 text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></li>
+          <li><a href="/hilfe" class="block rounded-lg px-3 py-3 text-slate-300 hover:bg-white/5 hover:text-white">Hilfe</a></li>
+          {% if writer %}
+          <li>
+            <form method="post" action="/neu-laden">
+              <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+              <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+              <button type="submit" class="block w-full rounded-lg px-3 py-3 text-left text-slate-300 hover:bg-white/5 hover:text-white">Neu laden</button>
+            </form>
+          </li>
+          {% endif %}
+          <li><button type="button" data-open-settings aria-controls="settings-dialog" class="block w-full rounded-lg px-3 py-3 text-left text-slate-300 hover:bg-white/5 hover:text-white">Einstellungen</button></li>
+          {% if not user.guest %}<li><a href="/account/password" class="block rounded-lg px-3 py-3 text-slate-300 hover:bg-white/5 hover:text-white">Passwort</a></li>{% endif %}
+          <li>
+            <form method="post" action="/logout">
+              <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+              <button type="submit" class="block w-full rounded-lg px-3 py-3 text-left text-slate-300 hover:bg-white/5 hover:text-white">Abmelden</button>
+            </form>
+          </li>
+        </ul>
+      </div>
     </nav>
-    <form role="search" method="get" action="/suche" class="flex items-center gap-2 text-sm">
+    <form role="search" method="get" action="/suche" class="flex min-w-0 flex-1 items-center gap-2 text-sm sm:flex-none">
       <label class="sr-only" for="header-search">Suchen in Ereignissen, Akteuren und Systemen</label>
-      <input id="header-search" type="search" name="q" placeholder="Suchen (/)" class="w-44 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-1.5 text-slate-100 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none">
-      <button type="submit" class="rounded-lg px-2 py-1.5 text-slate-400 hover:bg-white/5 hover:text-white">Suchen</button>
+      <input id="header-search" type="search" name="q" placeholder="Suchen (/)" class="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-1.5 text-slate-100 placeholder:text-slate-500 focus:border-sky-400/60 focus:outline-none max-sm:min-h-11 sm:w-44 sm:flex-none">
+      <button type="submit" class="rounded-lg px-2 py-1.5 text-slate-400 hover:bg-white/5 hover:text-white max-sm:min-h-11">Suchen</button>
     </form>
     <div class="flex items-center gap-4 text-sm">
-      <a href="/hilfe" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white">Hilfe</a>
-      <button type="button" id="theme-toggle" class="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Helles Design aktivieren">
+      <a href="/hilfe" class="hidden rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white sm:inline">Hilfe</a>
+      <button type="button" id="theme-toggle" class="rounded-lg p-1.5 text-slate-400 hover:bg-white/5 hover:text-white max-sm:p-3.5" aria-label="Helles Design aktivieren">
         <svg id="theme-icon-sun" hidden aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
         <svg id="theme-icon-moon" hidden aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
       </button>
-      <button type="button" id="open-settings" aria-controls="settings-dialog" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white">Einstellungen</button>
-      <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
-      {% if not user.guest %}<a href="/account/password" class="text-slate-400 hover:text-white">Passwort</a>{% endif %}
-      <form method="post" action="/logout">
+      {% if writer %}
+      <form method="post" action="/neu-laden" class="hidden sm:block">
         <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-        <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-slate-300 hover:border-sky-400/50 hover:text-white">Abmelden</button>
+        <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+        <button type="submit" title="Topic-Dateien neu einlesen, etwa nach Änderungen im Editor oder durch Git" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white">Neu laden</button>
       </form>
+      {% endif %}
+      <div class="hidden items-center gap-4 sm:flex">
+        <button type="button" data-open-settings aria-controls="settings-dialog" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-white/5 hover:text-white">Einstellungen</button>
+        <span class="text-slate-400">{{ user.username }} · <span class="font-mono text-slate-300">{{ user.role }}</span></span>
+        {% if not user.guest %}<a href="/account/password" class="text-slate-400 hover:text-white">Passwort</a>{% endif %}
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+          <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-slate-300 hover:border-sky-400/50 hover:text-white">Abmelden</button>
+        </form>
+      </div>
     </div>
   </header>
-  <main class="mx-auto max-w-5xl px-6 py-8">
+  <main id="main" class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    {% if reloaded %}
+    <p role="status" class="mb-6 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">Die Topic-Dateien sind neu eingelesen.</p>
+    <script>
+      try { var address = new URL(location.href); address.searchParams.delete('neu_geladen'); history.replaceState(null, '', address.pathname + address.search + address.hash); } catch (error) {}
+    </script>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 
@@ -152,10 +195,10 @@
         if (density === 'compact') document.documentElement.dataset.density = 'compact';
         else delete document.documentElement.dataset.density;
       };
-      document.getElementById('open-settings').addEventListener('click', () => {
+      document.querySelectorAll('[data-open-settings]').forEach(opener => opener.addEventListener('click', () => {
         radios.forEach(radio => { radio.checked = radio.value === readDensity(); });
         dialog.showModal();
-      });
+      }));
       radios.forEach(radio => radio.addEventListener('change', () => {
         try { localStorage.setItem('chronicle.density', radio.value); } catch (error) { /* not saved, applied for this page only */ }
         applyDensity(radio.value);
@@ -226,8 +269,9 @@
       const apply = () => {
         const theme = current();
         // The icon shows the theme the button switches to.
-        sun.hidden = theme !== 'dark';
-        moon.hidden = theme === 'dark';
+        // SVG elements have no .hidden property, so the attribute is toggled.
+        sun.toggleAttribute('hidden', theme !== 'dark');
+        moon.toggleAttribute('hidden', theme === 'dark');
         button.setAttribute('aria-label', theme === 'dark' ? 'Helles Design aktivieren' : 'Dunkles Design aktivieren');
         button.title = button.getAttribute('aria-label');
       };
@@ -273,6 +317,9 @@
           const wasOpen = trigger.getAttribute('aria-expanded') === 'true';
           triggers.forEach(other => setOpen(other, false));
           setOpen(trigger, !wasOpen);
+        });
+        document.getElementById(trigger.getAttribute('aria-controls')).addEventListener('click', event => {
+          if (event.target.closest('a, button:not([type=submit])')) setOpen(trigger, false);
         });
         trigger.parentElement.addEventListener('keydown', event => {
           if (event.key === 'Escape' && trigger.getAttribute('aria-expanded') === 'true') {

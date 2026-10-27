@@ -24,6 +24,7 @@ ADR 0001 sieht einen eigenständigen HTML-Bericht für Post-Mortems vor, ohne Se
 - Die Datei ist eine vollständige Kopie des Topics. Wer sie hat, sieht alles. Das bleibt das Risiko des Berichts und steht in der Oberfläche.
 - Ein Bericht kann groß werden, weil Evidence eingebettet ist (bis 10 MiB je Datei). Der Download lädt die Datei komplett.
 - Die Einbindung der CDN-Skripte (vis-timeline, vis-network, DOMPurify) bleibt. Der Bericht braucht dafür eine Internetverbindung beim Öffnen.
+  - Aktualisierung: vis-timeline und vis-network liegen unter `static/vendor/` (Herkunft und Hashes in der README dort). Die App liefert sie selbst aus, Bericht und statische Seiten betten sie ein, die Datei wächst dadurch um etwa 1,3 MB. Inter und JetBrains Mono liegen unter `static/vendor/fonts/` und werden ebenso ausgeliefert oder eingebettet (etwa 120 KB). Offen bleibt Mermaid, das nur bei Diagrammen im Text nachgeladen wird.
 
 ## Offene Punkte
 

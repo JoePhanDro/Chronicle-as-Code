@@ -16,7 +16,10 @@ Git setup for a data repository (per clone, git does not share it):
     *.yaml merge=chronicle
 
     git config merge.chronicle.name "Chronicle: Feldebene"
-    git config merge.chronicle.driver "python -m chronicle.merge %O %A %B"
+    git config merge.chronicle.driver "python -P -m chronicle.merge %O %A %B"
+
+The app sets this itself (sync._driver_command); `-P` keeps the data folder, where git runs the driver, off the
+module search path.
 
 On a conflict the driver exits with 1 and leaves our version in %A. Git marks the file as conflicted.
 """
@@ -27,17 +30,22 @@ import io
 import sys
 from pathlib import Path
 
+from pydantic import ValidationError
+
+from .loader import TimelineError, read_topic_text
 from .models import Event, Timeline, Topic
 from .store import (
-    StoreError,
     _event_document,
     _evidence_document,
+    _load_document,
     _put,
     _read_model,
     _set_changed_fields,
     _text,
+    _atomic_write,
     _yaml,
 )
+from .yamlscan import MAX_YAML_BYTES, TOO_LARGE, describe_validation_error
 
 TOPIC_FIELDS = ("title", "kind", "summary")
 EVENT_FIELDS = tuple(name for name in Event.model_fields if name != "key")
@@ -129,8 +137,8 @@ def merge_timelines(base: Timeline | None, ours: Timeline, theirs: Timeline) -> 
         raise MergeConflict(problems)
     try:
         return Timeline(topic=topic, events=events, refs=refs)
-    except ValueError as exc:
-        raise MergeConflict([str(exc)]) from exc
+    except ValidationError as exc:
+        raise MergeConflict([describe_validation_error(exc)]) from exc
 
 
 def _apply(document, ours: Timeline, merged: Timeline) -> None:
@@ -172,10 +180,12 @@ def merge_texts(base_text: str, ours_text: str, theirs_text: str) -> str:
     theirs = _read_model(theirs_text)
     merged = merge_timelines(base, ours, theirs)
 
-    document = _yaml().load(ours_text)
+    document = _load_document(ours_text)
     _apply(document, ours, merged)
     stream = io.StringIO()
     _yaml().dump(document, stream)
+    if len(stream.getvalue().encode("utf-8")) > MAX_YAML_BYTES:
+        raise MergeConflict([f"Das Ergebnis des Zusammenführens würde die Grenze für eine Topic-Datei überschreiten ({TOO_LARGE})"])
     if _read_model(stream.getvalue()) != merged:
         raise MergeConflict(["Das zusammengeführte Ergebnis liest sich anders als berechnet."])
     return stream.getvalue()
@@ -185,18 +195,18 @@ def main(argv: list[str]) -> int:
     """Git calls the driver with the base (%O), our (%A) and their (%B) version. The result goes to %A."""
     base_path, ours_path, theirs_path = argv[:3]
     try:
-        merged = merge_texts(Path(base_path).read_text(encoding="utf-8"),
-                             Path(ours_path).read_text(encoding="utf-8"),
-                             Path(theirs_path).read_text(encoding="utf-8"))
+        merged = merge_texts(read_topic_text(Path(base_path)),
+                             read_topic_text(Path(ours_path)),
+                             read_topic_text(Path(theirs_path)))
     except MergeConflict as exc:
         print("Chronicle: Konflikt, bitte von Hand auflösen:", file=sys.stderr)
         for problem in exc.problems:
             print(f"  {problem}", file=sys.stderr)
         return 1
-    except StoreError as exc:
+    except TimelineError as exc:  # includes StoreError
         print(f"Chronicle: Datei nicht lesbar: {exc}", file=sys.stderr)
         return 1
-    Path(ours_path).write_text(merged, encoding="utf-8")
+    _atomic_write(Path(ours_path), merged.encode("utf-8"))
     return 0
 
 

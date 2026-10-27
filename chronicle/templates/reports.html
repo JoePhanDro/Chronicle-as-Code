@@ -3,16 +3,20 @@
 {% block content %}
 <h1 class="mb-2 text-xl font-semibold text-slate-100">Berichte</h1>
 <p class="mb-6 max-w-2xl text-sm text-slate-400">
-  Ein Bericht ist eine HTML-Datei mit allen Events eines Topics, dem Graphen und der Evidence. Er braucht keine Anmeldung und zeigt den Stand zum Zeitpunkt des Downloads. Wer die Datei hat, sieht alles. Teile sie bewusst.
+  Der HTML-Bericht enthält alle Events eines Topics, den Graphen und die Evidence. Das PDF gibt es technisch (alle Events mit Details, Ursachen und Bildern) und als Management Summary (nur Event-Titel mit Zeit und Kennzahlen). Berichte brauchen keine Anmeldung und zeigen den Stand zum Zeitpunkt des Downloads. Wer die Datei hat, sieht alles. Teile sie bewusst.
 </p>
 <ul class="divide-y divide-white/10 rounded-xl border border-white/10">
   {% for topic in topics %}
   <li class="flex items-center justify-between gap-4 px-4 py-3">
     <div class="min-w-0">
       <div class="truncate text-sm font-medium text-slate-100">{{ topic.title }}</div>
-      <div class="font-mono text-xs text-slate-500">{{ topic.key }} · {{ topic.kind }} · {{ topic.event_count }} Events</div>
+      <div class="font-mono text-xs text-slate-500">{{ topic.key }} · {{ topic.kind }} · {{ topic.event_count | count_events }}</div>
     </div>
-    <a href="/reports/{{ topic.key }}" class="flex-none rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">Bericht laden</a>
+    <div class="flex flex-none flex-wrap justify-end gap-2">
+      <a href="/reports/{{ topic.key }}" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">HTML-Bericht</a>
+      <a href="/reports/{{ topic.key }}/pdf?art=technisch" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">PDF technisch</a>
+      <a href="/reports/{{ topic.key }}/pdf?art=management" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">PDF Management</a>
+    </div>
   </li>
   {% else %}
   <li class="px-4 py-3 text-sm text-slate-500">Noch keine Topics.</li>

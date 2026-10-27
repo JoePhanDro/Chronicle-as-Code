@@ -10,16 +10,17 @@
       if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
     } catch (error) { /* a saved report has no app storage; the system setting applies */ }
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>{{ font_css | safe }}</style>
   {% if inline_css %}<style>{{ inline_css|safe }}</style>{% else %}<link rel="stylesheet" href="app.css">{% endif %}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/styles/vis-timeline-graph2d.min.css"
-        integrity="sha384-N/4l0y8PNlO5uZuzP9PK3bAgJQ8ZChybZFXB2mpkZRUil/bui++mvYXPzPAHpbr6" crossorigin="anonymous">
-  <script src="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/standalone/umd/vis-timeline-graph2d.min.js"
-          integrity="sha384-MLX+7yEEPNEznaIWwQi2pBMODSBP6Qo6BOVpzjFWB0UkfEzEYsvHOo7ISLfcQeiI" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"
-          integrity="sha384-yxKDWWf0wwdUj/gPeuL11czrnKFQROnLgY8ll7En9NYoXibgg3C6NK/UDHNtUgWJ" crossorigin="anonymous"></script>
+  {% if vendor == "local" %}
+  <link rel="stylesheet" href="/static/vendor/vis-timeline-graph2d.min.css">
+  <script src="/static/vendor/vis-timeline-graph2d.min.js"></script>
+  <script src="/static/vendor/vis-network.min.js"></script>
+  {% else %}
+  <style>{{ vendor_css | safe }}</style>
+  <script>{{ vendor_timeline_js | safe }}</script>
+  <script>{{ vendor_network_js | safe }}</script>
+  {% endif %}
   <style>
     /* Dark is the default. Light applies by choice, or with no choice when the system prefers light. */
     :root,
@@ -83,9 +84,12 @@
     }
     .glass {
       background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    /* Blur only where a panel lies over content: the legend on the graph. */
+    .blur-overlay {
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
-      border: 1px solid var(--line);
     }
     .dot-grid {
       background-image: radial-gradient(var(--dot) 1px, transparent 1px);
@@ -101,18 +105,40 @@
       font-size: 12px;
       transition: all .15s ease;
     }
-    .btn:hover { color: var(--strong); border-color: rgba(56, 189, 248, .5); box-shadow: 0 0 18px -6px rgba(56, 189, 248, .6); }
+    .btn:hover { color: var(--strong); border-color: rgba(56, 189, 248, .5); }
 
     /* Status indicator (open / in_progress / resolved) */
     .st { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; margin-right: 6px; vertical-align: middle; background: #64748b; flex: none; }
     .st-open { background: #f43f5e; }
     .st-resolved { background: #22c55e; }
-    .st-in_progress { background: #f59e0b; animation: pulse 1.8s infinite; }
-    @keyframes pulse {
+    .st-in_progress { background: #f59e0b; animation: st-pulse 1.8s infinite; }
+    @keyframes st-pulse {
       0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, .7); }
       70% { box-shadow: 0 0 0 7px rgba(245, 158, 11, 0); }
       100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
     }
+
+    /* Reduced motion keeps the state (the in-progress dot stays amber) and drops the movement. */
+    @media (prefers-reduced-motion: reduce) {
+      .st-in_progress { animation: none; }
+      .btn, .vis-item.ch-item { transition: none; }
+      .vis-item.ch-item:hover { transform: none; }
+    }
+
+    /* Touch: controls reach 44px on coarse pointers and narrow screens; the mouse layout stays dense. */
+    @media (pointer: coarse), (max-width: 639px) {
+      .btn, .view-tab, #filters select, #panel-graph label, #panel-events td button { min-height: 44px; }
+      #filters select { padding-left: 10px; padding-right: 10px; }
+      #panel-graph label { padding: 0 4px; }
+    }
+    /* Narrow: the filters sit in two columns, so the larger fields do not push the views off the screen. */
+    @media (max-width: 639px) {
+      #filters { display: grid; grid-template-columns: 1fr 1fr; }
+      #filters label { flex-direction: column; align-items: stretch; gap: 4px; }
+      #filters > span, #filters > button { grid-column: 1 / -1; }
+    }
+
+    .vis-active { box-shadow: none; } /* vis-timeline's own sky glow on the active timeline */
 
     /* vis-timeline: dark, minimal chrome, event cards in swimlanes */
     .vis-timeline { border: 0; background: transparent; font-family: Inter, system-ui, sans-serif; }
@@ -128,14 +154,13 @@
       border: 1px solid var(--line);
       border-left: 3px solid var(--c);
       border-radius: 10px;
-      box-shadow: 0 10px 28px -14px var(--c);
       color: var(--text);
       transition: box-shadow .2s ease, transform .2s ease;
     }
     .vis-item.ch-item:hover { transform: translateY(-1px); }
     .vis-item.ch-item.vis-selected {
       border-color: var(--c);
-      box-shadow: 0 0 0 1px var(--c), 0 0 26px -4px var(--c);
+      box-shadow: 0 0 0 2px var(--c);
     }
     .vis-item.ch-item { font-size: 12px; line-height: 1.3; text-align: left; }
     .vis-item.ch-item .vis-item-content { padding: 0; }
@@ -176,55 +201,73 @@
     }
 
     /* Markdown in details */
-    .prose-invert code { background: var(--code); padding: 1px 5px; border-radius: 5px; }
-    .prose-invert code::before, .prose-invert code::after { content: none; }
-    .prose-invert pre { background: var(--pre); border: 1px solid var(--line); }
+    .prose-chronicle code { background: var(--code); padding: 1px 5px; border-radius: 5px; }
+    .prose-chronicle code::before, .prose-chronicle code::after { content: none; }
+    .prose-chronicle pre { background: var(--pre); border: 1px solid var(--line); }
   </style>
+  {% if embedded %}
+  <style>
+    /* In the topic page's frame the layout is always stacked and the frame grows to fit it, so the panels get
+       fixed heights: vh units would depend on the frame's own height and feed back into it. */
+    :root:root body { height: auto; overflow: visible; min-height: 0; }
+    :root:root #panel-timeline { height: 320px; min-height: 0; flex: none; }
+    :root:root #panel-graph, :root:root #panel-events, :root:root #panel-evidence { height: 420px; min-height: 0; flex: none; }
+    :root:root main { grid-template-columns: minmax(0, 1fr); }
+    :root:root #details { overflow: visible; }
+    /* Without a selected event there is nothing to show: no empty panel, the event list above already names them. */
+    :root:root #details:empty { display: none; }
+  </style>
+  {% endif %}
 </head>
 <body class="flex min-h-screen flex-col font-sans lg:h-screen lg:overflow-hidden">
 
   <header class="glass flex flex-wrap items-center justify-between gap-4 border-x-0 border-t-0 px-5 py-3">
+    {% if not embedded %}
     <div class="flex min-w-0 items-center gap-3">
-      <div class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-violet-500 shadow-lg shadow-sky-500/20">
+      <div class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-violet-500>
         <svg viewBox="0 0 24 24" class="h-5 w-5 text-ink" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
       </div>
       <div class="min-w-0">
-        <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300/80">Chronicle · {{ 'Bericht' if snapshot else 'Ansicht' }}</div>
+        <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300">Chronicle · {{ 'Bericht' if snapshot else 'Ansicht' }}</div>
         <h1 class="truncate text-base font-semibold text-slate-100">{{ title }}</h1>
         {% if summary %}<p class="truncate text-xs text-slate-400">{{ summary }}</p>{% endif %}
       </div>
     </div>
+    {% endif %}
     {% if snapshot %}<span class="rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-1 text-xs text-amber-200">Berichts-Snapshot · vertraulich · ohne Anmeldung{% if generated_at %} · Stand {{ generated_at }}{% endif %}</span>{% endif %}
     <div id="kpis" class="flex flex-wrap items-center gap-2 text-xs"></div>
   </header>
 
-  <div class="glass flex flex-wrap gap-1.5 border-x-0 border-t-0 px-5 py-2 text-[11px] text-slate-300">
+  {% if not embedded %}
+  <div class="glass flex flex-none gap-1.5 overflow-x-auto border-x-0 border-t-0 px-5 py-2 text-[11px] text-slate-300 sm:flex-wrap sm:overflow-visible">
     {% for phase in phases %}
-    <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[.03] px-2.5 py-1 ring-1 ring-white/5">
-      <span class="h-2 w-2 rounded-full" style="background: {{ phase.color }}; box-shadow: 0 0 10px {{ phase.color }}"></span>{{ phase.name }}
+    <span class="inline-flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full bg-white/[.03] px-2.5 py-1 ring-1 ring-white/5">
+      <span class="h-2 w-2 rounded-full" style="background: {{ phase.color }}"></span>{{ phase.name }}
     </span>
     {% endfor %}
   </div>
+  {% endif %}
 
   <div id="filters" class="glass flex flex-wrap items-center gap-x-4 gap-y-2 border-x-0 border-t-0 px-5 py-2 text-xs"></div>
 
   <main class="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-5">
-    <article id="details" class="glass p-5 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto" style="border-width: 0 1px 0 0"></article>
 
     <div class="flex min-w-0 flex-col lg:col-span-3 lg:min-h-0">
-      <div role="tablist" aria-label="Ansichten" class="flex flex-wrap gap-1 border-b border-white/10 px-3">
+      <div role="tablist" aria-label="Ansichten" class="sticky top-0 z-20 flex flex-wrap gap-1 border-b border-white/10 bg-[var(--bg)] px-3 lg:static">
         <button type="button" role="tab" id="tab-timeline" data-view="timeline" aria-controls="panel-timeline" class="view-tab">Timeline</button>
         <button type="button" role="tab" id="tab-graph" data-view="graph" aria-controls="panel-graph" class="view-tab">Graph</button>
         <button type="button" role="tab" id="tab-events" data-view="events" aria-controls="panel-events" class="view-tab">Ereignisse</button>
         <button type="button" role="tab" id="tab-evidence" data-view="evidence" aria-controls="panel-evidence" class="view-tab">Evidence</button>
       </div>
 
-      <section role="tabpanel" id="panel-timeline" aria-labelledby="tab-timeline" class="view-panel h-[45vh] min-h-[280px] px-2 py-2 lg:h-auto lg:min-h-0">
-        <div id="timeline" class="h-full"></div>
+      <section role="tabpanel" id="panel-timeline" aria-labelledby="tab-timeline" aria-describedby="hint-timeline" class="view-panel h-[45vh] min-h-[280px] px-2 py-2 lg:h-auto lg:min-h-0">
+        <p id="hint-timeline" class="sr-only">Grafische Timeline. Alle Ereignisse stehen auch als Tabelle im Tab Ereignisse und lassen sich dort mit der Tastatur auswählen.</p>
+        <div id="timeline" role="group" aria-label="Timeline der Ereignisse" class="h-full"></div>
       </section>
 
-      <section role="tabpanel" id="panel-graph" aria-labelledby="tab-graph" hidden class="view-panel dot-grid relative h-[60vh] lg:h-auto lg:min-h-0">
-        <div id="graph" class="absolute inset-0"></div>
+      <section role="tabpanel" id="panel-graph" aria-labelledby="tab-graph" aria-describedby="hint-graph" hidden class="view-panel dot-grid relative h-[60vh] lg:h-auto lg:min-h-0">
+        <p id="hint-graph" class="sr-only">Grafischer Graph der Zusammenhänge. Alle Ereignisse stehen auch als Tabelle im Tab Ereignisse und lassen sich dort mit der Tastatur auswählen.</p>
+        <div id="graph" role="group" aria-label="Graph der Zusammenhänge" class="absolute inset-0"></div>
 
         <div class="absolute right-4 top-4 z-10 flex gap-2">
           <button id="btn-fit" class="btn">Zentrieren</button>
@@ -232,7 +275,7 @@
           <button id="btn-reset" class="btn">Auswahl lösen</button>
         </div>
 
-        <div class="glass absolute bottom-4 left-4 z-10 flex flex-wrap gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-slate-300">
+        <div class="glass blur-overlay absolute bottom-4 left-4 z-10 flex flex-wrap gap-x-4 gap-y-1 rounded-xl px-3 py-2 text-[11px] text-slate-300">
           <label class="inline-flex cursor-pointer items-center gap-1.5"><input type="checkbox" data-kind="actor" checked class="accent-sky-400"><span class="h-2 w-2 rounded-full bg-sky-400"></span>Akteur</label>
           <label class="inline-flex cursor-pointer items-center gap-1.5"><input type="checkbox" data-kind="system" checked class="accent-violet-400"><span class="h-2 w-2 rounded-full bg-violet-400"></span>System</label>
           <label class="inline-flex cursor-pointer items-center gap-1.5"><input type="checkbox" data-kind="event" checked class="accent-rose-400"><span class="h-2 w-2 rounded-full bg-rose-400"></span>Event (Phase-Farbe)</label>
@@ -244,6 +287,7 @@
       <section role="tabpanel" id="panel-events" aria-labelledby="tab-events" hidden class="view-panel h-[60vh] overflow-y-auto p-4 lg:h-auto lg:min-h-0"></section>
       <section role="tabpanel" id="panel-evidence" aria-labelledby="tab-evidence" hidden class="view-panel h-[60vh] overflow-y-auto p-4 lg:h-auto lg:min-h-0"></section>
     </div>
+    <article id="details" class="glass p-5 lg:order-first lg:col-span-2 lg:min-h-0 lg:overflow-y-auto" style="border-width: 0 1px 0 0"></article>
   </main>
 
   <script id="payload" type="application/json">{{ payload | tojson }}</script>
@@ -260,6 +304,9 @@
     const zoneIsLocal = setting('chronicle.zone') === 'local';
     const groupBy = ['actor', 'system', 'phase'].includes(setting('chronicle.timeline.group')) ? setting('chronicle.timeline.group') : 'actor';
     const zoomSpan = { day: 24 * 60 * 60 * 1000, hours: 6 * 60 * 60 * 1000 }[setting('chronicle.timeline.zoom')] || null;
+    // Movement is dropped when the system asks for reduced motion; vis takes `false` for "no animation".
+    const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const motion = options => (REDUCED_MOTION.matches ? false : options);
     const physicsStart = setting('chronicle.graph.physics') !== 'off';
     const labelsOn = setting('chronicle.graph.labels') !== 'off';
 
@@ -322,16 +369,19 @@
       return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     }
 
+    function eventsText(count) { return `${count} ${count === 1 ? 'Event' : 'Events'}`; }
+
+    function statusName(status) { return DATA.statusText[status] || status.replace('_', ' '); }
+
     function statusPill(status) {
       return el('span', 'inline-flex items-center rounded-full bg-white/[.04] px-2.5 py-0.5 text-[11px] text-slate-300 ring-1 ring-white/10', [
-        el('span', `st st-${status}`), status.replace('_', ' '),
+        el('span', `st st-${status}`), statusName(status),
       ]);
     }
 
     function phaseBadge(ev) {
       const badge = el('span', 'rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-ink', ev.phase);
       badge.style.background = ev.color;
-      badge.style.boxShadow = `0 0 18px -4px ${ev.color}`;
       return badge;
     }
 
@@ -346,6 +396,7 @@
     }
 
     function renderEmpty() {
+      {% if embedded %}detailsEl.replaceChildren(); return;{% endif %}
       detailsEl.replaceChildren(el('div', 'flex h-full min-h-[240px] flex-col items-center justify-center text-center', [
         el('div', 'grid h-14 w-14 place-items-center rounded-2xl bg-sky-400/10 text-2xl text-sky-300 ring-1 ring-sky-400/20', '◎'),
         el('p', 'mt-4 text-sm font-medium text-slate-300', 'Kein Event ausgewählt'),
@@ -406,7 +457,7 @@
 
       const sections = [hero];
       if (ev.details) {
-        const body = el('div', 'prose prose-invert mt-5 max-w-none rounded-2xl bg-slate-950/40 p-5 ring-1 ring-white/5 prose-a:text-sky-400');
+        const body = el('div', 'prose prose-chronicle mt-5 max-w-none rounded-2xl bg-slate-950/40 p-5 ring-1 ring-white/5 prose-a:text-sky-300');
         // Rendered and sanitized on the server (chronicle/markdown.py), the same as on the event page.
         body.innerHTML = ev.details_html;
         window.renderDiagrams(body);
@@ -438,7 +489,7 @@
       graphEdges.update(graphEdges.getIds().map(id => ({ id, color: { color: edgeBase.get(id), highlight: '#e2e8f0' } })));
     }
 
-    function selectEvent(id, { focusGraph = false } = {}) {
+    function selectEvent(id, { focusGraph = false, reveal = false } = {}) {
       if (id === currentId || !eventsById.has(id)) return;
       currentId = id;
       const ev = eventsById.get(id);
@@ -446,9 +497,17 @@
       timeline.setSelection(timelineItems.get(id) ? id : []); // a filtered-out event has no item
       network.selectNodes([`event:${id}`]);
       highlightNeighborhood(`event:${id}`);
-      if (focusGraph && currentView === 'graph' && graphEl.clientWidth) network.focus(`event:${id}`, { scale: 1.1, animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+      if (focusGraph && currentView === 'graph' && graphEl.clientWidth) network.focus(`event:${id}`, { scale: 1.1, animation: motion({ duration: 600, easingFunction: 'easeInOutQuad' }) });
       markSelected(id);
       updateHash();
+      if (reveal) revealDetails();
+    }
+
+    // Below the large layout the details sit under the views; after a click they scroll into sight.
+    const STACKED = window.matchMedia('(max-width: 1023px)');
+    function revealDetails() {
+      if (!STACKED.matches) return;
+      document.getElementById('details').scrollIntoView({ block: 'nearest', behavior: REDUCED_MOTION.matches ? 'auto' : 'smooth' });
     }
 
     function clearSelection() {
@@ -502,6 +561,13 @@
     // Axis in UTC unless the local zone is chosen. vis.moment is part of vis-timeline's standalone bundle.
     const timeAxisMoment = !zoneIsLocal && window.vis && vis.moment ? { moment: date => vis.moment(date).utc() } : {};
 
+    // Standard zoom from Einstellungen: a window from the first event. It goes into the timeline's options, because
+    // moving the window afterwards (setWindow) leaves cards stacked on top of each other that were placed for the old one.
+    const firstStart = Math.min(...DATA.events.map(ev => Date.parse(ev.t0)));
+    const zoomWindow = zoomSpan && Number.isFinite(firstStart)
+      ? { start: new Date(firstStart - 10 * 60 * 1000), end: new Date(firstStart + zoomSpan) }
+      : {};
+
     // Filled by applyFilters, which runs once the views exist.
     const timelineGroups = new vis.DataSet();
     const timelineItems = new vis.DataSet();
@@ -512,9 +578,14 @@
       margin: { item: { horizontal: 8, vertical: 10 }, axis: 8 },
       groupOrder: 'order',
       ...timeAxisMoment,
+      ...zoomWindow,
       zoomMin: 1000 * 60,
       zoomMax: 1000 * 60 * 60 * 24 * 365 * 5,
       showCurrentTime: false,
+      // vis-timeline filters the card HTML and drops every class by default, which left the .ch-* styles below without
+      // effect and the cards at the width of their text. The card only needs the class of its div and span elements;
+      // all dynamic text is escaped in the template.
+      xss: { filterOptions: { whiteList: { div: ['class'], span: ['class'] } } },
       template: item => {
         const ev = eventsById.get(item.id);
         return `<div class="ch-card">
@@ -524,7 +595,7 @@
       },
     });
     timeline.on('select', props => {
-      if (props.items.length) selectEvent(props.items[0], { focusGraph: true });
+      if (props.items.length) selectEvent(props.items[0], { focusGraph: true, reveal: true });
       else clearSelection();
     });
 
@@ -539,7 +610,7 @@
       if (kind === 'event') {
         title = ev.action;
         figures = [
-          `${ev.phase} · ${ev.status.replace('_', ' ')}`,
+          `${ev.phase} · ${statusName(ev.status)}`,
           `Belege: ${ev.evidence.length}`,
           `löst aus: ${DATA.events.filter(other => other.triggered_by.includes(ev.id)).length}`,
         ];
@@ -552,7 +623,7 @@
         figures = [`Events: ${linked.length}`, `nicht abgeschlossen: ${linked.filter(other => other.status !== 'resolved').length}`];
       }
       return el('div', 'space-y-1', [
-        el('div', 'text-[10px] font-semibold uppercase tracking-[.18em] text-sky-300/80', NODE_KIND_NAME[kind]),
+        el('div', 'text-[10px] font-semibold uppercase tracking-[.18em] text-sky-300', NODE_KIND_NAME[kind]),
         el('div', 'font-semibold text-slate-100', title),
         ...figures.map(text => el('div', 'font-mono text-[11px] text-slate-400', text)),
       ]);
@@ -609,7 +680,7 @@
       },
     });
 
-    network.once('stabilized', () => network.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } }));
+    network.once('stabilized', () => network.fit({ animation: motion({ duration: 500, easingFunction: 'easeInOutQuad' }) }));
     // vis-network resizes its canvas with the container but keeps the old view, so the graph can end up outside it.
     let refitTimer = null;
     new ResizeObserver(() => {
@@ -620,7 +691,7 @@
     network.on('click', params => {
       if (!params.nodes.length) return clearSelection();
       const node = graphNodes.get(params.nodes[0]);
-      if (node.event_id) selectEvent(node.event_id);
+      if (node.event_id) selectEvent(node.event_id, { reveal: true });
     });
     network.on('hoverNode', () => { graphEl.style.cursor = 'pointer'; });
     network.on('blurNode', () => { graphEl.style.cursor = 'default'; });
@@ -628,16 +699,6 @@
     // Views are tabs. The URL keeps the view and the selected event: #/graph/exploit.
     const tablist = document.querySelector('[role=tablist]');
     const tabs = [...tablist.querySelectorAll('[role=tab]')];
-    // Standard zoom from Einstellungen: a window from the first shown event. Applied once, when the timeline is first shown.
-    let defaultZoomDone = false;
-    function applyDefaultZoom() {
-      if (defaultZoomDone || !zoomSpan) return;
-      const starts = DATA.events.filter(eventVisible).map(ev => Date.parse(ev.t0)).sort((a, b) => a - b);
-      if (!starts.length) return;
-      defaultZoomDone = true;
-      timeline.setWindow(new Date(starts[0] - 10 * 60 * 1000), new Date(starts[0] + zoomSpan));
-    }
-
     function showView(view, { focusTab = false } = {}) {
       if (!VIEWS.includes(view)) view = 'timeline';
       currentView = view;
@@ -648,10 +709,9 @@
         document.getElementById(`panel-${tab.dataset.view}`).hidden = !selected;
         if (selected && focusTab) tab.focus();
       }
-      if (view === 'timeline') applyDefaultZoom();
       if (view === 'graph' && currentId) {
         // The graph was hidden, so its focus on the selected event has to wait until it is visible.
-        setTimeout(() => network.focus(`event:${currentId}`, { scale: 1.1, animation: { duration: 400, easingFunction: 'easeInOutQuad' } }), 200);
+        setTimeout(() => network.focus(`event:${currentId}`, { scale: 1.1, animation: motion({ duration: 400, easingFunction: 'easeInOutQuad' }) }), 200);
       }
       updateHash();
     }
@@ -688,19 +748,20 @@
     function renderEventTable() {
       const rows = DATA.events.map(ev => {
         const action = el('button', 'text-left text-sky-300 hover:underline', ev.action);
-        action.addEventListener('click', () => selectEvent(ev.id));
+        action.addEventListener('click', () => selectEvent(ev.id, { reveal: true }));
         const row = el('tr', 'hover:bg-white/[.03]', [
           el('td', 'whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-400', formatTime(ev.t0)),
           el('td', 'px-3 py-2 text-xs text-slate-300', ev.phase),
           el('td', 'px-3 py-2', [action]),
           el('td', 'px-3 py-2 text-slate-400', ev.actor),
-          el('td', 'px-3 py-2 text-xs text-slate-400', ev.status.replace('_', ' ')),
+          el('td', 'px-3 py-2 text-xs text-slate-400', statusName(ev.status)),
         ]);
         rowsById.set(ev.id, row);
         return row;
       });
-      const head = el('tr', '', ['Zeit (UTC)', 'Phase', 'Aktion', 'Akteur', 'Status'].map(text => el('th', 'px-3 py-2 font-medium', text)));
+      const head = el('tr', '', ['Zeit (UTC)', 'Phase', 'Aktion', 'Akteur', 'Status'].map(text => { const th = el('th', 'px-3 py-2 font-medium', text); th.scope = 'col'; return th; }));
       document.getElementById('panel-events').replaceChildren(el('table', 'w-full text-left text-sm', [
+        el('caption', 'sr-only', 'Alle Ereignisse des Topics, nach Zeit sortiert'),
         el('thead', 'text-xs uppercase tracking-wide text-slate-500', [head]),
         el('tbody', 'divide-y divide-white/5', rows),
       ]));
@@ -727,7 +788,7 @@
             el('span', 'block truncate text-xs text-slate-500', ev.action),
           ]),
         ]);
-        card.addEventListener('click', () => selectEvent(ev.id));
+        card.addEventListener('click', () => selectEvent(ev.id, { reveal: true }));
         galleryCards.push({ id: ev.id, card });
         return card;
       }));
@@ -735,7 +796,7 @@
     }
 
     // Toolbar
-    document.getElementById('btn-fit').addEventListener('click', () => network.fit({ animation: { duration: 500 } }));
+    document.getElementById('btn-fit').addEventListener('click', () => network.fit({ animation: motion({ duration: 500 }) }));
     document.getElementById('btn-reset').addEventListener('click', clearSelection);
     let physicsOn = physicsStart;
     document.getElementById('btn-physics').addEventListener('click', () => {
@@ -774,7 +835,7 @@
       const phases = PHASE_ORDER.filter(name => DATA.events.some(ev => ev.phase === name));
       fields.push(filterSelect('phase', 'Phase', phases));
       const statuses = ['open', 'in_progress', 'resolved'].filter(name => DATA.events.some(ev => ev.status === name));
-      fields.push(filterSelect('status', 'Status', statuses, status => status.replace('_', ' ')));
+      fields.push(filterSelect('status', 'Status', statuses, statusName));
 
       const reset = el('button', 'btn', 'Filter zurücksetzen');
       reset.type = 'button';
@@ -824,7 +885,7 @@
         const edge = graphEdges.get(id);
         return { id, hidden: !(shown.get(edge.from) && shown.get(edge.to)) };
       }));
-      if (graphEl.clientWidth) network.fit({ animation: { duration: 400, easingFunction: 'easeInOutQuad' } });
+      if (graphEl.clientWidth) network.fit({ animation: motion({ duration: 400, easingFunction: 'easeInOutQuad' }) });
     }
 
     // Every view applies the same filters. The selected event stays in the details pane, even when filtered out.
@@ -838,8 +899,8 @@
       galleryEmpty.textContent = galleryCards.length ? 'Keine Evidence passt zu den Filtern.' : 'Keine Evidence vorhanden.';
       galleryEmpty.hidden = shownCards > 0;
       filterCount.textContent = visible.size === DATA.events.length
-        ? `${DATA.events.length} Events`
-        : `${visible.size} von ${DATA.events.length} Events`;
+        ? eventsText(DATA.events.length)
+        : `${visible.size} von ${eventsText(DATA.events.length)}`;
     }
 
     document.querySelectorAll('#panel-graph input[data-kind]').forEach(box => {
@@ -869,5 +930,17 @@
     showView(view);
     if (id && eventsById.has(id)) selectEvent(id, { focusGraph: true });
   </script>
+{% if embedded %}
+<script>
+  // Same-origin frame on the topic page: grow to the content so the page scrolls once, not the frame as well.
+  (function () {
+    var frame = window.frameElement;
+    if (!frame) return;
+    var fit = function () { frame.style.height = Math.ceil(document.body.getBoundingClientRect().height) + 'px'; };
+    new ResizeObserver(fit).observe(document.body);
+    fit();
+  })();
+</script>
+{% endif %}
 </body>
 </html>

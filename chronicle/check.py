@@ -31,9 +31,15 @@ def load_named_folder(
     database). With `evidence=False` the attachments are not required, which the CI needs because they are not in git.
     Raises CheckFailed with all problems found.
     """
-    problems: list[str] = []
+    problems = root_problems(data_dir)
     loaded: list[tuple[str, Timeline]] = []
-    for path in find_topic_files(data_dir):
+    try:
+        paths = find_topic_files(data_dir)
+    except TimelineError as exc:
+        if problems:
+            raise CheckFailed([*problems, str(exc)]) from exc
+        raise
+    for path in paths:
         name = path.relative_to(data_dir).as_posix()
         try:
             loaded.append((name, load_timeline(path)))
@@ -55,6 +61,41 @@ def load_named_folder(
     if problems:
         raise CheckFailed(problems)
     return items
+
+
+# Python imports these from the folder it runs in or is started with. A module or a package in the root of the data
+# folder could replace a module of the app (yaml, pydantic, chronicle) or run at start (sitecustomize). The suffix
+# decides, so a topic file `chronicle.yaml` is none of them. A tag such as `.cpython-312-darwin.so` ends in a suffix too.
+IMPORTABLE_SUFFIXES = (".py", ".pyc", ".pyw", ".pyd", ".so")
+
+
+def root_problems(data_dir: Path) -> list[str]:
+    """Code that Python would import from the root of the data folder: modules, extension modules, regular packages.
+
+    Only the root is looked at, because that is where a program started in the folder (the merge driver) finds it.
+    Python files below the root are data like everything else there.
+    """
+    if not data_dir.is_dir():
+        return []
+    problems = []
+    try:
+        entries = sorted(data_dir.iterdir())
+    except OSError:
+        return []  # find_topic_files reports the folder that cannot be read
+    for entry in entries:
+        if entry.name.endswith(IMPORTABLE_SUFFIXES) or _is_package(entry):
+            problems.append(f"{entry.name}: Code gehört nicht in den Wurzelordner des Datenordners (Python würde ihn "
+                            "importieren), bitte entfernen")
+    return problems
+
+
+def _is_package(entry: Path) -> bool:
+    """A folder with an __init__ module. Without one it is only a namespace package, which a regular module beats."""
+    try:
+        return entry.is_dir() and any(
+            child.name.startswith("__init__.") and child.name.endswith(IMPORTABLE_SUFFIXES) for child in entry.iterdir())
+    except OSError:
+        return False
 
 
 def check_folder(data_dir: Path, *, evidence: bool = True) -> list[str]:

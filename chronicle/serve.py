@@ -14,18 +14,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", required=True, type=Path, help="SQLite file used by the API")
     parser.add_argument(
         "--data", type=Path, default=None,
-        help="topic folder that is the source of truth: edits are written to its files (ADR 0008)",
+        help="topic folder that is the source of truth: edits are written to its files (ADR 0008, ADR 0011). "
+             "Required, unless CHRONICLE_DATA is set",
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
 
+    if args.data is None and not os.environ.get("CHRONICLE_DATA"):
+        parser.error("--data (oder CHRONICLE_DATA) fehlt: Die Topic-Dateien sind die Quelle der Wahrheit "
+                     "(docs/adr/0011-files-only-write-path.md).")
     # The app reads its paths from the environment at import time.
     os.environ["CHRONICLE_DB"] = str(args.db)
     if args.data is not None:
         os.environ["CHRONICLE_DATA"] = str(args.data)
     # Client addresses come from chronicle.auth.client_ip, which trusts only CHRONICLE_TRUSTED_PROXIES.
-    uvicorn.run("chronicle.api:app", host=args.host, port=args.port, proxy_headers=False)
+    uvicorn.run("chronicle.api:create_app_from_environment", factory=True, host=args.host, port=args.port,
+                proxy_headers=False)
     return 0
 
 

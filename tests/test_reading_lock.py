@@ -6,10 +6,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for, import_example
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
-from chronicle.importer import import_folder
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 PASSWORD = "correct horse battery"
@@ -30,12 +29,12 @@ def db_path(tmp_path):
     accounts.create_user(conn, "chef", security.hash_password(ADMIN_PASSWORD), "admin")
     accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     conn.close()
-    import_folder(path, DATA_DIR)
+    import_example(path)
     return path
 
 
 def login(db_path, username, password=PASSWORD):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -59,7 +58,7 @@ def set_lock(db_path, password=LOCK):
 
 
 def test_without_a_lock_reading_needs_an_account(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     assert client.get("/events", follow_redirects=False).status_code == 303
     assert "Ansicht entsperren" not in client.get("/login").text
 
@@ -67,7 +66,7 @@ def test_without_a_lock_reading_needs_an_account(db_path):
 def test_with_a_lock_the_login_page_offers_unlocking_and_shows_no_data(db_path):
     assert set_lock(db_path).status_code == 303
 
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     login_page = client.get("/login").text
     assert "Ansicht entsperren" in login_page
     assert EVENT_TITLE not in login_page
@@ -77,7 +76,7 @@ def test_with_a_lock_the_login_page_offers_unlocking_and_shows_no_data(db_path):
 
 def test_wrong_lock_password_keeps_the_data_hidden(db_path):
     set_lock(db_path)
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
 
     response = unlock(client, "falsch-falsch-1")
 
@@ -88,7 +87,7 @@ def test_wrong_lock_password_keeps_the_data_hidden(db_path):
 
 def test_correct_lock_password_reads_without_an_account(db_path):
     set_lock(db_path)
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
 
     response = unlock(client, LOCK)
 
@@ -101,7 +100,7 @@ def test_correct_lock_password_reads_without_an_account(db_path):
 
 def test_reading_session_cannot_change_anything_and_has_no_password_link(db_path):
     set_lock(db_path)
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     unlock(client, LOCK)
     csrf = client.get("/api/v1/auth/me").json()["csrf_token"]
 
@@ -114,7 +113,7 @@ def test_reading_session_cannot_change_anything_and_has_no_password_link(db_path
 
 def test_the_guest_account_cannot_log_in_with_a_password(db_path):
     set_lock(db_path)
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
 
     response = client.post("/api/v1/auth/login", json={"username": accounts.GUEST_USERNAME, "password": LOCK})
 
@@ -123,7 +122,7 @@ def test_the_guest_account_cannot_log_in_with_a_password(db_path):
 
 def test_repeated_wrong_lock_passwords_are_throttled(db_path):
     set_lock(db_path)
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     for _ in range(accounts.MAX_FAILED_LOGINS):
         assert unlock(client, "falsch-falsch-1").status_code == 401
 
@@ -132,20 +131,20 @@ def test_repeated_wrong_lock_passwords_are_throttled(db_path):
 
 def test_changing_the_lock_ends_reading_sessions(db_path):
     set_lock(db_path)
-    reader = TestClient(create_app(db_path))
+    reader = TestClient(app_for(db_path))
     unlock(reader, LOCK)
 
     set_lock(db_path, password="neues-sperr-passwort")
 
     assert reader.get("/events", follow_redirects=False).status_code == 303
-    newcomer = TestClient(create_app(db_path))
+    newcomer = TestClient(app_for(db_path))
     assert unlock(newcomer, LOCK).status_code == 401
     assert unlock(newcomer, "neues-sperr-passwort").status_code == 303
 
 
 def test_clearing_the_lock_needs_accounts_again(db_path):
     set_lock(db_path)
-    reader = TestClient(create_app(db_path))
+    reader = TestClient(app_for(db_path))
     unlock(reader, LOCK)
     chef = login(db_path, "chef", ADMIN_PASSWORD)
 
@@ -154,7 +153,7 @@ def test_clearing_the_lock_needs_accounts_again(db_path):
 
     assert response.status_code == 303
     assert reader.get("/events", follow_redirects=False).status_code == 303
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     assert "Ansicht entsperren" not in client.get("/login").text
     assert unlock(client, LOCK).status_code == 404
 
@@ -188,8 +187,8 @@ def test_short_lock_password_is_refused_on_the_home_page(db_path):
 
 def test_lock_changes_and_unlocks_are_audited(db_path):
     set_lock(db_path)
-    unlock(TestClient(create_app(db_path)), "falsch-falsch-1")
-    unlock(TestClient(create_app(db_path)), LOCK)
+    unlock(TestClient(app_for(db_path)), "falsch-falsch-1")
+    unlock(TestClient(app_for(db_path)), LOCK)
 
     conn = connect(db_path)
     actions = {row["action"] for row in conn.execute("SELECT action FROM audit_log").fetchall()}

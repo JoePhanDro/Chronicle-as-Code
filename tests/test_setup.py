@@ -3,8 +3,8 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
 
 PASSWORD = "erster-admin-passwort"
@@ -20,7 +20,7 @@ def insecure_cookies(monkeypatch):
 
 def start(db_path, capsys, app=None):
     """Start the app like the server does and return the client and the one-time code from the log."""
-    client = TestClient(app or create_app(db_path))
+    client = TestClient(app or app_for(db_path))
     client.__enter__()  # runs the startup hook, which prints the code
     match = CODE_LINE.search(capsys.readouterr().err)
     return client, (match.group(1) if match else None)
@@ -74,7 +74,7 @@ def test_wrong_code_creates_nothing(db_path, capsys):
 
 
 def test_form_without_the_setup_cookie_is_refused(db_path, capsys):
-    app = create_app(db_path)
+    app = app_for(db_path)
     client, code = start(db_path, capsys, app=app)
     csrf = form_csrf(client)
     stranger = TestClient(app)  # same server, but no setup cookie

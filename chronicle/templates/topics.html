@@ -1,23 +1,87 @@
 {% extends "base.html" %}
 {% block title %}Topics{% endblock %}
 {% block content %}
+{% set status_dot = {'open': 'bg-rose-500', 'in_progress': 'bg-amber-500 motion-safe:animate-pulse', 'resolved': 'bg-emerald-500'} %}
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-  <h1 class="text-xl font-semibold text-slate-100">Topics</h1>
-  {% if can_write %}<a href="/topics/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Neues Topic</a>{% endif %}
+  <div>
+    <h1 class="text-xl font-semibold text-slate-100">Topics</h1>
+    {% if topics %}<p class="text-sm text-slate-400">{{ topics | length }} {{ 'Topic' if topics | length == 1 else 'Topics' }}, offene zuerst, darin das neueste Event zuerst (<span data-zone-label>UTC</span>)</p>{% endif %}
+  </div>
+  {% if can_write and topics %}<a href="/topics/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Neues Topic</a>{% endif %}
 </div>
-<ul class="divide-y divide-white/10 rounded-xl border border-white/10">
+{% if topics | length > 5 %}
+<div class="mb-4 flex flex-wrap items-end gap-3">
+  <label class="block min-w-[14rem] flex-1">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Topics filtern</span>
+    <input id="topic-filter" type="search" autocomplete="off" placeholder="Titel, Key oder Art" aria-controls="topic-list"
+           class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Status</span>
+    <select id="topic-status" aria-controls="topic-list"
+            class="rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+      <option value="">Alle</option>
+      {% for value, label in status_text.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+</div>
+<p id="topic-count" class="mb-2 text-xs text-slate-400" role="status" aria-live="polite"></p>
+{% endif %}
+{% if topics %}
+<ul id="topic-list" class="divide-y divide-white/10 rounded-xl border border-white/10" aria-label="Topics">
   {% for topic in topics %}
-  <li>
-    <a href="/topics/{{ topic.key }}" class="flex items-center justify-between gap-4 px-4 py-3 hover:bg-white/[.03]">
-      <span class="min-w-0">
-        <span class="block truncate text-sm font-medium text-slate-100">{{ topic.title }}</span>
-        <span class="font-mono text-xs text-slate-500">{{ topic.key }} · {{ topic.kind }}</span>
+  <li data-status="{{ topic.status or '' }}" data-text="{{ (topic.title ~ ' ' ~ topic.key ~ ' ' ~ topic.kind) | lower }}">
+    <a href="/topics/{{ topic.key }}" data-list-row title="{{ topic.title }}" class="relative flex items-start justify-between gap-4 py-3 pl-5 pr-4 hover:bg-white/5">
+      {% if topic.phase %}<span class="absolute inset-y-2 left-1.5 w-[3px] rounded-full" style="background: {{ phase_color(topic.phase) }}" aria-hidden="true"></span>{% endif %}
+      <span class="flex min-w-0 items-start gap-3">
+        <span class="min-w-0">
+          <span class="line-clamp-2 text-sm font-medium text-slate-100">{{ topic.title }}</span>
+          {% if topic.status %}<span class="mt-1 flex items-center gap-2 text-xs font-medium text-slate-200"><span class="h-2 w-2 flex-none rounded-full {{ status_dot[topic.status] }}" aria-hidden="true"></span>{{ status_text[topic.status] }}</span>{% endif %}
+          <span class="mt-1 block font-mono text-xs text-slate-400">
+            {{ topic.key }} · {{ topic.kind }}{% if topic.phase %} · {{ topic.phase }}{% endif %}
+            {%- if topic.last_event_at %} · <time class="whitespace-nowrap" data-utc="{{ topic.last_event_at }}">{{ topic.last_event_at[:16].replace('T', ' ') }}</time>{% endif %}
+            <span class="sm:hidden"> · {{ topic.event_count | count_events }}</span>
+          </span>
+        </span>
       </span>
-      <span class="flex-none text-xs text-slate-400">{{ topic.event_count }} Events</span>
+      <span class="hidden flex-none text-xs text-slate-400 sm:block">{{ topic.event_count | count_events }}</span>
     </a>
   </li>
-  {% else %}
-  <li class="px-4 py-3 text-sm text-slate-500">Noch keine Topics.</li>
   {% endfor %}
 </ul>
+{% if topics | length > 5 %}
+<p id="topic-none" hidden class="rounded-xl border border-dashed border-white/10 px-6 py-8 text-center text-sm text-slate-400">Kein Topic passt zum Filter.</p>
+<script>
+  (function () {
+    var text = document.getElementById('topic-filter'), status = document.getElementById('topic-status');
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#topic-list > li'));
+    var count = document.getElementById('topic-count'), none = document.getElementById('topic-none');
+    function apply() {
+      var words = text.value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+      rows.forEach(function (row) {
+        var hit = words.every(function (word) { return row.dataset.text.indexOf(word) !== -1; }) && (!status.value || row.dataset.status === status.value);
+        row.hidden = !hit;
+        if (hit) shown += 1;
+      });
+      none.hidden = shown !== 0;
+      document.getElementById('topic-list').hidden = shown === 0;
+      count.textContent = (words.length || status.value) ? shown + ' von ' + rows.length + (rows.length === 1 ? ' Topic' : ' Topics') : '';
+    }
+    text.addEventListener('input', apply);
+    status.addEventListener('change', apply);
+    text.addEventListener('keydown', function (event) { if (event.key === 'Enter') event.preventDefault(); });
+  })();
+</script>
+{% endif %}
+{% else %}
+<div class="rounded-xl border border-dashed border-white/10 px-6 py-12 text-center">
+  <p class="text-sm font-medium text-slate-100">Noch keine Topics</p>
+  <p class="mx-auto mt-1 max-w-md text-sm text-slate-400">Ein Topic fasst die Events zu einem Vorfall, einer Schwachstelle oder einem Projekt zusammen.</p>
+  {% if can_write %}
+  <a href="/topics/new" class="mt-5 inline-block rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Erstes Topic anlegen</a>
+  {% else %}
+  <p class="mt-3 text-sm text-slate-400">Topics legen Analysten und Admins an.</p>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}

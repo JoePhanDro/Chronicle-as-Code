@@ -3,8 +3,8 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
 
 ADMIN_PASSWORD = "admin-passwort-123"
@@ -29,7 +29,7 @@ def db_path(tmp_path):
 
 def login(db_path, username, password=PASSWORD):
     """Logs in through the API once to get a session cookie; the pages then use the same cookie."""
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200, response.text
     return client, response.json()["csrf_token"]
@@ -67,7 +67,7 @@ def test_admin_sees_reports_and_administration(db_path):
 
     assert menu_links(html, "menu-views") == ["/events", "/topics", "/reports"]
     assert menu_links(html, "menu-new") == ["/events/new", "/topics/new"]
-    assert menu_links(html, "menu-admin") == ["/admin/users", "/admin/grabsteine", "/admin/audit"]
+    assert menu_links(html, "menu-admin") == ["/admin/users", "/admin/audit"]
 
 
 def test_header_is_the_same_on_every_page(db_path):
@@ -82,15 +82,16 @@ def test_analyst_creates_topic_and_event_through_the_forms(db_path):
     client, csrf = login(db_path, "anna")
 
     topic = client.post("/topics/new", data={
-        "csrf_token": csrf, "key": "menu-test", "title": "Menü-Test", "kind": "project", "summary": "",
+        "csrf_token": csrf, "title": "Menü-Test", "kind": "project", "summary": "",
     }, follow_redirects=False)
     assert topic.status_code == 303, topic.text
+    topic_key = topic.headers["location"].rsplit("/", 1)[-1]
 
     event = client.post("/events/new", data={
         "csrf_token": csrf, "t0_date": "2026-10-20", "t0_hour": "12", "t0_minute": "00",
         "t0_zone": "Europe/Berlin", "phase": "Identification",
         "actor": "Analyst", "system": "", "action": "Erster Eintrag", "status": "open",
-        "triggered_by": "", "details": "", "topic": "menu-test", "topics": [],
+        "triggered_by": "", "details": "", "topic": topic_key, "topics": [],
     }, follow_redirects=False)
     assert event.status_code == 303, event.text
     assert event.headers["location"].startswith("/events/ev-")
@@ -101,7 +102,7 @@ def test_analyst_creates_topic_and_event_through_the_forms(db_path):
 def test_viewer_cannot_post_creation_forms(db_path):
     client, csrf = login(db_path, "viewer")
     response = client.post("/topics/new", data={
-        "csrf_token": csrf, "key": "nope", "title": "Nein", "kind": "project", "summary": "",
+        "csrf_token": csrf, "title": "Nein", "kind": "project", "summary": "",
     }, follow_redirects=False)
     assert response.status_code == 403
 
@@ -111,4 +112,28 @@ def test_header_offers_search_and_settings_on_every_page(db_path):
     for path in ["/", "/events", "/topics", "/account/password"]:
         html = client.get(path).text
         assert 'role="search"' in html and 'action="/suche"' in html, path
-        assert 'id="open-settings"' in html and 'id="settings-dialog"' in html, path
+        assert "data-open-settings" in html and 'id="settings-dialog"' in html, path
+
+
+def test_account_menu_for_small_screens_holds_the_account_controls(db_path):
+    client, _ = login(db_path, "viewer")
+    html = client.get("/topics").text
+
+    assert menu_links(html, "menu-account") == ["/hilfe", "/account/password"]
+    panel = re.search(r'<ul id="menu-account"[^>]*>(.*?)</ul>', html, re.S).group(1)
+    assert "data-open-settings" in panel and 'action="/logout"' in panel
+    assert html.count("<button type=\"button\" data-open-settings") == 2  # one in the menu, one in the header for wide screens
+
+
+def test_every_page_has_a_skip_link_to_the_main_content(db_path):
+    client, _ = login(db_path, "viewer")
+    for path in ["/", "/events", "/topics", "/hilfe"]:
+        html = client.get(path).text
+        assert 'href="#main"' in html and '<main id="main"' in html, path
+
+
+def test_home_groups_viewing_apart_from_creating(db_path):
+    body = login(db_path, "anna")[0].get("/").text.split('id="home-open"')[1]  # below the header
+    assert body.index('href="/topics"') < body.index('id="home-new"') < body.index('href="/events/new"') < body.index('href="/topics/new"')
+    viewer = login(db_path, "viewer")[0].get("/").text.split('id="home-open"')[1]
+    assert 'id="home-new"' not in viewer and "/events/new" not in viewer

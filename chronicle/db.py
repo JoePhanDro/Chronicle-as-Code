@@ -26,28 +26,8 @@ CREATE TABLE IF NOT EXISTS events (
     triggered_by  TEXT,
     details       TEXT NOT NULL DEFAULT '',
     home_topic    TEXT NOT NULL,
-    source        TEXT NOT NULL DEFAULT 'import' CHECK (source IN ('import', 'manual')),
     version       INTEGER NOT NULL DEFAULT 1,
     updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-);
--- Tombstones: events deleted in the UI are not re-created by a later import.
--- snapshot is the last version of the event as JSON (issue 34). It is NULL for tombstones from before that.
-CREATE TABLE IF NOT EXISTS deleted_events (
-    key         TEXT PRIMARY KEY,
-    deleted_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    snapshot    TEXT
-);
--- Copies of the evidence of a deleted event, so that restoring the event brings it back with its evidence.
-CREATE TABLE IF NOT EXISTS deleted_evidence (
-    pk           INTEGER PRIMARY KEY,
-    event_key    TEXT NOT NULL REFERENCES deleted_events(key) ON DELETE CASCADE,
-    file         TEXT NOT NULL,
-    type         TEXT NOT NULL,
-    description  TEXT NOT NULL DEFAULT '',
-    mime         TEXT,
-    size         INTEGER,
-    sha256       TEXT,
-    content      BLOB
 );
 CREATE TABLE IF NOT EXISTS topic_events (
     topic_pk  INTEGER NOT NULL REFERENCES topics(pk) ON DELETE CASCADE,
@@ -307,6 +287,12 @@ def _move_operations_out_of_index(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys = ON")
 
 
+def _drop_tombstones(conn: sqlite3.Connection) -> None:
+    """Tombstones are gone (ADR 0011): a deleted event is removed from its file, and Git has the earlier version."""
+    conn.execute("DROP TABLE IF EXISTS deleted_evidence")
+    conn.execute("DROP TABLE IF EXISTS deleted_events")
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
     """Open the index and its operations file, migrate old data and make sure both schemas exist."""
     # One connection per request, never shared between threads; async form handlers may hop threads.
@@ -320,14 +306,13 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     migrate_incident_schema(conn)
     _create_schema(conn)
-    _ensure_column(conn, "events", "source", "TEXT NOT NULL DEFAULT 'import'")
     _ensure_column(conn, "events", "version", "INTEGER NOT NULL DEFAULT 1")
     _ensure_column(conn, "evidence", "mime", "TEXT")
     _ensure_column(conn, "evidence", "size", "INTEGER")
     _ensure_column(conn, "evidence", "sha256", "TEXT")
     _ensure_column(conn, "evidence", "content", "BLOB")
     _ensure_column(conn, "ops.users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(conn, "deleted_events", "snapshot", "TEXT")
+    _drop_tombstones(conn)
     _migrate_triggers(conn)
     _ensure_search_index(conn)
     return conn

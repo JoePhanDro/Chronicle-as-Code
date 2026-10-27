@@ -78,10 +78,16 @@ def _index(timelines: list[Timeline]) -> str:
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         "<title>Chronicle</title>\n"
-        '<style>body { font-family: system-ui, sans-serif; margin: 16px; line-height: 1.5; }</style>\n'
+        '<meta name="color-scheme" content="light dark">\n'
+        "<style>\n"
+        ":root { color-scheme: light dark; }\n"
+        "body { font-family: system-ui, sans-serif; margin: 16px; line-height: 1.5; max-width: 60rem; }\n"
+        ".snapshot { display: inline-block; border: 1px solid currentColor; border-radius: 6px; padding: 2px 8px; font-size: .85rem; }\n"
+        "</style>\n"
         "</head>\n"
         "<body>\n"
         "<h1>Chronicle</h1>\n"
+        '<p class="snapshot">Berichts-Snapshot · vertraulich · ohne Anmeldung</p>\n'
         "<ul>\n"
         f"{rows}\n"
         "</ul>\n"

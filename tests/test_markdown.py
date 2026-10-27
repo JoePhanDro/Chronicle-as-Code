@@ -6,8 +6,8 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
 from chronicle.importer import import_folder
 from chronicle.loader import load_timeline
@@ -114,7 +114,7 @@ def test_dashboard_gets_the_same_html_as_the_detail_page(db_path, monkeypatch):
     payload = json.loads(re.search(r'<script id="payload" type="application/json">(.*?)</script>', html, re.S).group(1))
     dashboard_html = payload["events"][0]["details_html"]
 
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     client.post("/api/v1/auth/login", json={"username": "viewer", "password": PASSWORD})
     page = client.get("/events/md-ereignis").text
 
@@ -125,7 +125,7 @@ def test_dashboard_gets_the_same_html_as_the_detail_page(db_path, monkeypatch):
 
 def test_detail_page_shows_markdown_without_active_content(db_path, monkeypatch):
     monkeypatch.setenv("CHRONICLE_COOKIE_SECURE", "0")
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     client.post("/api/v1/auth/login", json={"username": "viewer", "password": PASSWORD})
 
     page = client.get("/events/md-ereignis").text
@@ -171,7 +171,7 @@ def test_event_page_shows_its_evidence_image_and_loads_the_diagram_script(tmp_pa
     conn.close()
     import_folder(db, folder)
 
-    client = TestClient(create_app(db))
+    client = TestClient(app_for(db))
     client.post("/api/v1/auth/login", json={"username": "viewer", "password": PASSWORD})
     page = client.get("/events/bild-ereignis").text
     evidence_id = re.search(r'/api/v1/evidence/(\d+)"', page).group(1)

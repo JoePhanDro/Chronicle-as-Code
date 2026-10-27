@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for, import_example
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
 from chronicle.importer import import_folder
 
@@ -26,7 +26,7 @@ def logged_in_client(db_path):
     conn = connect(db_path)
     accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
     conn.close()
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": "viewer", "password": PASSWORD})
     assert response.status_code == 200
     return client
@@ -55,7 +55,7 @@ def test_unknown_topic_and_event_return_404(client):
 
 
 def test_import_sample_timeline_is_readable_via_api(db_path, client):
-    (report,) = import_folder(db_path, DATA_DIR)
+    (report,) = import_example(db_path)
     assert report.topic == "inc-2026-042"
     assert len(report.created) == 7
 
@@ -77,8 +77,8 @@ def test_import_sample_timeline_is_readable_via_api(db_path, client):
 
 
 def test_reimport_of_the_same_file_does_not_duplicate(db_path, client):
-    import_folder(db_path, DATA_DIR)
-    import_folder(db_path, DATA_DIR)
+    import_example(db_path)
+    import_example(db_path)
     assert len(client.get("/api/v1/topics").json()) == 1
     assert len(client.get("/api/v1/events").json()) == 7
 

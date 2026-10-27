@@ -1,6 +1,6 @@
 # ADR 0008: Dateien als Quelle der Wahrheit, lokale Arbeitskopien und Git als Austausch
 
-- **Status:** Vorgeschlagen (zu bestätigen). Punkt 6 (Anhänge) ist durch die Entscheidung vom 2026-10-27 in ADR 0019 geändert: Anhänge liegen in Git. Punkte 3, 6 und 7 sind teilweise überholt durch ADR 0011, 0015 und 0019 (Vorschlag, noch nicht bestätigt)
+- **Status:** Akzeptiert (Entscheidung des Projektinhabers, 2026-10-27, bestätigt mit ADR 0011 „Dateien sind der einzige Schreibpfad“). Punkt 6 (Anhänge) ist durch die Entscheidung vom 2026-10-27 in ADR 0020 (Vault) geändert: Anhänge liegen in Git. Die Punkte 3 und 7 sind teilweise überholt durch die Vorschläge ADR 0012, 0016 und 0020 (Vault, noch nicht bestätigt)
 - **Datum:** 2026-10-22
 - **Bezug:** ADR 0001 (Server, Konten), ADR 0002 (Topics und Events), ADR 0003 (Bearbeiten in der Oberfläche), ADR 0004 (Evidence), ADR 0005 (Export und Backup)
 

@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Callable
+from functools import cache
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from .markdown import render_markdown
-from .models import PHASE_COLORS, Evidence, Event, Phase, Timeline
+from .models import PHASE_COLORS, STATUS_LABELS, Evidence, Event, Phase, Timeline
 
 ACTOR_COLOR = "#38bdf8"
 SYSTEM_COLOR = "#a78bfa"
@@ -18,6 +20,49 @@ TRIGGER_COLOR = "#f97316"
 
 # Renders ```mermaid blocks. Inlined into the dashboard, served as /static/diagrams.js on the event page.
 DIAGRAMS_JS = (Path(__file__).parent / "static" / "diagrams.js").read_text(encoding="utf-8")
+
+VENDOR_DIR = Path(__file__).parent / "static" / "vendor"
+
+
+@cache
+def _vendor_inline() -> dict[str, str]:
+    """vis-timeline and vis-network as text, for pages that must open without a server."""
+    return {
+        "vendor_css": (VENDOR_DIR / "vis-timeline-graph2d.min.css").read_text(encoding="utf-8"),
+        "vendor_timeline_js": (VENDOR_DIR / "vis-timeline-graph2d.min.js").read_text(encoding="utf-8"),
+        "vendor_network_js": (VENDOR_DIR / "vis-network.min.js").read_text(encoding="utf-8"),
+    }
+
+
+# Inter (variable weight) and JetBrains Mono, latin subset, as shipped in static/vendor/fonts. Other characters
+# fall back to the system fonts of the CSS font stack.
+_LATIN = (
+    "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,"
+    "U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+)
+_FONTS = [
+    ("Inter", "100 900", "inter-latin-wght-normal.woff2"),
+    ("JetBrains Mono", "400", "jetbrains-mono-latin-400-normal.woff2"),
+    ("JetBrains Mono", "500", "jetbrains-mono-latin-500-normal.woff2"),
+]
+
+
+@cache
+def _font_css(vendor: str) -> str:
+    """@font-face rules: "local" links the app's static files, "inline" embeds the fonts as data URIs."""
+    rules = []
+    for family, weight, file in _FONTS:
+        if vendor == "local":
+            url = f"/static/vendor/fonts/{file}"
+        else:
+            data = base64.b64encode((VENDOR_DIR / "fonts" / file).read_bytes()).decode("ascii")
+            url = f"data:font/woff2;base64,{data}"
+        rules.append(
+            f"@font-face {{ font-family: '{family}'; font-style: normal; font-weight: {weight}; font-display: swap; "
+            f"src: url({url}) format('woff2'); unicode-range: {_LATIN}; }}"
+        )
+    return "\n".join(rules)
+
 
 _env = Environment(
     loader=PackageLoader("chronicle", "templates"),
@@ -34,9 +79,14 @@ def render_dashboard(
     src_for: Callable[[Evidence], str] | None = None,
     generated_at: str | None = None,
     snapshot: bool = True,
+    vendor: str = "inline",
+    embedded: bool = False,
 ) -> str:
     """`inline_css` replaces the stylesheet link, `src_for` gives the image URL of each evidence item.
-    `snapshot` marks the page as a report snapshot; the app's live view turns that off."""
+    `snapshot` marks the page as a report snapshot; the app's live view turns that off.
+    `vendor` says where vis-timeline and vis-network come from: "inline" embeds them in the page (reports and
+    static pages, which open without a server), "local" links /static/vendor/ of the app.
+    `embedded` drops the brand, title and summary from the header, for the frame on the topic page, which shows them itself."""
     events = sorted(timeline.events, key=lambda event: event.t0)
     nodes, edges = _build_graph(events)
 
@@ -44,6 +94,7 @@ def render_dashboard(
         "events": [_event_payload(event, src_for or _relative_src) for event in events],
         "nodes": nodes,
         "edges": edges,
+        "statusText": {status.value: label for status, label in STATUS_LABELS.items()},
     }
     phases = [{"name": phase.value, "color": PHASE_COLORS[phase]} for phase in Phase]
 
@@ -56,6 +107,10 @@ def render_dashboard(
         generated_at=generated_at,
         snapshot=snapshot,
         diagrams_js=DIAGRAMS_JS,
+        vendor=vendor,
+        embedded=embedded,
+        font_css=_font_css(vendor),
+        **(_vendor_inline() if vendor == "inline" else {}),
     )
 
 

@@ -13,26 +13,29 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import __version__, accounts, administration, repository, security, sync
 from .admin_pages import make_admin_pages
 from .auth import PasswordChangeRequired, SetupState, client_ip, make_auth, parse_trusted_proxies
 from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
-from .models import Phase, Status, Topic
-from .pages import make_pages
+from .models import Phase, Status, Topic, TopicCreate
+from .pages import make_pages, not_found_page
+from .pdf_report import make_pdf_report
 from .report import make_report, report_headers
-from .event_input import EventCreate, EventUpdate, event_of, new_event_key, topic_list
+from .event_input import EventCreate, EventUpdate, event_of, new_event_key, new_topic_key, topic_list
 
 DEFAULT_DB = "/data/chronicle.db"
 STATIC_DIR = Path(__file__).parent / "static"
 
 
 class UserCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     username: str
     password: str
@@ -40,24 +43,24 @@ class UserCreate(BaseModel):
 
 
 class TopicLink(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     event: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
 
 class UserUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     role: Literal["admin", "analyst", "viewer"] | None = None
     active: bool | None = None
     password: str | None = None
 
 
-def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir: str | Path | None = None) -> FastAPI:
+def create_app(db_path: str | Path, trusted_proxies: str | None = None, *, data_dir: str | Path) -> FastAPI:
     """`trusted_proxies` defaults to CHRONICLE_TRUSTED_PROXIES, see README.
 
-    With `data_dir` the topic files are the source of truth: edits are written to them, then the index is rebuilt
-    (ADR 0008). Without it the database is the source, as before."""
+    The topic files in `data_dir` are the source of truth: edits are written to them, then the index is rebuilt
+    (ADR 0008, ADR 0011)."""
     path = Path(db_path)
     setup_state = SetupState()
 
@@ -67,7 +70,7 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
         yield
 
     app = FastAPI(title="Chronicle", version=__version__, lifespan=lifespan)
-    app.state.data_dir = Path(data_dir) if data_dir else None
+    app.state.data_dir = Path(data_dir)
     app.state.trusted_proxies = parse_trusted_proxies(
         os.environ.get("CHRONICLE_TRUSTED_PROXIES") if trusted_proxies is None else trusted_proxies
     )
@@ -88,6 +91,26 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
     # Pages of a user who must change the password go to the change form instead.
     app.add_exception_handler(PasswordChangeRequired, lambda request, exc: RedirectResponse("/account/password", status_code=303))
     app.include_router(make_pages(get_conn, auth))
+
+    @app.exception_handler(StarletteHTTPException)
+    async def not_found_for_browsers(request: Request, exc: StarletteHTTPException):
+        """An unknown address in a browser gets the 404 page (or the login when nobody is signed in), not JSON."""
+        wants_page = (
+            exc.status_code == 404
+            and not request.url.path.startswith("/api/")
+            and "text/html" in request.headers.get("accept", "")
+        )
+        if not wants_page:
+            return await http_exception_handler(request, exc)
+        try:
+            with closing(connect(path)) as conn:
+                user = auth.page_session(request, conn)
+        except PasswordChangeRequired:
+            return RedirectResponse("/account/password", status_code=303)
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        return not_found_page(request, user)
+
     app.include_router(make_admin_pages(get_conn, auth))
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -172,11 +195,8 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
 
     @app.get("/api/v1/sync/preview")
     def sync_preview(request: Request, _: dict = Depends(writer)) -> dict:
-        data_dir = request.app.state.data_dir
-        if data_dir is None:
-            raise HTTPException(status_code=409, detail="Kein Datenordner konfiguriert")
         try:
-            result = sync.preview(data_dir)
+            result = sync.preview(request.app.state.data_dir)
         except sync.SyncError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {
@@ -188,8 +208,6 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
     def sync_now(request: Request, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(writer)) -> dict:
         """Commit the topic files, take in the remote's state, push. After a merge the index is rebuilt (issue #90)."""
         data_dir = request.app.state.data_dir
-        if data_dir is None:
-            raise HTTPException(status_code=409, detail="Kein Datenordner konfiguriert")
         try:
             result = sync.synchronise(data_dir)
         except sync.SyncError as exc:
@@ -200,8 +218,9 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
                 "problems": result.problems}
 
     @app.post("/api/v1/topics", status_code=201)
-    def create_topic(body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
-        return _write(lambda: repository.create_topic(conn, body, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
+    def create_topic(body: TopicCreate, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
+        topic = Topic.model_validate({**body.model_dump(), "key": body.key or new_topic_key()})
+        return _write(lambda: repository.create_topic(conn, topic, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
 
     @app.put("/api/v1/topics/{key}")
     def update_topic(key: str, body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
@@ -343,6 +362,18 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
                                                     data_dir=request.app.state.data_dir))
         return Response(content=body, media_type="text/html; charset=utf-8", headers=report_headers(filename))
 
+    @app.get("/api/v1/topics/{key}/report.pdf")
+    def topic_report_pdf(
+        key: str,
+        request: Request,
+        art: str = "technisch",
+        conn: sqlite3.Connection = Depends(get_conn),
+        admin: dict = Depends(admin_only),
+    ) -> Response:
+        filename, body = _write(lambda: make_pdf_report(conn, key, admin["id"], client_ip(request), art,
+                                                        data_dir=request.app.state.data_dir))
+        return Response(content=body, media_type="application/pdf", headers=report_headers(filename))
+
     @app.get("/api/v1/audit")
     def audit_log(
         limit: int = 200,
@@ -395,5 +426,9 @@ def _announce_setup(path: Path, setup: SetupState) -> None:
     )
 
 
-# Module-level app for `uvicorn chronicle.api:app`. The database path comes from the environment.
-app = create_app(os.environ.get("CHRONICLE_DB", DEFAULT_DB), data_dir=os.environ.get("CHRONICLE_DATA") or None)
+def create_app_from_environment() -> FastAPI:
+    """The app for `uvicorn --factory chronicle.api:create_app_from_environment`. The paths come from the environment."""
+    data_dir = os.environ.get("CHRONICLE_DATA")
+    if not data_dir:
+        raise RuntimeError("CHRONICLE_DATA fehlt: Chronicle braucht einen Datenordner (ADR 0011).")
+    return create_app(os.environ.get("CHRONICLE_DB", DEFAULT_DB), data_dir=data_dir)
