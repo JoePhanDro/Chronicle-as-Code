@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from chronicle import repository
+from chronicle import events, repository
 from chronicle.db import connect
 from chronicle.evidence import check_file
 from chronicle.store import LOCK_FILE
@@ -121,7 +121,7 @@ def test_a_failed_change_does_not_take_a_parallel_change_back_out_of_the_folder(
     """
     first_is_writing = threading.Event()
     second_finished = threading.Event()
-    real_index_check = repository._folder_as_indexed
+    real_index_check = events._folder_as_indexed
 
     def check_that_fails_for_the_first_change(conn_, data_dir, *, changed):
         if threading.current_thread().name.startswith("erste"):
@@ -131,7 +131,7 @@ def test_a_failed_change_does_not_take_a_parallel_change_back_out_of_the_folder(
             raise Invalid("absichtlich abgebrochen")
         return real_index_check(conn_, data_dir, changed=changed)
 
-    monkeypatch.setattr(repository, "_folder_as_indexed", check_that_fails_for_the_first_change)
+    monkeypatch.setattr(events, "_folder_as_indexed", check_that_fails_for_the_first_change)
     current = repository.get_event(conn, "feed-cve")
     edited = _event_of(conn, "feed-cve").model_copy(update={"action": "Parallel geändert"})
 

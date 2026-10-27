@@ -320,8 +320,13 @@ chronicle/
   reading_lock.py    Lesesperre mit Passwort für Besucher ohne Konto
   accounts.py        Konten, Sitzungen, Drosselung, Audit-Log (Betriebsdatei)
   security.py        Passwort-Hashing, Token
-  repository.py      Topics und Events: Schreiben, Löschen, Verknüpfen, Import
+  repository.py      Einstieg für Datenoperationen, führt die folgenden Module zusammen
   queries.py         Leseabfragen auf dem Index (Events, Topics, Evidence, Filter)
+  index.py           Index aus den Topic-Dateien aufbauen (Import, Neu laden)
+  folder_writes.py   Gemeinsames beim Schreiben: Sperre, Rollback, Verweiszeilen
+  events.py          Events anlegen, ändern, löschen
+  topics.py          Topics anlegen, ändern, löschen, Events verknüpfen
+  evidence_store.py  Anhänge hinzufügen und entfernen
   errors.py          Fehlerklassen des Repositorys
   store.py           gezielte Änderungen in den Topic-Dateien (Dateimodus)
   event_input.py     Eingabemodell für Schreibzugriffe, Keys und Zeitangaben
