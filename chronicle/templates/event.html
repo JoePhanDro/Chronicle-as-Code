@@ -48,25 +48,25 @@
     </div>
     <h1 class="mt-1 text-xl font-semibold text-slate-100 sm:text-2xl">{{ event.action }}</h1>
     {% if editing %}
-    {% set chip_select = "appearance-none rounded-md border border-white/10 bg-slate-950/70 py-1 pl-7 pr-7 text-sm font-medium text-slate-100 outline-none hover:bg-white/5 focus:border-sky-400/60 max-sm:min-h-11" %}
+    {% set chip_select = "cursor-pointer appearance-none rounded-md border border-white/10 bg-slate-950/70 py-1 pl-7 pr-7 text-sm font-medium text-slate-100 outline-none hover:border-white/30 hover:bg-white/5 focus:border-sky-400/60 max-sm:min-h-11" %}
     <form method="post" action="/events/{{ event.key }}/mark" class="mt-3 flex flex-wrap items-center gap-2">
       <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
       <input type="hidden" name="version" value="{{ event.version }}">
       <label class="relative inline-flex items-center">
         <span class="sr-only">Phase</span>
         <span class="pointer-events-none absolute left-2.5 h-2 w-2 rounded-full" style="background: {{ phase_color(event.phase) }}" aria-hidden="true"></span>
-        <select name="phase" class="{{ chip_select }}" onchange="this.form.requestSubmit()">
+        <select name="phase" title="Phase ändern" class="{{ chip_select }}" onchange="this.form.requestSubmit()">
           {% for phase in phases %}<option value="{{ phase }}" {{ 'selected' if event.phase == phase }}>{{ phase }}</option>{% endfor %}
         </select>
-        <span class="pointer-events-none absolute right-2.5 text-[10px] text-slate-400" aria-hidden="true">▾</span>
+        <span class="pointer-events-none absolute right-2.5 text-[10px] text-slate-300" aria-hidden="true">▾</span>
       </label>
       <label class="relative inline-flex items-center">
         <span class="sr-only">Status</span>
         <span class="pointer-events-none absolute left-2.5 h-2 w-2 rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>
-        <select name="status" class="{{ chip_select }}" onchange="this.form.requestSubmit()">
+        <select name="status" title="Status ändern" class="{{ chip_select }}" onchange="this.form.requestSubmit()">
           {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if event.status == status }}>{{ status_text.get(status, status) }}</option>{% endfor %}
         </select>
-        <span class="pointer-events-none absolute right-2.5 text-[10px] text-slate-400" aria-hidden="true">▾</span>
+        <span class="pointer-events-none absolute right-2.5 text-[10px] text-slate-300" aria-hidden="true">▾</span>
       </label>
       <noscript><button type="submit" class="rounded-md border border-white/10 px-2.5 py-1 text-sm text-slate-200">Speichern</button></noscript>
       <span role="status" class="text-xs text-emerald-300">{% if saved %}{{ saved }} gespeichert{% endif %}</span>
@@ -157,30 +157,35 @@
       {% endfor %}
     </ul>
     {% else %}
-    <p class="text-sm text-slate-400">Noch keine Evidence.{% if can_write %} Screenshot, Log oder PDF lassen sich unten hochladen.{% endif %}</p>
+    <p class="text-sm text-slate-400">Noch keine Evidence.{% if can_write %} Screenshot, Log oder PDF lassen sich mit „Evidence hinzufügen“ hochladen.{% endif %}</p>
     {% endif %}
 
     {% if can_write %}
-    <form method="post" action="/events/{{ event.key }}/evidence" enctype="multipart/form-data"
-          class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_auto] sm:items-end">
-      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-      <label class="block">
-        <span class="mb-1 block text-xs font-medium text-slate-400">Datei (PNG, JPEG, GIF, WebP, PDF, TXT/LOG, max. 10 MiB)</span>
-        <input type="file" name="file" required accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.log"
-               class="block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200">
-      </label>
-      <label class="block">
-        <span class="mb-1 block text-xs font-medium text-slate-400">Typ</span>
-        <select name="type" class="{{ input_class }}">
-          {% for evidence_type in evidence_types %}<option value="{{ evidence_type }}">{{ evidence_type }}</option>{% endfor %}
-        </select>
-      </label>
-      <label class="block">
-        <span class="mb-1 block text-xs font-medium text-slate-400">Beschreibung (optional)</span>
-        <input name="description" maxlength="500" class="{{ input_class }}">
-      </label>
-      <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Hochladen</button>
-    </form>
+    <details id="evidence-add" class="mt-4 rounded-xl border border-white/10" {{ 'open' if upload_failed }}>
+      <summary class="cursor-pointer select-none rounded-xl px-4 py-3 text-sm text-sky-300 hover:bg-white/5">Evidence hinzufügen</summary>
+      <div class="border-t border-white/10 p-4">
+      <form method="post" action="/events/{{ event.key }}/evidence" enctype="multipart/form-data"
+            class="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_auto] sm:items-end">
+        <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+        <label class="block">
+          <span class="mb-1 block text-xs font-medium text-slate-400">Datei (PNG, JPEG, GIF, WebP, PDF, TXT/LOG, max. 10 MiB)</span>
+          <input type="file" name="file" required accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.log"
+                 class="block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200">
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-xs font-medium text-slate-400">Typ</span>
+          <select name="type" class="{{ input_class }}">
+            {% for evidence_type in evidence_types %}<option value="{{ evidence_type }}">{{ evidence_type }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="block">
+          <span class="mb-1 block text-xs font-medium text-slate-400">Beschreibung (optional)</span>
+          <input name="description" maxlength="500" class="{{ input_class }}">
+        </label>
+        <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Hochladen</button>
+      </form>
+      </div>
+    </details>
     {% endif %}
   </section>
 
@@ -190,8 +195,8 @@
   </section>
 
   {% if editing %}
-  <details id="bearbeiten" class="rounded-xl border border-white/10" {{ 'open' if errors }}>
-    <summary class="cursor-pointer select-none rounded-xl px-5 py-3 text-sm font-medium text-slate-200 hover:bg-white/5">Bearbeiten</summary>
+  <details id="bearbeiten" class="rounded-xl border border-white/10" {{ 'open' if errors and not upload_failed }}>
+    <summary class="cursor-pointer select-none rounded-xl px-5 py-3 text-sm font-medium text-slate-200 hover:bg-white/5">Weitere Felder bearbeiten · Event löschen</summary>
     <div class="border-t border-white/10 p-5">
       {% set f = edit_form(event) %}
       <form method="post" action="/events/{{ event.key }}/edit" class="space-y-6">
