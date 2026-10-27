@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from .errors import Conflict
+from .errors import APPLY_HINT, Conflict
 from .loader import link_below
 
 EVENT_SELECT = """
@@ -57,7 +57,7 @@ def get_evidence_content(conn: sqlite3.Connection, evidence_id: int, data_dir: P
             and (data_dir / row["file"]).is_file()):
         content = (data_dir / row["file"]).read_bytes()
         if hashlib.sha256(content).hexdigest() != row["sha256"]:
-            raise Conflict(f"{row['file']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen.")
+            raise Conflict(f"{row['file']} wurde außerhalb von Chronicle geändert. {APPLY_HINT}")
     return {"file": row["file"], "mime": row["mime"], "content": content}
 
 

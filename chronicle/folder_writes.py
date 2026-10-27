@@ -8,7 +8,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
-from .errors import Conflict, Invalid, NotFound
+from .errors import APPLY_HINT, Conflict, Invalid, NotFound, changed_outside, not_in_a_file
 from .loader import TOPIC_FILE_PATTERNS, TimelineError
 from .store import (
     StoreError,
@@ -22,7 +22,7 @@ from .store import (
 def recorded_version(conn: sqlite3.Connection, path: str) -> str:
     row = conn.execute("SELECT sha256 FROM source_files WHERE path = ?", (path,)).fetchone()
     if row is None:
-        raise Conflict(f"{path} ist im Index nicht bekannt. Bitte chronicle apply ausführen.")
+        raise Conflict(f"{path} ist im Index nicht bekannt. {APPLY_HINT}")
     return row["sha256"]
 
 
@@ -73,18 +73,38 @@ def linked_elsewhere(conn: sqlite3.Connection, key: str) -> list[str]:
     ).fetchall()]
 
 
-def change_link(conn: sqlite3.Connection, key: str, topic_key: str, *, present: bool, data_dir: Path) -> None:
-    located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (topic_key,)).fetchone()
+def file_of_event(conn: sqlite3.Connection, key: str) -> str:
+    """The path (relative to the data folder) of the file that holds the event."""
+    located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
     if located is None:
-        raise NotFound(f"Topic {topic_key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+        raise Invalid(not_in_a_file(f"Event {key!r}"))
+    return located["path"]
+
+
+def file_of_topic(conn: sqlite3.Connection, key: str) -> str:
+    """The path (relative to the data folder) of the file of the topic."""
+    located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (key,)).fetchone()
+    if located is None:
+        raise NotFound(not_in_a_file(f"Topic {key!r}"))
+    return located["path"]
+
+
+@contextmanager
+def store_change(path: str, outcome: str, *, also_invalid: tuple[type[Exception], ...] = ()) -> Iterator[None]:
+    """A change of a topic file. A file that changed outside Chronicle is a Conflict naming `outcome`; any other
+    refusal of the store is Invalid."""
     try:
-        set_ref_in_file(data_dir / located["path"], key, present=present,
-                        expected_version=recorded_version(conn, located["path"]))
+        yield
     except VersionConflict as exc:
-        raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                       f"Der Verweis wurde nicht geändert ({exc}).") from exc
-    except StoreError as exc:
+        raise changed_outside(path, outcome, exc) from exc
+    except (StoreError, *also_invalid) as exc:
         raise Invalid(str(exc)) from exc
+
+
+def change_link(conn: sqlite3.Connection, key: str, topic_key: str, *, present: bool, data_dir: Path) -> None:
+    path = file_of_topic(conn, topic_key)
+    with store_change(path, "Der Verweis wurde nicht geändert"):
+        set_ref_in_file(data_dir / path, key, present=present, expected_version=recorded_version(conn, path))
 
 
 def change_links(conn: sqlite3.Connection, key: str, *, add, remove, data_dir: Path) -> None:
