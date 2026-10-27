@@ -82,6 +82,7 @@ mit `Secure`, und Browser schicken es über `http://localhost` trotzdem zurück.
 Ein Bericht ist eine einzelne HTML-Datei zu einem Topic, etwa als Anhang zu einem Post-Mortem (ADR 0001, ADR 0006). Er enthält Timeline, Graph, Event-Details, die verknüpften Events aus anderen Topics und alle Evidence-Dateien eingebettet. Er braucht weder Server noch Anmeldung und zeigt den Stand zum Zeitpunkt des Downloads.
 
 - **In der Anwendung:** Admins öffnen **Berichte**, wählen ein Topic und laden die Datei. Die API hat dafür `GET /api/v1/topics/{key}/report`. Andere Rollen bekommen 403.
+- **Als PDF** gibt es zwei Arten, beide ohne Graph und ohne Anmeldung lesbar: `technisch` mit allen Events, Details, Ursachen und Wirkungen, Evidence (Bilder eingebettet, andere Dateien aufgelistet), und `management` mit kurzen Kennzahlen und nur den Event-Titeln samt Zeit. Die Oberfläche bietet beide unter **Berichte**, die API über `GET /api/v1/topics/{key}/report.pdf?art=technisch|management`. Zeiten stehen in UTC. Die PDFs nutzen die eingebauten Schriften, Zeichen außerhalb von Latin-1 erscheinen als `?`.
 
 Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie nur bewusst und lösche sie danach.
 
@@ -236,7 +237,7 @@ Die Oberfläche ist serverseitig gerendert, Formulare sind mit einem CSRF-Token 
 | `/topics/{key}/dashboard` | angemeldet | Dashboard des Topics: Timeline, Entitäten-Graph und Details (die Ansicht auf `/topics/{key}` lädt sie als Frame) |
 | `/events/new` | analyst, admin | Event anlegen. Die Zeit wird in einer wählbaren Zone eingegeben, die Zeile darunter zeigt, was das in UTC ergibt |
 | `/events/{key}` | angemeldet | Details mit Phase und Status, Beschreibung (Markdown, auch Mermaid-Diagramme), Auslöser und Folgen, Evidence mit Vorschau, Topics. Analyst und Admin ändern Phase und Status direkt über die beiden Auswahlfelder im Kopf, bearbeiten die übrigen Felder im Bereich „Weitere Felder bearbeiten“, laden Evidence hoch und löschen das Event |
-| `/reports` | admin | Topics mit Download des HTML-Berichts |
+| `/reports` | admin | Topics mit Download des HTML-Berichts und der PDFs |
 | `/admin/users` | admin | Konten anlegen, Rolle und Status ändern, Passwort setzen, Sperre aufheben |
 | `/admin/grabsteine` | admin | gelöschte Events (nur ohne Datenordner) wiederherstellen oder endgültig entfernen |
 | `/admin/audit` | admin | Audit-Log, filterbar nach Aktion, Benutzer und Datum |
@@ -270,6 +271,7 @@ Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-C
 | POST | `/events/{key}/evidence` | analyst, admin | Datei hochladen, multipart mit `file`, `type`, `description` |
 | GET | `/evidence/{id}` | angemeldet | Inhalt einer Evidence-Datei |
 | GET | `/topics/{key}/report` | admin | HTML-Bericht des Topics als Download |
+| GET | `/topics/{key}/report.pdf?art=` | admin | PDF-Bericht, `technisch` (Standard) oder `management` |
 | DELETE | `/evidence/{id}` | analyst, admin | Evidence entfernen |
 | GET | `/users` | admin | Konten |
 | POST | `/users` | admin | Konto anlegen |
@@ -329,6 +331,7 @@ chronicle/
   markdown.py        Markdown der Event-Beschreibung, bereinigt
   renderer.py        Dashboard-Ansicht als HTML, Grundlage der Berichte
   report.py          Bericht zu einem Topic aus der Datenbank
+  pdf_report.py      PDF-Berichte (technisch, Management Summary)
   cli.py, __main__.py  chronicle check | apply | build | schema
   serve.py           API mit uvicorn starten
   admin_cli.py       Konten über die Kommandozeile verwalten

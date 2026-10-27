@@ -26,6 +26,7 @@ from .db import connect
 from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
 from .models import Phase, Status, Topic, TopicCreate
 from .pages import make_pages, not_found_page
+from .pdf_report import make_pdf_report
 from .report import make_report, report_headers
 from .event_input import EventCreate, EventUpdate, event_of, new_event_key, new_topic_key, topic_list
 
@@ -365,6 +366,18 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, data_dir
         filename, body = _write(lambda: make_report(conn, key, admin["id"], client_ip(request),
                                                     data_dir=request.app.state.data_dir))
         return Response(content=body, media_type="text/html; charset=utf-8", headers=report_headers(filename))
+
+    @app.get("/api/v1/topics/{key}/report.pdf")
+    def topic_report_pdf(
+        key: str,
+        request: Request,
+        art: str = "technisch",
+        conn: sqlite3.Connection = Depends(get_conn),
+        admin: dict = Depends(admin_only),
+    ) -> Response:
+        filename, body = _write(lambda: make_pdf_report(conn, key, admin["id"], client_ip(request), art,
+                                                        data_dir=request.app.state.data_dir))
+        return Response(content=body, media_type="application/pdf", headers=report_headers(filename))
 
     @app.get("/api/v1/audit")
     def audit_log(

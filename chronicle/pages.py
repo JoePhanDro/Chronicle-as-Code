@@ -23,6 +23,7 @@ from .evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, Blob, check_file
 from .exporter import ExportError
 from .markdown import markdown_filter
 from .loader import TimelineError
+from .pdf_report import make_pdf_report
 from .report import make_dashboard, make_report, report_headers
 from .models import PHASE_COLORS, STATUS_LABELS, Phase, Status, Topic, TopicKind
 from .event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, new_topic_key, t0_from_parts, t0_parts, topic_list
@@ -405,6 +406,18 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         except repository.NotFound:
             return render(request, "not_found.html", user, status_code=404)
         return Response(content=body, media_type="text/html; charset=utf-8", headers=report_headers(filename))
+
+    @router.get("/reports/{key}/pdf")
+    def report_pdf_download(key: str, request: Request, art: str = "technisch", conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        if user["role"] != "admin":
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            filename, body = make_pdf_report(conn, key, user["id"], client_ip(request), art, data_dir=request.app.state.data_dir)
+        except repository.NotFound:
+            return render(request, "not_found.html", user, status_code=404)
+        return Response(content=body, media_type="application/pdf", headers=report_headers(filename))
 
     @router.post("/events/{key}/evidence", response_class=HTMLResponse)
     async def add_evidence_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

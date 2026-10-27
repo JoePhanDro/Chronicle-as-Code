@@ -138,3 +138,80 @@ def test_admin_sees_the_report_page_with_download_links(db_path):
 
     anna = api_login(db_path, "anna")
     assert 'href="/reports"' not in anna.get("/events").text
+
+
+def pdf_pages(body: bytes) -> list[str]:
+    import io
+
+    from pypdf import PdfReader
+
+    return [page.extract_text() for page in PdfReader(io.BytesIO(body)).pages]
+
+
+def test_technical_pdf_holds_everything(db_path):
+    response = api_login(db_path, "admin").get("/api/v1/topics/inc-2026-042/report.pdf")
+    assert response.status_code == 200 and response.content.startswith(b"%PDF")
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == 'attachment; filename="technisch-inc-2026-042.pdf"'
+    text = "\n".join(pdf_pages(response.content))
+    assert "Ausnutzung von CVE-2026-XXXX" in text and "Nur in der Datenbank" in text  # from the database
+    assert "Ausgelöst durch: CVE-2026-XXXX veröffentlicht" in text  # causes by title, not by key
+    assert "Herstellerhinweis" in text and "Remote Code Execution" in text  # the details
+    assert "probe.png" in text  # evidence is listed, even when the image itself cannot be placed
+
+
+def test_management_pdf_has_titles_and_figures_but_no_details(db_path):
+    response = api_login(db_path, "admin").get("/api/v1/topics/inc-2026-042/report.pdf?art=management")
+    assert response.headers["content-disposition"] == 'attachment; filename="management-inc-2026-042.pdf"'
+    text = "\n".join(pdf_pages(response.content))
+    assert "MANAGEMENT SUMMARY" in text and "Zeitraum:" in text and "Events" in text
+    assert "CVE-2026-XXXX veröffentlicht" in text and "Nur in der Datenbank" in text
+    assert "Herstellerhinweis" not in text and "Ausgelöst durch" not in text and "probe.png" not in text
+
+
+def test_pdf_places_real_images_in_the_technical_report_only(db_path):
+    import io
+
+    from PIL import Image
+
+    image = io.BytesIO()
+    Image.new("RGB", (40, 20), "red").save(image, "PNG")
+    conn = connect(db_path)
+    anna = conn.execute("SELECT id FROM users WHERE username = 'anna'").fetchone()["id"]
+    repository.add_evidence(conn, "analysis", check_file("echt.png", image.getvalue()), "screenshot", "Echtes Bild", anna, "127.0.0.1")
+    conn.close()
+    admin = api_login(db_path, "admin")
+    response = admin.get("/api/v1/topics/inc-2026-042/report.pdf")
+    assert response.status_code == 200 and b"/Subtype /Image" in response.content
+    assert b"/Subtype /Image" not in admin.get("/api/v1/topics/inc-2026-042/report.pdf?art=management").content
+
+
+def test_pdf_of_an_empty_topic_and_unknown_requests(db_path):
+    admin = api_login(db_path, "admin")
+    assert admin.post("/api/v1/topics", json={"key": "leer", "title": "Leeres Topic", "kind": "project"}).status_code == 201
+    for art in ("technisch", "management"):
+        text = "\n".join(pdf_pages(admin.get(f"/api/v1/topics/leer/report.pdf?art={art}").content))
+        assert "Leeres Topic" in text and "Noch keine Events" in text
+    assert admin.get("/api/v1/topics/gibt-es-nicht/report.pdf").status_code == 404
+    assert admin.get("/api/v1/topics/leer/report.pdf?art=geheim").status_code == 404
+
+
+def test_pdf_is_audited_with_its_kind_and_only_admins_get_it(db_path):
+    api_login(db_path, "admin").get("/api/v1/topics/inc-2026-042/report.pdf?art=management")
+    conn = connect(db_path)
+    (entry,) = [e for e in accounts.list_audit(conn) if e["action"] == "report_created"]
+    conn.close()
+    assert entry["detail"].startswith("pdf=management")
+    for username in ("anna", "viewer"):
+        client = api_login(db_path, username)
+        assert client.get("/api/v1/topics/inc-2026-042/report.pdf").status_code == 403
+        assert client.get("/reports/inc-2026-042/pdf").status_code == 403
+    assert TestClient(create_app(db_path)).get("/api/v1/topics/inc-2026-042/report.pdf").status_code == 401
+
+
+def test_reports_page_offers_html_and_both_pdfs(db_path):
+    admin = api_login(db_path, "admin")
+    html = admin.get("/reports").text
+    assert 'href="/reports/inc-2026-042/pdf?art=technisch"' in html and 'href="/reports/inc-2026-042/pdf?art=management"' in html
+    page = admin.get("/reports/inc-2026-042/pdf?art=management")
+    assert page.status_code == 200 and page.headers["content-type"] == "application/pdf"

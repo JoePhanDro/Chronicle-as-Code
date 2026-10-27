@@ -8,3 +8,4 @@ argon2-cffi==25.1.0
 python-multipart==0.0.32
 markdown-it-py==4.2.0
 nh3==0.3.7
+reportlab==5.1.0
