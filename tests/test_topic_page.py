@@ -189,3 +189,51 @@ def test_a_topic_whose_events_trigger_events_elsewhere_has_no_delete_button_but_
     html = client.get("/topics/inc-2026-042").text
     assert "Nicht löschbar: Events anderer Topics hängen an Events dieses Topics" in html
     assert 'href="/events/fremd-1"' in html and "löschen</button>" not in html.split('id="bearbeiten"')[1]
+
+
+def test_close_button_names_the_count_and_what_it_does_not_touch(api_client):
+    html = api_client("analyst").get("/topics/inc-2026-042").text  # three events are not resolved
+    assert "Alle 3 offenen Events abschließen" in html and 'action="/topics/inc-2026-042/close-events"' in html
+    assert js("Alle 3 offenen Events dieses Topics auf „abgeschlossen“ setzen?\n\nDanach gilt das Topic als abgeschlossen.") in html
+
+
+def test_viewers_get_no_close_button_and_cannot_close(api_client):
+    client = api_client("viewer")
+    assert "close-events" not in client.get("/topics/inc-2026-042").text
+    response = client.post("/topics/inc-2026-042/close-events", data={"csrf_token": client.headers["X-CSRF-Token"]})
+    assert response.status_code == 403
+    assert "in Arbeit" in client.get("/topics/inc-2026-042").text
+
+
+def test_closing_resolves_every_home_event_and_the_topic_follows(api_client):
+    client = api_client("analyst")
+    response = client.post("/topics/inc-2026-042/close-events", data={"csrf_token": client.headers["X-CSRF-Token"]},
+                           follow_redirects=False)
+    assert response.status_code == 303 and response.headers["location"] == "/topics/inc-2026-042?abgeschlossen=3"
+    page = client.get(response.headers["location"]).text
+    assert "3 Events abgeschlossen." in page and "abgeschlossen</span>" in page
+    assert "close-events" not in page  # nothing left to close
+    assert "in Arbeit" not in page.split('aria-label="Events dieses Topics"')[0]
+
+
+def test_linked_events_of_other_topics_stay_as_they_are(api_client):
+    client = api_client("analyst")
+    create_empty_topic(client)
+    token = client.headers["X-CSRF-Token"]
+    assert "close-events" not in client.get("/topics/leer").text  # no events at all
+    body = {"key": "eigen-1", "t0": "2026-10-27T10:00:00+02:00", "phase": "Activity", "actor": "A", "action": "Eigenes",
+            "status": "open", "topic": "leer", "topics": ["leer"]}
+    assert client.post("/api/v1/events", json=body).status_code == 201
+    client.post("/topics/leer/link", data={"event": "exploit", "csrf_token": token})  # in progress, home is elsewhere
+    html = client.get("/topics/leer").text
+    assert "Offenes Event abschließen" in html  # only the home event counts
+    assert js("1 verknüpftes Event aus anderen Topics bleibt unverändert, das Topic gilt dann noch nicht als abgeschlossen.") in html
+    client.post("/topics/leer/close-events", data={"csrf_token": token})
+    assert client.get("/api/v1/events/eigen-1").json()["status"] == "resolved"
+    assert client.get("/api/v1/events/exploit").json()["status"] == "in_progress"
+    assert "close-events" not in client.get("/topics/leer").text
+
+
+def test_unknown_topic_gives_404(api_client):
+    client = api_client("analyst")
+    assert client.post("/topics/gibt-es-nicht/close-events", data={"csrf_token": client.headers["X-CSRF-Token"]}).status_code == 404
