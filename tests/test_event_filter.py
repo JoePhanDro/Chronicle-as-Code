@@ -3,10 +3,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for, import_example
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
-from chronicle.importer import import_folder
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 PASSWORD = "correct horse battery"
@@ -24,7 +23,7 @@ def db_path(tmp_path):
     accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
     conn.close()
-    import_folder(path, DATA_DIR)
+    import_example(path)
 
     anna = api_login(path, "anna")
     anna.post("/api/v1/topics", json={"key": "projekt-x", "title": "Projekt X", "kind": "project"})
@@ -37,7 +36,7 @@ def db_path(tmp_path):
 
 
 def api_login(db_path, username):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -81,7 +80,7 @@ def test_api_filter_with_unknown_topic_is_not_found(db_path):
 
 
 def test_anonymous_request_is_redirected_to_login(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.get("/events?topic=projekt-x", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"

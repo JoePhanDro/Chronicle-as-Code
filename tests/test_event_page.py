@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import db_mode_app, import_example
 from chronicle import repository
 from chronicle.pages import TEMPLATES
 
@@ -86,16 +87,14 @@ def test_without_a_data_folder_the_dialog_points_to_the_tombstones(tmp_path):
     from fastapi.testclient import TestClient
 
     from chronicle import accounts, security
-    from chronicle.api import create_app
     from chronicle.db import connect
-    from chronicle.importer import import_folder
-    from tests.conftest import DATA_DIR, PASSWORD
+    from tests.conftest import PASSWORD
 
-    import_folder(tmp_path / "chronicle.db", DATA_DIR)
+    import_example(tmp_path / "chronicle.db")
     conn = connect(tmp_path / "chronicle.db")
     accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     conn.close()
-    client = TestClient(create_app(tmp_path / "chronicle.db"))
+    client = TestClient(db_mode_app(tmp_path / "chronicle.db"))
     client.post("/api/v1/auth/login", json={"username": "anna", "password": PASSWORD})
     html = client.get("/events/lessons").text
     assert js("Ein Admin kann es unter Verwaltung, Gelöschte Events wiederherstellen.") in html

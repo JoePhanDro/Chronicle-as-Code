@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from chronicle.api import create_app
+from tests.conftest import app_for
 from chronicle.build import STYLESHEET, build_site
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "chronicle" / "templates"
@@ -46,7 +46,7 @@ def test_unknown_address_shows_the_404_page_to_a_signed_in_browser(api_client):
 
 
 def test_unknown_address_sends_a_signed_out_browser_to_the_login(tmp_path):
-    client = TestClient(create_app(tmp_path / "x.db"))
+    client = TestClient(app_for(tmp_path / "x.db"))
     response = client.get("/gibt-es-nicht", headers=HTML, follow_redirects=False)
     assert (response.status_code, response.headers["location"]) == (303, "/login")
 

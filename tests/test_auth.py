@@ -3,11 +3,10 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for, import_example
 from chronicle.db import ops_path
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
-from chronicle.importer import import_folder
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -33,7 +32,7 @@ def db_path(tmp_path):
 
 @pytest.fixture
 def client(db_path):
-    return TestClient(create_app(db_path))
+    return TestClient(app_for(db_path))
 
 
 def login(client, username, password=PASSWORD):
@@ -204,8 +203,8 @@ def test_home_redirects_to_login_without_session(client):
 
 
 def test_import_still_works_and_is_visible_after_login(db_path):
-    import_folder(db_path, DATA_DIR)
-    client = TestClient(create_app(db_path))
+    import_example(db_path)
+    client = TestClient(app_for(db_path))
     login_as(client, "viewer")
     assert len(client.get("/api/v1/topics").json()) == 1
 
@@ -214,7 +213,7 @@ def test_bootstrap_admin_from_environment(tmp_path, monkeypatch):
     path = tmp_path / "fresh.db"
     monkeypatch.setenv("CHRONICLE_ADMIN_USER", "root")
     monkeypatch.setenv("CHRONICLE_ADMIN_PASSWORD", PASSWORD)
-    create_app(path)
+    app_for(path)
     conn = connect(path)
     assert [user["username"] for user in accounts.list_users(conn)] == ["root"]
     assert accounts.list_users(conn)[0]["role"] == "admin"

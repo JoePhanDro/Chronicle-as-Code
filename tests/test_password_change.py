@@ -1,8 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
 
 ADMIN_USER = "ci-admin"
@@ -25,7 +25,7 @@ def db_path(tmp_path):
 
 
 def login_api(db_path, username, password):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": password})
     return client, response
 
@@ -41,7 +41,7 @@ def test_bootstrap_admin_must_change_the_password_first(tmp_path, monkeypatch):
     path = tmp_path / "bootstrap.db"
     monkeypatch.setenv("CHRONICLE_ADMIN_USER", ADMIN_USER)
     monkeypatch.setenv("CHRONICLE_ADMIN_PASSWORD", FIRST_PASSWORD)
-    create_app(path)  # the bootstrap admin is created when the app starts
+    app_for(path)  # the bootstrap admin is created when the app starts
 
     client, response = login_api(path, ADMIN_USER, FIRST_PASSWORD)
     assert response.json()["user"]["must_change_password"] is True

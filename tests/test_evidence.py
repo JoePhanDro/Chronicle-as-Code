@@ -4,11 +4,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for, db_mode_app, import_example
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
 from chronicle.evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers
-from chronicle.importer import import_folder
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 PASSWORD = "correct horse battery"
@@ -35,12 +34,12 @@ def db_path(tmp_path):
     accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
     accounts.create_user(conn, "viewer", security.hash_password(PASSWORD), "viewer")
     conn.close()
-    import_folder(path, DATA_DIR)
+    import_example(path)
     return path
 
 
-def api_login(db_path, username):
-    client = TestClient(create_app(db_path))
+def api_login(db_path, username, db_mode=False):
+    client = TestClient(db_mode_app(db_path) if db_mode else app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -124,7 +123,7 @@ def test_delivery_headers_block_sniffing_and_scripts():
 # Delivery
 
 def test_anonymous_request_gets_no_evidence(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     assert client.get(f"/api/v1/evidence/{evidence_id(db_path, 'siem-alert')}").status_code == 401
 
 
@@ -151,7 +150,7 @@ def test_evidence_without_content_says_how_to_fix_it(db_path):
     conn.commit()
     conn.close()
 
-    viewer = api_login(db_path, "viewer")
+    viewer = api_login(db_path, "viewer", db_mode=True)
     response = viewer.get(f"/api/v1/evidence/{evidence_id(db_path, 'siem-alert')}")
     assert response.status_code == 404
     assert "Import erneut" in response.json()["detail"]
@@ -166,7 +165,7 @@ def test_viewer_cannot_upload_or_delete(db_path):
 
 
 def test_analyst_uploads_and_the_event_is_marked_manual(db_path):
-    anna = api_login(db_path, "anna")
+    anna = api_login(db_path, "anna", db_mode=True)
     response = upload(anna, "exploit", "probe.png", PNG, description="Probe")
     assert response.status_code == 201
     body = response.json()
@@ -203,7 +202,7 @@ def test_bad_upload_is_rejected_and_stores_nothing(db_path, name, data, evidence
 
 
 def test_upload_is_written_to_the_audit_log_without_content(db_path):
-    anna = api_login(db_path, "anna")
+    anna = api_login(db_path, "anna", db_mode=True)
     upload(anna, "exploit", "probe.png", PNG)
 
     conn = connect(db_path)
@@ -215,7 +214,7 @@ def test_upload_is_written_to_the_audit_log_without_content(db_path):
 
 
 def test_analyst_deletes_evidence(db_path):
-    anna = api_login(db_path, "anna")
+    anna = api_login(db_path, "anna", db_mode=True)
     evidence = evidence_id(db_path, "siem-alert")
     assert anna.delete(f"/api/v1/evidence/{evidence}").status_code == 204
     assert anna.get(f"/api/v1/evidence/{evidence}").status_code == 404
@@ -259,9 +258,9 @@ def test_html_delete_requires_the_csrf_token(db_path):
 
 
 def test_reimport_keeps_evidence_uploaded_to_an_imported_event(db_path):
-    anna = api_login(db_path, "anna")
+    anna = api_login(db_path, "anna", db_mode=True)
     upload(anna, "exploit", "probe.png", PNG)
 
-    import_folder(db_path, DATA_DIR)
+    import_example(db_path)
 
     assert [item["file"] for item in anna.get("/api/v1/events/exploit").json()["evidence"]] == ["probe.png"]

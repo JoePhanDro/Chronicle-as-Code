@@ -3,8 +3,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import app_for
 from chronicle import accounts, security
-from chronicle.api import create_app
 from chronicle.db import connect
 
 ADMIN_PASSWORD = "admin-passwort-123"
@@ -28,7 +28,7 @@ def db_path(tmp_path):
 
 
 def login(db_path, username, password=None):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": password or PASSWORD})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -55,7 +55,7 @@ def test_only_admins_see_the_admin_pages(db_path):
 
 
 def test_anonymous_visitors_are_sent_to_login(db_path):
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     response = client.get("/admin/users", follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
@@ -166,7 +166,7 @@ def test_admin_forms_need_the_csrf_token(db_path):
 
 def test_admin_lifts_the_lock_of_an_account(db_path):
     anna = user_id(db_path, "anna")
-    client = TestClient(create_app(db_path))
+    client = TestClient(app_for(db_path))
     for _ in range(5):
         client.post("/api/v1/auth/login", json={"username": "anna", "password": "falsch"})
     assert client.post("/api/v1/auth/login", json={"username": "anna", "password": PASSWORD}).status_code == 429
