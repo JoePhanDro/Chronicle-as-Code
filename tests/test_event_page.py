@@ -173,3 +173,8 @@ def test_chips_say_that_they_can_be_changed_and_the_panel_names_what_it_holds(ap
     html = api_client("analyst").get("/events/lessons").text
     assert 'title="Phase ändern"' in html and 'title="Status ändern"' in html
     assert "Weitere Felder bearbeiten · Event löschen</summary>" in html
+
+
+def test_time_fields_say_what_the_entry_comes_to_in_utc(api_client):
+    html = api_client("analyst").get("/events/lessons").text
+    assert "data-utc-note" in html and "Zeitzone der Eingabe" in html and "Gespeichert als " in html

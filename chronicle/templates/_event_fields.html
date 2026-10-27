@@ -64,12 +64,39 @@
       </select>
     </label>
     <label class="block">
-      <span class="{{ label_class }}">Zeitzone</span>
+      <span class="{{ label_class }}">Zeitzone der Eingabe</span>
       <select name="t0_zone" required class="{{ input_class }}">
         {% for zone in timezones %}<option value="{{ zone }}" {{ 'selected' if f.t0_zone == zone }}>{{ zone }}</option>{% endfor %}
       </select>
     </label>
   </div>
+  <p data-utc-note class="mt-3 font-mono text-xs text-slate-400"></p>
+  <script>
+    // The form takes the time in one zone, the app shows and stores UTC: say what the entry comes to in UTC.
+    (function () {
+      var script = document.currentScript, section = script.parentNode;
+      var form = section.closest('form'), note = section.querySelector('[data-utc-note]');
+      function field(name) { return form.elements[name]; }
+      function toUtc(day, hour, minute, zone) {
+        var parts = day.split('-').map(Number);
+        var guess = Date.UTC(parts[0], parts[1] - 1, parts[2], Number(hour), Number(minute));
+        if (zone === 'UTC') return new Date(guess);
+        var seen = {};
+        new Intl.DateTimeFormat('en-GB', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
+          .formatToParts(new Date(guess)).forEach(function (part) { seen[part.type] = Number(part.value); });
+        var offset = Date.UTC(seen.year, seen.month - 1, seen.day, seen.hour, seen.minute) - guess;
+        return new Date(guess - offset);
+      }
+      function show() {
+        var day = field('t0_date').value;
+        if (!day) { note.textContent = ''; return; }
+        var utc = toUtc(day, field('t0_hour').value, field('t0_minute').value, field('t0_zone').value);
+        note.textContent = 'Gespeichert als ' + utc.toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+      }
+      ['t0_date', 't0_hour', 't0_minute', 't0_zone'].forEach(function (name) { field(name).addEventListener('input', show); });
+      show();
+    })();
+  </script>
 </section>
 
 <section class="{{ section_class }}">
