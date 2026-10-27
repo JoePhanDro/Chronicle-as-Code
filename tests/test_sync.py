@@ -294,6 +294,68 @@ def test_an_unreachable_remote_keeps_the_local_commit(tmp_path, folder):
     assert subjects(folder)[0].startswith("Abgleich ")
 
 
+def test_the_folder_is_not_locked_while_the_remote_is_fetched(tmp_path, folder, monkeypatch):
+    """A slow network must not block the writers of the data folder (issue #131)."""
+    import threading
+
+    from chronicle.store import folder_lock
+
+    remote_of(tmp_path, folder)
+    real_fetch = sync._fetch
+    got_the_lock = []
+
+    def fetch_while_a_writer_waits(data_dir):
+        def writer():
+            with folder_lock(data_dir):
+                got_the_lock.append(True)
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        thread.join(timeout=5)
+        real_fetch(data_dir)
+
+    monkeypatch.setattr(sync, "_fetch", fetch_while_a_writer_waits)
+    sync.synchronise(folder)
+
+    assert got_the_lock == [True]
+
+
+def test_a_change_made_while_the_remote_is_fetched_is_synchronised_too(tmp_path, folder, monkeypatch):
+    remote = remote_of(tmp_path, folder)
+    real_fetch = sync._fetch
+
+    def fetch_and_edit(data_dir):
+        real_fetch(data_dir)
+        edit(data_dir, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Währenddessen"')
+
+    monkeypatch.setattr(sync, "_fetch", fetch_and_edit)
+    result = sync.synchronise(folder)
+
+    assert result.committed is True and result.conflicts == [] and result.problems == []
+    assert "Währenddessen" in git(remote, "show", "main:timeline.yaml")
+
+
+def test_a_remote_that_does_not_answer_is_stopped_and_keeps_the_local_commit(tmp_path, folder, monkeypatch):
+    remote_of(tmp_path, folder)
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Offline"')
+    real_run = subprocess.run
+    seen = {}
+
+    def hanging_fetch(command, **kwargs):
+        if "fetch" in command:
+            seen.update(kwargs)
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        return real_run(command, **kwargs)
+
+    monkeypatch.setattr(sync.subprocess, "run", hanging_fetch)
+    with pytest.raises(sync.SyncError, match="antwortet nicht"):
+        sync.synchronise(folder)
+
+    assert seen["timeout"] == sync.NETWORK_TIMEOUT_SECONDS
+    assert seen["env"]["GIT_TERMINAL_PROMPT"] == "0"  # git never waits for a password nobody can type
+    assert subjects(folder)[0].startswith("Abgleich ")
+
+
 def test_broken_files_stop_the_sync_before_anything_is_committed(tmp_path, folder):
     remote_of(tmp_path, folder)
     (folder / "b.yaml").write_text("topic: [kaputt\n", encoding="utf-8")

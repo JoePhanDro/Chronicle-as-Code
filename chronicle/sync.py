@@ -52,6 +52,19 @@ def _run(data_dir: Path, *args: str, text: bool = True) -> subprocess.CompletedP
         raise SyncError("Git ist auf diesem Rechner nicht installiert.") from exc
 
 
+def _run_network(data_dir: Path, *args: str) -> subprocess.CompletedProcess:
+    """Run a git command that talks to the remote. It never asks for a password on the terminal, and it is stopped
+    after NETWORK_TIMEOUT_SECONDS, so that a hanging network cannot hold the synchronisation forever."""
+    try:
+        return subprocess.run(["git", "-C", str(data_dir), *args], capture_output=True, text=True, check=False,
+                              env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}, timeout=NETWORK_TIMEOUT_SECONDS)
+    except FileNotFoundError as exc:
+        raise SyncError("Git ist auf diesem Rechner nicht installiert.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise SyncError(f"Der Remote antwortet nicht (nach {NETWORK_TIMEOUT_SECONDS} Sekunden abgebrochen). "
+                        "Lokal bleibt alles erhalten, der Abgleich lässt sich später wiederholen.") from exc
+
+
 def _git(data_dir: Path, *args: str) -> str:
     result = _run(data_dir, *args)
     if result.returncode != 0:
@@ -186,6 +199,7 @@ def preview(data_dir: Path) -> Preview:
 
 
 REMOTE = "origin"
+NETWORK_TIMEOUT_SECONDS = 120
 DRIVER_FAILED = "CHRONICLE-TREIBERFEHLER"
 MAX_FAILURE_TEXT = 300
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent  # the folder that holds the chronicle package
@@ -205,56 +219,72 @@ def synchronise(data_dir: Path) -> SyncResult:
 
     Stops before each step that could lose data: a file that fails the checks, a conflict, a merge that breaks the
     files. A failed upload leaves the local commit in place; the next synchronisation tries again.
+
+    The folder is locked for the local steps only (commit, merge, checks). Fetching and pushing talk to the network and
+    run outside the lock, so that a slow remote does not hold up the changes made in the app (issue #131). The local
+    changes are committed before the fetch, so that an unreachable remote still leaves them committed. Changes made
+    while the fetch runs are committed again before the merge.
     """
     state = preview(data_dir)
     if state.problems:
         return SyncResult(committed=False, merged=False, conflicts=[], problems=state.problems)
     try:
-        return _synchronise_locked(data_dir)
+        branch = _current_branch(data_dir)
+        with folder_lock(data_dir):
+            marker = _use_merge_driver(data_dir)
+            committed = _commit_topic_files(data_dir)
+        _fetch(data_dir)
+        with folder_lock(data_dir):
+            result, upload = _take_in_remote(data_dir, branch, marker, committed)
+        if upload:
+            _push(data_dir, branch)
+        return result
     except StoreError as exc:  # the lock file is a link, a folder, ...
         raise SyncError(str(exc)) from exc
 
 
-def _synchronise_locked(data_dir: Path) -> SyncResult:
-    with folder_lock(data_dir):
-        marker = _use_merge_driver(data_dir)
-        committed = _commit_topic_files(data_dir)
-        branch = _git(data_dir, "rev-parse", "--abbrev-ref", "HEAD").strip()
-        if branch == "HEAD":
-            raise SyncError("Die Datenkopie ist auf keinem Branch. Bitte zuerst einen Branch auschecken.")
-        _fetch(data_dir)
+def _current_branch(data_dir: Path) -> str:
+    branch = _git(data_dir, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    if branch == "HEAD":
+        raise SyncError("Die Datenkopie ist auf keinem Branch. Bitte zuerst einen Branch auschecken.")
+    return branch
 
-        remote_ref = f"{REMOTE}/{branch}"
-        if not _ref_exists(data_dir, remote_ref):
-            _push(data_dir, branch)  # the first upload: nothing to merge yet
-            return SyncResult(committed=committed, merged=False, conflicts=[], problems=[])
 
-        before = _git(data_dir, "rev-parse", "HEAD").strip()
-        outcome = _run(data_dir, "merge", "--no-edit", remote_ref)
-        if outcome.returncode != 0:
-            failure = _driver_failure(outcome, marker)  # git counts a crashed driver as a conflict
-            if failure is not None:
-                _run(data_dir, "merge", "--abort")
-                raise SyncError(f"Der Merge-Treiber ist abgestürzt, das Zusammenführen wurde abgebrochen: {failure}")
-            conflicts = _git(data_dir, "diff", "--name-only", "--diff-filter=U").splitlines()
-            if not conflicts:  # refused before it started, e.g. an untracked file is in the way: nothing to abort
-                raise SyncError(f"Das Zusammenführen ist fehlgeschlagen: {outcome.stderr.strip() or outcome.stdout.strip()}")
-            _git(data_dir, "merge", "--abort")
-            return SyncResult(committed=committed, merged=False, conflicts=conflicts, problems=[])
+def _take_in_remote(data_dir: Path, branch: str, marker: str, committed: bool) -> tuple[SyncResult, bool]:
+    """The local steps, with the folder locked: commit what changed since, merge the fetched state, check the result.
+    `committed` says whether the first commit took changes. The flag returned says whether the state is ready to be
+    uploaded."""
+    committed = _commit_topic_files(data_dir) or committed
 
-        merged = _git(data_dir, "rev-parse", "HEAD").strip() != before
-        linked = _linked(_tree(data_dir, "HEAD"))
-        if linked:  # a link in the merged state would make the app read or write outside the folder
-            _undo_merge(data_dir, before)
-            problems = [f"{name}: Links und Submodule sind im Datenordner nicht erlaubt" for name in linked]
-            return SyncResult(committed=committed, merged=False, conflicts=[], problems=problems)
-        try:
-            load_named_folder(data_dir, evidence=False)
-        except CheckFailed as exc:
-            _undo_merge(data_dir, before)
-            return SyncResult(committed=committed, merged=False, conflicts=[], problems=list(exc.problems))
-        _push(data_dir, branch)
-        return SyncResult(committed=committed, merged=merged, conflicts=[], problems=[])
+    remote_ref = f"{REMOTE}/{branch}"
+    if not _ref_exists(data_dir, remote_ref):
+        return SyncResult(committed=committed, merged=False, conflicts=[], problems=[]), True  # the first upload
+
+    before = _git(data_dir, "rev-parse", "HEAD").strip()
+    outcome = _run(data_dir, "merge", "--no-edit", remote_ref)
+    if outcome.returncode != 0:
+        failure = _driver_failure(outcome, marker)  # git counts a crashed driver as a conflict
+        if failure is not None:
+            _run(data_dir, "merge", "--abort")
+            raise SyncError(f"Der Merge-Treiber ist abgestürzt, das Zusammenführen wurde abgebrochen: {failure}")
+        conflicts = _git(data_dir, "diff", "--name-only", "--diff-filter=U").splitlines()
+        if not conflicts:  # refused before it started, e.g. an untracked file is in the way: nothing to abort
+            raise SyncError(f"Das Zusammenführen ist fehlgeschlagen: {outcome.stderr.strip() or outcome.stdout.strip()}")
+        _git(data_dir, "merge", "--abort")
+        return SyncResult(committed=committed, merged=False, conflicts=conflicts, problems=[]), False
+
+    merged = _git(data_dir, "rev-parse", "HEAD").strip() != before
+    linked = _linked(_tree(data_dir, "HEAD"))
+    if linked:  # a link in the merged state would make the app read or write outside the folder
+        _undo_merge(data_dir, before)
+        problems = [f"{name}: Links und Submodule sind im Datenordner nicht erlaubt" for name in linked]
+        return SyncResult(committed=committed, merged=False, conflicts=[], problems=problems), False
+    try:
+        load_named_folder(data_dir, evidence=False)
+    except CheckFailed as exc:
+        _undo_merge(data_dir, before)
+        return SyncResult(committed=committed, merged=False, conflicts=[], problems=list(exc.problems)), False
+    return SyncResult(committed=committed, merged=merged, conflicts=[], problems=[]), True
 
 
 def _driver_failure(outcome: subprocess.CompletedProcess, marker: str) -> str | None:
@@ -348,7 +378,7 @@ def _commit_topic_files(data_dir: Path) -> bool:
 
 
 def _fetch(data_dir: Path) -> None:
-    result = _run(data_dir, "fetch", "--quiet", REMOTE)
+    result = _run_network(data_dir, "fetch", "--quiet", REMOTE)
     if result.returncode != 0:
         raise SyncError("Der Remote ist nicht erreichbar. Lokal bleibt alles erhalten, der Abgleich lässt sich später "
                         f"wiederholen.\n{result.stderr.strip()}")
@@ -359,7 +389,7 @@ def _ref_exists(data_dir: Path, ref: str) -> bool:
 
 
 def _push(data_dir: Path, branch: str) -> None:
-    result = _run(data_dir, "push", "--quiet", "-u", REMOTE, f"HEAD:refs/heads/{branch}")
+    result = _run_network(data_dir, "push", "--quiet", "-u", REMOTE, f"HEAD:refs/heads/{branch}")
     if result.returncode != 0:
         raise SyncError("Hochladen ist fehlgeschlagen. Die Änderungen sind lokal committet und bleiben erhalten.\n"
                         f"{result.stderr.strip()}")
