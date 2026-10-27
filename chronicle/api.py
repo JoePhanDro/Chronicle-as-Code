@@ -1,4 +1,4 @@
-"""HTTP app: pages, login, read API for topics and events, admin API for users and audit log."""
+"""HTTP app: assembles pages, login and the API routers (chronicle.api_routes), and handles start-up."""
 
 from __future__ import annotations
 
@@ -8,52 +8,26 @@ import sys
 from contextlib import asynccontextmanager
 from collections.abc import Iterator
 from contextlib import closing
-from datetime import date
 from pathlib import Path
-from typing import Literal
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import __version__, accounts, administration, repository, security, sync
+from . import __version__, accounts, security
 from .admin_pages import make_admin_pages
-from .auth import PasswordChangeRequired, SetupState, client_ip, make_auth, parse_trusted_proxies
+from .api_routes.admin import make_admin_routes
+from .api_routes.events import make_event_routes
+from .api_routes.sync import make_sync_routes
+from .api_routes.topics import make_topic_routes
+from .auth import PasswordChangeRequired, SetupState, make_auth, parse_trusted_proxies
 from .db import connect
-from .evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers, display_name
-from .models import Phase, Status, Topic, TopicCreate
 from .pages import make_pages, not_found_page
-from .pdf_report import make_pdf_report
-from .report import make_report, report_headers
-from .event_input import EventCreate, EventUpdate, event_of, new_event_key, new_topic_key, topic_list
 
 DEFAULT_DB = "/data/chronicle.db"
 STATIC_DIR = Path(__file__).parent / "static"
-
-
-class UserCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
-
-    username: str
-    password: str
-    role: Literal["admin", "analyst", "viewer"] = "viewer"
-
-
-class TopicLink(BaseModel):
-    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
-
-    event: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
-
-
-class UserUpdate(BaseModel):
-    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
-
-    role: Literal["admin", "analyst", "viewer"] | None = None
-    active: bool | None = None
-    password: str | None = None
 
 
 def create_app(db_path: str | Path, trusted_proxies: str | None = None, *, data_dir: str | Path) -> FastAPI:
@@ -84,8 +58,6 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, *, data_
 
     cookie_secure = os.environ.get("CHRONICLE_COOKIE_SECURE", "1") != "0"
     auth = make_auth(get_conn, cookie_secure=cookie_secure, setup=setup_state)
-    current_user = auth.current_user
-    admin_only = auth.require_role("admin")
 
     app.include_router(auth.router)
     # Pages of a user who must change the password go to the change form instead.
@@ -120,283 +92,12 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, *, data_
     def health() -> dict:
         return {"status": "ok", "version": __version__}
 
-    # Topics and events: any logged-in user may read.
-
-    @app.get("/api/v1/topics")
-    def topics(conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
-        return repository.list_topics(conn)
-
-    @app.get("/api/v1/topics/{key}")
-    def topic(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> dict:
-        found = repository.get_topic(conn, key)
-        if found is None:
-            raise HTTPException(status_code=404, detail="Topic nicht gefunden")
-        return found
-
-    @app.get("/api/v1/topics/{key}/events")
-    def topic_events(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
-        if repository.get_topic(conn, key) is None:
-            raise HTTPException(status_code=404, detail="Topic nicht gefunden")
-        return repository.list_topic_events(conn, key)
-
-    @app.get("/api/v1/events")
-    def events(
-        topic: str | None = None,
-        q: str | None = Query(None, description="Words to find in action, details and actor"),
-        phase: Phase | None = None,
-        status: Status | None = None,
-        actor: str | None = Query(None, description="Part of the actor name"),
-        since: date | None = Query(None, description="t0 on or after this UTC day"),
-        until: date | None = Query(None, description="t0 on or before this UTC day"),
-        limit: int | None = Query(None, ge=1, le=500, description="Without a limit, all events are returned"),
-        offset: int = Query(0, ge=0),
-        conn: sqlite3.Connection = Depends(get_conn),
-        _: dict = Depends(current_user),
-    ) -> list[dict]:
-        if topic is not None and repository.get_topic(conn, topic) is None:
-            raise HTTPException(status_code=404, detail="Topic nicht gefunden")
-        flt = repository.EventFilter(topic=topic, query=q, phase=phase, status=status, actor=actor,
-                                     since=since, until=until)
-        return repository.find_events(conn, flt, limit=limit, offset=offset)
-
-    @app.get("/api/v1/events/{key}")
-    def event(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> dict:
-        found = repository.get_event(conn, key)
-        if found is None:
-            raise HTTPException(status_code=404, detail="Event nicht gefunden")
-        return found
-
-    # Evidence is served only to logged-in users, never as a public file (ADR 0004).
-    @app.get("/api/v1/evidence/{evidence_id}")
-    def evidence_file(
-        evidence_id: int, request: Request, conn: sqlite3.Connection = Depends(get_conn),
-        _: dict = Depends(current_user),
-    ) -> Response:
-        try:
-            found = repository.get_evidence_content(conn, evidence_id, request.app.state.data_dir)
-        except repository.Conflict as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        if found is None or found["content"] is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Evidence nicht gefunden oder ohne gespeicherten Inhalt. Bitte den Import erneut ausführen.",
-            )
-        return Response(
-            content=found["content"],
-            media_type=found["mime"],
-            headers=delivery_headers(display_name(found["file"]), found["mime"]),
-        )
-
-    # Writing events: admins and analysts. Validation is the same as for imports.
-
-    writer = auth.require_role("admin", "analyst")
-
-    # Abgleichen (issue #90): what a synchronisation with the Git remote would change. Nothing is written.
-
-    @app.get("/api/v1/sync/preview")
-    def sync_preview(request: Request, _: dict = Depends(writer)) -> dict:
-        try:
-            result = sync.preview(request.app.state.data_dir)
-        except sync.SyncError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return {
-            "problems": result.problems,
-            "changes": [{"action": item.action, "key": item.key, "file": item.file} for item in result.changes],
-        }
-
-    @app.post("/api/v1/sync")
-    def sync_now(request: Request, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(writer)) -> dict:
-        """Commit the topic files, take in the remote's state, push. After a merge the index is rebuilt (issue #90)."""
-        data_dir = request.app.state.data_dir
-        try:
-            result = sync.synchronise(data_dir)
-        except sync.SyncError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        if result.merged:
-            repository.reindex(conn, data_dir)
-        return {"committed": result.committed, "merged": result.merged, "conflicts": result.conflicts,
-                "problems": result.problems}
-
-    @app.post("/api/v1/topics", status_code=201)
-    def create_topic(body: TopicCreate, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
-        topic = Topic.model_validate({**body.model_dump(), "key": body.key or new_topic_key()})
-        return _write(lambda: repository.create_topic(conn, topic, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
-
-    @app.put("/api/v1/topics/{key}")
-    def update_topic(key: str, body: Topic, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
-        if body.key != key:
-            raise HTTPException(status_code=422, detail="Der Key im Pfad und im Body müssen übereinstimmen")
-        return _write(lambda: repository.update_topic(conn, key, body, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
-
-    @app.delete("/api/v1/topics/{key}", status_code=204, response_class=Response)
-    def delete_topic(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> Response:
-        _write(lambda: repository.delete_topic(conn, key, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
-        return Response(status_code=204)
-
-    @app.post("/api/v1/topics/{key}/events", status_code=201)
-    def link_event(key: str, body: TopicLink, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
-        _write(lambda: repository.link_event(conn, key, body.event, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
-        return {"topic": key, "event": body.event}
-
-    @app.delete("/api/v1/topics/{key}/events/{event_key}", status_code=204, response_class=Response)
-    def unlink_event(key: str, event_key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> Response:
-        _write(lambda: repository.unlink_event(conn, key, event_key, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
-        return Response(status_code=204)
-
-    @app.post("/api/v1/events/{key}/evidence", status_code=201)
-    async def upload_evidence(
-        key: str,
-        request: Request,
-        file: UploadFile = File(...),
-        evidence_type: str = Form(..., alias="type"),
-        description: str = Form(""),
-        conn: sqlite3.Connection = Depends(get_conn),
-        user: dict = Depends(writer),
-    ) -> dict:
-        data = await file.read(MAX_EVIDENCE_BYTES + 1)  # one byte over the limit is enough to reject
-        return _write(
-            lambda: repository.add_evidence(
-                conn, key, check_file(file.filename or "", data), evidence_type, description, user["id"], client_ip(request),
-                data_dir=request.app.state.data_dir,
-            )
-        )
-
-    @app.delete("/api/v1/evidence/{evidence_id}", status_code=204, response_class=Response)
-    def delete_evidence(
-        evidence_id: int,
-        request: Request,
-        conn: sqlite3.Connection = Depends(get_conn),
-        user: dict = Depends(writer),
-    ) -> Response:
-        _write(lambda: repository.delete_evidence(conn, evidence_id, user["id"], client_ip(request),
-                                                  data_dir=request.app.state.data_dir))
-        return Response(status_code=204)
-
-    @app.post("/api/v1/events", status_code=201)
-    def create_event(
-        body: EventCreate,
-        request: Request,
-        conn: sqlite3.Connection = Depends(get_conn),
-        user: dict = Depends(writer),
-    ) -> dict:
-        event = body.model_copy(update={"key": body.key or new_event_key()})
-        return _write(
-            lambda: repository.create_event(conn, event_of(event), topic_list(event), user["id"], client_ip(request),
-                                            data_dir=request.app.state.data_dir)
-        )
-
-    @app.put("/api/v1/events/{key}")
-    def update_event(
-        key: str,
-        body: EventUpdate,
-        request: Request,
-        conn: sqlite3.Connection = Depends(get_conn),
-        user: dict = Depends(writer),
-    ) -> dict:
-        if body.key != key:
-            raise HTTPException(status_code=422, detail="Der Key im Pfad und im Body müssen übereinstimmen")
-        return _write(
-            lambda: repository.update_event(
-                conn, key, event_of(body), topic_list(body), body.version, user["id"], client_ip(request),
-                data_dir=request.app.state.data_dir,
-            )
-        )
-
-    @app.delete("/api/v1/events/{key}", status_code=204, response_class=Response)
-    def delete_event(
-        key: str,
-        request: Request,
-        conn: sqlite3.Connection = Depends(get_conn),
-        user: dict = Depends(writer),
-    ) -> Response:
-        _write(lambda: repository.delete_event(conn, key, user["id"], client_ip(request),
-                                               data_dir=request.app.state.data_dir))
-        return Response(status_code=204)
-
-    # Users and audit log: admins only. The rules live in chronicle.administration.
-
-    @app.get("/api/v1/users")
-    def list_users(conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(admin_only)) -> list[dict]:
-        return accounts.list_users(conn)
-
-    @app.post("/api/v1/users", status_code=201)
-    def create_user(
-        body: UserCreate,
-        request: Request,
-        conn: sqlite3.Connection = Depends(get_conn),
-        admin: dict = Depends(admin_only),
-    ) -> dict:
-        return _write(lambda: administration.create_account(conn, admin["id"], body.username, body.password, body.role, client_ip(request)))
-
-    @app.patch("/api/v1/users/{user_id}")
-    def update_user(
-        user_id: int,
-        body: UserUpdate,
-        request: Request,
-        conn: sqlite3.Connection = Depends(get_conn),
-        admin: dict = Depends(admin_only),
-    ) -> dict:
-        return _write(lambda: administration.update_account(
-            conn, admin["id"], user_id, client_ip(request),
-            role=body.role, active=body.active, password=body.password,
-        ))
-
-    @app.post("/api/v1/users/{user_id}/unlock", status_code=204, response_class=Response)
-    def unlock_user(
-        user_id: int,
-        request: Request,
-        conn: sqlite3.Connection = Depends(get_conn),
-        admin: dict = Depends(admin_only),
-    ) -> Response:
-        _write(lambda: administration.unlock_account(conn, admin["id"], user_id, client_ip(request)))
-        return Response(status_code=204)
-
-    @app.get("/api/v1/topics/{key}/report")
-    def topic_report(
-        key: str,
-        request: Request,
-        conn: sqlite3.Connection = Depends(get_conn),
-        admin: dict = Depends(admin_only),
-    ) -> Response:
-        filename, body = _write(lambda: make_report(conn, key, admin["id"], client_ip(request),
-                                                    data_dir=request.app.state.data_dir))
-        return Response(content=body, media_type="text/html; charset=utf-8", headers=report_headers(filename))
-
-    @app.get("/api/v1/topics/{key}/report.pdf")
-    def topic_report_pdf(
-        key: str,
-        request: Request,
-        art: str = "technisch",
-        conn: sqlite3.Connection = Depends(get_conn),
-        admin: dict = Depends(admin_only),
-    ) -> Response:
-        filename, body = _write(lambda: make_pdf_report(conn, key, admin["id"], client_ip(request), art,
-                                                        data_dir=request.app.state.data_dir))
-        return Response(content=body, media_type="application/pdf", headers=report_headers(filename))
-
-    @app.get("/api/v1/audit")
-    def audit_log(
-        limit: int = 200,
-        action: str | None = None,
-        actor: str | None = None,
-        since: int | None = None,
-        conn: sqlite3.Connection = Depends(get_conn),
-        _: dict = Depends(admin_only),
-    ) -> list[dict]:
-        return accounts.list_audit(conn, limit=min(max(limit, 1), 1000), action=action, actor=actor, since=since)
+    app.include_router(make_topic_routes(get_conn, auth))
+    app.include_router(make_event_routes(get_conn, auth))
+    app.include_router(make_sync_routes(get_conn, auth))
+    app.include_router(make_admin_routes(get_conn, auth))
 
     return app
-
-
-def _write(action):
-    try:
-        return action()
-    except repository.NotFound as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except repository.Conflict as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except (repository.Invalid, EvidenceRejected) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _bootstrap_admin(path: Path) -> None:
