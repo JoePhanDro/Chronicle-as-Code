@@ -408,7 +408,7 @@ Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/is
   - [ADR 0021](docs/adr/0021-sensible-daten-und-loeschkonzept.md): Sensible Daten und Löschkonzept (Vorschlag, [Architektur](docs/architecture/vault-git.md))
   - [ADR 0022](docs/adr/0022-git-integration-und-eingabepruefung.md): Git-Integration und Eingabeprüfung (Vorschlag, [Architektur](docs/architecture/vault-git.md))
   - [ADR 0023](docs/adr/0023-migration-und-formatversionen.md): Migration und Formatversionen (Vorschlag, [Architektur](docs/architecture/vault-git.md))
-  - [ADR 0024](docs/adr/0024-verschluesselung-der-eintraege.md): Verschlüsselung der Einträge (Vorschlag, [Architektur](docs/architecture/vault-git.md))
+  - [ADR 0024](docs/adr/0024-verschluesselung-der-eintraege.md): Verschlüsselung der Einträge (Entscheidung: zunächst keine, nicht im Scope, [Architektur](docs/architecture/vault-git.md))
 - Notation der Topic-Dateien: [`docs/notation.md`](docs/notation.md). Produktkontext und Designsystem: [`PRODUCT.md`](PRODUCT.md) und [`DESIGN.md`](DESIGN.md).
 - Wie man beiträgt, steht in [CONTRIBUTING.md](CONTRIBUTING.md).
 

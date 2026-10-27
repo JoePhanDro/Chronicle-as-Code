@@ -1,6 +1,6 @@
 # ADR 0024: Verschlüsselung der Einträge (Optionen und Empfehlung)
 
-- **Status:** Vorgeschlagen / **Nutzerentscheidung nötig**
+- **Status:** Entschieden vom Projektinhaber am 2026-10-27: **Zunächst keine Verschlüsselung der Einträge, nicht im Scope.** Es gilt Option (a) und (c), wie unten empfohlen. Eine spätere Einführung bleibt möglich, etwa für eine Archivfunktion. Die Optionen unten bleiben als Grundlage dafür erhalten.
 - **Datum:** 2026-10-25
 - **Bezug:** ADR 0012 (Datenbank bleibt für Login, Audit, Verschlüsselung), ADR 0014 (`ops.db`, Schlüssel-Metadaten), ADR 0017 (Merge-Treiber), ADR 0018 (Index), ADR 0020 (Anhänge), ADR 0021 (Löschkonzept), ADR 0022 (Prüfung), `docs/architecture/vault-git.md`
 
@@ -64,7 +64,7 @@ Der Vault im Klon bleibt Klartext. Geschützt werden die **lokalen** Kopien: Fes
 - Anhänge in Git (ADR 0020) sind der größte Datenabfluss bei (a). Wenn Verschlüsselung gewünscht ist, ist (b3) oft der kleinste sinnvolle Schritt.
 - Die Datenbank bleibt vorgesehen für Verschlüsselungs-Metadaten (ADR 0012), aber nie für Schlüssel.
 
-## Offene Punkte (Nutzerfrage 11)
+## Offene Punkte (Nutzerfrage 11, beantwortet am 2026-10-27: kein Bedarf, nicht im Scope)
 
 - **Gibt es einen konkreten Bedarf für (b)?** Wenn ja: Wer darf welche Topics lesen, und gilt der Hoster als nicht vertrauenswürdig? Ohne konkreten Bedarf gilt die Empfehlung (a)+(c).
 - Ob SQLCipher für `ops.db` und `index.db` gewünscht ist (native Abhängigkeit, ein Nutzen vor allem bei Gerätediebstahl ohne Festplattenverschlüsselung).

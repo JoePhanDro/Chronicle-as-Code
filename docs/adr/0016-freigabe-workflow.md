@@ -1,6 +1,6 @@
 # ADR 0016: Freigabe-Workflow mit Branch, Pull Request und Branch Protection
 
-- **Status:** Vorgeschlagen (zu bestätigen). Überarbeitet nach Review. Die Punkte 12 bis 14 (Live-Branch bei Vorfällen) brauchen eine Entscheidung des Projektinhabers.
+- **Status:** Vorgeschlagen (zu bestätigen). Überarbeitet nach Review. **Entscheidung des Projektinhabers am 2026-10-27: kein Live-Modus und kein Incident-Branch** (Punkte 12 bis 14). Das Vier-Augen-Prinzip bleibt unverändert, Plan-Teil 19 entfällt.
 - **Datum:** 2026-10-25
 - **Bezug:** ADR 0008 Punkt 3 (Abgleichen), ADR 0013, ADR 0015, ADR 0017, ADR 0021, ADR 0022, `chronicle/sync.py`, `.github/CODEOWNERS`, Issues #90, #131
 - **Ändert:** ADR 0008 Punkt 3: „Abgleichen“ schreibt nicht mehr auf den gemeinsamen Branch, sondern auf einen Arbeits-Branch.
@@ -63,15 +63,13 @@ Heute committet `sync.synchronise` Änderungen und pusht sie direkt auf den ausg
     - *Notfall-Freigabe:* die benannte Bypass-Gruppe darf einen PR selbst freigeben und zusammenführen. Jeder Gebrauch wird nachträglich im Protokoll des Hosters geprüft.
     - *Bereinigung der Historie (ADR 0021):* braucht Force-Push. Das ist kein Bypass, sondern ein **vorübergehendes Ausschalten des Regelwerks durch einen Organisationsinhaber**, das im Protokoll des Hosters steht und danach wieder eingeschaltet wird.
 
-### Vorfälle: Live-Dokumentation (Entscheidung des Projektinhabers nötig)
+### Vorfälle: Live-Dokumentation (entschieden: kein Live-Modus)
 
-12. **Problem.** Mit einem Pull Request je Person ist die Live-Dokumentation bei einem Vorfall nicht erreichbar: Jede Person sieht nur ihren eigenen Stand, bis die Freigabe da ist. Für aktive Vorfälle wird das zum Hindernis.
-13. **Vorschlag: Incident-Branch.** Für ein Topic vom Typ `incident` kann ein Vault-Administrator einen geteilten Branch `incident/<topic-key>` einrichten. Auf ihn pushen berechtigte Personen **direkt**, die Regel verlangt dort **nur den Status-Check**, **kein Review**. Die App schaltet in einen **Live-Modus**: Jedes Speichern wird committet und sofort in diesen Branch gepusht (nach Holen und Einführen des Standes, nie `--force`), „Aktualisieren“ läuft zyklisch. Die Oberfläche kennzeichnet alle Inhalte, die nur im Incident-Branch stehen, deutlich als **„ohne Freigabe“**. Nach dem Vorfall entsteht **ein Sammel-Pull-Request** vom Incident-Branch nach `main` mit normalem Review. Erst danach gelten die Inhalte als freigegeben.
-14. **Diese Entscheidung trifft der Projektinhaber** (offene Frage 9). Sie schwächt das Vier-Augen-Prinzip für die Dauer eines Vorfalls bewusst. Ohne Zustimmung bleibt es bei Punkt 1 bis 8. Die Umsetzung ist ein eigener Teil des Plans (Teil 19) und hängt nicht an den übrigen.
+12. **Problem.** Mit einem Pull Request je Person ist die Live-Dokumentation bei einem Vorfall nicht erreichbar: Jede Person sieht nur ihren eigenen Stand, bis die Freigabe da ist.
+13. **Entscheidung des Projektinhabers (2026-10-27): Es gibt keinen Incident-Branch und keinen Live-Modus.** Im Vorfall dokumentiert in der Regel **eine** Person. Jede andere Person kann Informationen teilen, die dokumentierende Person trägt sie ein. Wer mehrere Dokumentierende braucht, einen Sammel-Pull-Request oder einen anderen Ablauf, **stimmt das außerhalb des Werkzeugs ab**. Chronicle bildet es nicht ab.
+14. **Folgen.** Punkte 1 bis 8 und 15 gelten unverändert: ein Arbeits-Branch je Klon, ein Pull Request, Freigabe durch den Hoster. Ein Weg für geteiltes Schreiben auf einem gemeinsamen Branch entsteht nicht, ebenso keine Kennzeichnung „ohne Freigabe“ für einen Incident-Branch. **Verworfen:** der Vorschlag, für ein Topic vom Typ `incident` einen geteilten Branch `incident/<topic-key>` ohne Review einzurichten, mit Live-Modus (Speichern pusht sofort, zyklisches Aktualisieren) und einem Sammel-Pull-Request nach dem Vorfall. Er hätte das Vier-Augen-Prinzip für die Dauer eines Vorfalls geschwächt. Wer ihn später braucht, kann ihn als neue Entscheidung vorschlagen.
 
-### Berichte und Exporte
-
-15. **Berichte und Exporte werden standardmäßig aus dem freigegebenen Stand (`origin/<standard>`) gebaut.** Enthält die Auswahl ungeprüfte Events (Arbeitsstand, Incident-Branch), muss der Aufrufer das ausdrücklich verlangen, und der Bericht kennzeichnet sie. Das verhindert, dass ein Bericht an Dritte ungeprüfte Inhalte als geprüft ausgibt.
+15. **Berichte und Exporte werden standardmäßig aus dem freigegebenen Stand (`origin/<standard>`) gebaut.** Enthält die Auswahl ungeprüfte Events (Arbeitsstand), muss der Aufrufer das ausdrücklich verlangen, und der Bericht kennzeichnet sie. Das verhindert, dass ein Bericht an Dritte ungeprüfte Inhalte als geprüft ausgibt.
 
 ### Einzelpersonen
 
@@ -89,5 +87,5 @@ Heute committet `sync.synchronise` Änderungen und pusht sie direkt auf den ausg
 ## Offene Punkte
 
 - Anzahl der Freigaben als Vorgabe der Vorlage (1 oder 2).
-- Entscheidung zu Punkt 12 bis 14 (Incident-Branch).
+- ~~Entscheidung zu Punkt 12 bis 14 (Incident-Branch).~~ Entschieden: kein Live-Modus.
 - Hoster-Tarif (Punkt 9), Entscheidung des Betreibers.

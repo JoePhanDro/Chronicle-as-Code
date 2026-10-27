@@ -17,7 +17,7 @@ Die Datenbank `chronicle.db` ist Index: Sie lässt sich aus den Dateien neu aufb
 5. **Abgeleitet heißt auch: nie Quelle.** Keine Funktion darf aus dem Index zurück in Dateien schreiben (außer über den normalen Schreibpfad mit Prüfung). Die Anzeige „freigegeben“ (ADR 0016) berechnet sich aus Git, nicht aus dem Index.
 6. **Ein Schreiber.** Nur der Serverprozess schreibt den Index (WAL-Modus). Weitere Prozesse (CLI `apply`, Tests) öffnen ihn gesperrt oder bauen auf einer Kopie.
 7. **Betriebsdaten sind getrennt.** `ops.db` ist kein Cache und wird gesichert (ADR 0014). Sie bleibt die Datenbank für Konten, Sitzungen, Audit-Log und Schlüssel-Metadaten (Entscheidung des Projektinhabers); die Abgrenzung zum Vault und zum Index steht in der Tabelle in ADR 0014, Punkt 5.
-8. **Verschlüsselung at rest ist eine Frage für ADR 0024.** Der Index enthält den Volltext der Inhalte. Ob er (und `ops.db`) zusätzlich verschlüsselt wird, ist dort als Option (c) beschrieben. Der Index bleibt in jedem Fall verwerfbar.
+8. **Verschlüsselung at rest ist nicht im Scope (ADR 0024, Entscheidung vom 2026-10-27).** Der Index enthält den Volltext der Inhalte. Ob er (und `ops.db`) zusätzlich verschlüsselt wird, ist dort als Option (c) beschrieben. Der Index bleibt in jedem Fall verwerfbar.
 
 ## Konsequenzen
 

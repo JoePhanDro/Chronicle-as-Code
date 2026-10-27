@@ -23,7 +23,7 @@ Die Nummern sind Namen, nicht die Reihenfolge. Ausgeführt wird so:
 5. **Vault anlegen und prüfen:** 11, 12, 12b, **12a (Annahmen zu GitHub am Testrepository prüfen) vor 14**.
 6. **Zusammenarbeit:** 13, 14a, 14b (zusammen ausgeliefert, bis dahin Funktionsschalter aus), 15a, 15b, 20.
 7. **Bereinigung und Doku:** 16a, 16b, 17 (am Ende).
-8. **Nach Nutzerentscheidung:** 19 (Incident-Branch). **Zurückgestellt:** 9 (mehrere Vaults).
+8. **Entfallen (entschieden 2026-10-27):** 19 (Incident-Branch und Live-Modus), 22 (Verschlüsselung, nicht im Scope). **Zurückgestellt:** 9 (mehrere Vaults).
 
 Abhängigkeiten (vereinfacht): `0a,0b → 1 → 4 → 5 → 7 → 6b → 18`; `2 → 6b`; `4 → 8 → 8b, 10`; `3 → 11, 14a`; `12a → 14b`; `6b, 8, 13 → 14a → 14b → 15a, 15b, 20, 21`.
 
@@ -59,10 +59,10 @@ Abhängigkeiten (vereinfacht): `0a,0b → 1 → 4 → 5 → 7 → 6b → 18`; `2
 | 16a | Prüfung auf Geheimnisse (`check --secrets`) | 5 | M | 0021 | | nein |
 | 16b | Bereinigungsskript und Erprobung am Testrepository | 11 | M | 0021 | M14 | nein |
 | 17 | Dokumentation auf den neuen Stand | alle zuvor | S | alle | N6 | nein |
-| 19 | Incident-Branch und Live-Modus (**nach Nutzerentscheidung**) | 14b | M | 0016 | H6 | ja |
+| ~~19~~ | Incident-Branch und Live-Modus (**entfällt**, Entscheidung 2026-10-27) | 14b | M | 0016 | H6 | ja |
 | 20 | Berichte und Exporte aus dem freigegebenen Stand | 14b | S | 0016 | M11 | ja |
 | 8c | Audit-Log mit Hash-Kette, Verankerung in Commits (optional) | 8, 14a | S/M | 0014 | | nein |
-| 22 | Verschlüsselung: SQLCipher für `ops.db`/Index oder Vault-Verschlüsselung (**nur nach Nutzerentscheidung**) | 8, Entscheidung 11 | M bis L | 0024 | | ja |
+| ~~22~~ | Verschlüsselung: SQLCipher für `ops.db`/Index oder Vault-Verschlüsselung (**entfällt, nicht im Scope**, Entscheidung 2026-10-27) | 8, Entscheidung 11 | M bis L | 0024 | | ja |
 | 9 | Mehrere Vaults, URL-Präfix (**zurückgestellt**) | #127, 6b, 8 | M | 0019 | M15 | ja |
 
 Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs teilen). Teile mit L werden geteilt, wenn der Entwurf größer wird.
@@ -147,7 +147,7 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 ## Teil 8 und 8b: Zustandsordner und Container
 
 - **8:** `CHRONICLE_HOME` (0700), `config.toml` mit lokaler ID, Klon-Kennung, Manifest-Etikett, `origin`, Linkvorlage; `init`, `vault add` (Allowlist der `.git/config`), `list`, `remove`; `serve` liest die Registry; `ops.db` zieht um (`init --adopt-ops`); Spalten `git_name`, `git_email`, Audit `vault_id`. **`backup.py` sichert `config.toml` und `ops.db`, Wiederherstellung wird getestet.**
-- **8 (Ergänzung):** Abgrenzung der Orte nach ADR 0014, Punkt 5 (Tabelle). `ops.db` bekommt eine Tabelle `key_metadata` (Kennung, Fingerabdruck, Datum) **nur wenn** ADR 0024 (b) gewählt wird, vorher nicht.
+- **8 (Ergänzung):** Abgrenzung der Orte nach ADR 0014, Punkt 5 (Tabelle). `ops.db` bekommt **keine** Tabelle `key_metadata`: ADR 0024 (b) ist nicht im Scope.
 - **8c (optional):** Audit-Log mit `prev_hash`/`entry_hash` (SHA-256), Prüfbefehl `chronicle audit verify`, Kopfwert als Trailer `Chronicle-Audit-Head` in Commits (ab 14a). Macht Veränderungen erkennbar, verhindert sie nicht. Test: Löschen oder Ändern eines mittleren Eintrags wird gemeldet.
 - **8b:** Container mit `git`, `ssh`, `/state`, Deploy Key als Datei, `read_only` und `cap_drop` wo möglich. **Ausgangslage auf `main`:** Der Container schreibt bereits in den eingebundenen Datenordner (ADR 0011), hat aber weder `git` noch `ssh`. Der Stack läuft hinter einem TLS-Proxy (Caddy, `docker-compose.yml`, `docs/betrieb-tls.md`), `read_only` und `cap_drop: ALL` gelten für den Server.
 - **Akzeptanz:** Start ohne Parameter öffnet den Vault. Doppelte Manifest-ID wird abgelehnt. Bootstrap-Wege funktionieren. Docker-Smoke-Test in der CI passt.
@@ -199,17 +199,17 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 
 - README, `docs/notation-v1.md`, CONTRIBUTING (Hinweis „0003 ist die letzte“ ist veraltet), Statuszeilen ADR 0008/0009, Betriebsanleitung für Branch Protection, Tarifhinweise.
 
-## Teil 19: Incident-Branch (nach Nutzerentscheidung)
+## Teil 19: Incident-Branch — entfällt
 
-- ADR 0016, Punkte 12 bis 14. **Nutzerentscheidung nötig (offene Frage 9).** Ohne Zustimmung entfällt der Teil.
+- Entscheidung des Projektinhabers (2026-10-27): kein Live-Modus, kein Incident-Branch (ADR 0016, Punkte 12 bis 14). Im Vorfall dokumentiert in der Regel eine Person, andere teilen Informationen. Sammel-Pull-Requests und andere Abläufe sind außerhalb des Werkzeugs abzustimmen.
 
 ## Teil 20: Berichte aus freigegebenem Stand
 
 - Bericht und Export bauen standardmäßig aus `origin/<standard>`, ungeprüfte Events nur auf ausdrücklichen Wunsch und gekennzeichnet (ADR 0016, Punkt 15).
 
-## Teil 22: Verschlüsselung (nur nach Nutzerentscheidung)
+## Teil 22: Verschlüsselung — entfällt
 
-- ADR 0024. Mit der Empfehlung (a)+(c) entfällt der Teil bis auf Anleitung und optionale Prüfung der Festplattenverschlüsselung in `vault doctor`. Gewählt werden könnte SQLCipher für `ops.db`/Index (kleiner Teil) oder (b) Vault-Verschlüsselung mit age (mehrere Teile, neues Format, Änderungen an Merge-Treiber, Index und CI; vorher Prototyp).
+- Entscheidung des Projektinhabers (2026-10-27): zunächst keine Verschlüsselung, nicht im Scope (ADR 0024). Es bleibt bei Hoster-Zugriff und Festplattenverschlüsselung als Betriebsregel. Eine spätere Einführung, etwa für eine Archivfunktion, wäre ein neuer Plan-Teil auf Grundlage der Optionen in ADR 0024 (mit Prototyp vorher).
 
 ## Teil 9: Mehrere Vaults (zurückgestellt)
 
@@ -235,7 +235,7 @@ Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs tei
 
 ## Offene Fragen
 
-Die ersten Fragen muss der Projektinhaber **wirklich entscheiden**. Zu den übrigen steht ein begründeter Vorgabewert, der gilt, wenn nichts anderes gesagt wird.
+Die Fragen 1, 9 und 11 sind vom Projektinhaber **entschieden** (siehe unten), die Frage 10 liegt beim Betreiber. Zu den übrigen steht ein begründeter Vorgabewert, der gilt, wenn nichts anderes gesagt wird.
 
 ### Entscheidung nötig
 
@@ -243,10 +243,10 @@ Die ersten Fragen muss der Projektinhaber **wirklich entscheiden**. Zu den übri
 
    Ursprüngliche Frage und Vorschlag des Reviews: Ja, aber unter Bedingungen (privater Vault, Tarif mit Branch Protection, Vertrag und Region geklärt, Bereinigung erprobt). Diese Bedingungen bleiben als **Empfehlung an Betreiber** bestehen. Geschützte Branches und erforderliche Reviews in privaten Repositories sind nach unserem Kenntnisstand bezahlt (zu prüfen, Teil 12a).
 6. **Zweiten Schreibpfad über die Datenbank streichen (#123): entschieden und umgesetzt (ADR 0011).** Die Datenbank bleibt für Login, Audit und etwaige Verschlüsselungs-Metadaten, die Wahrheit für Inhalte liegt in den Dateien. Der Exportweg für Installationen aus dem alten Datenbankmodus steht in der README („Umstieg“).
-9. **Live-Dokumentation bei Vorfällen (ADR 0016, Punkte 12 bis 14).** Vorschlag: Incident-Branch `incident/<id>` ohne Review (nur Status-Check), in der Oberfläche als „ohne Freigabe“ gekennzeichnet, danach ein Sammel-Pull-Request nach `main` mit Review. Schwächt das Vier-Augen-Prinzip für die Dauer eines Vorfalls bewusst. Ohne Ihre Zustimmung bleibt es bei einem Pull Request je Person (Teil 19 entfällt).
+9. **Live-Dokumentation bei Vorfällen (ADR 0016, Punkte 12 bis 14): entschieden am 2026-10-27, kein Live-Modus.** Im Vorfall dokumentiert in der Regel eine Person, jede andere kann Informationen teilen. Sammel-Pull-Request und Abläufe sind außerhalb des Werkzeugs abzustimmen. Teil 19 entfällt.
 10. **Aufbewahrung und Löschung (ADR 0021): Sache des Betreibers.** Fristen und Löschpflichten legt der Betreiber mit seiner oder seinem Datenschutzbeauftragten fest. Das Projekt liefert den Ablauf zur Bereinigung (Teil 16b) als Anleitung und eine Checkliste, aber keine Frist und keine Sperre.
 
-11. **Verschlüsselung der Einträge (ADR 0024).** Gibt es einen konkreten Bedarf (Topics mit eingeschränktem Leserkreis, Hoster nicht vertrauenswürdig genug, Vertragsanforderung)? Empfehlung: zunächst (a) Zugriffsschutz des Hosters plus (c) lokale Verschlüsselung (Festplatte), (b) erst bei Bedarf und dann auf Dateiebene mit Klartext-Metadaten und age.
+11. **Verschlüsselung der Einträge (ADR 0024): entschieden am 2026-10-27, zunächst keine, nicht im Scope.** Möglich später, etwa für eine Archivfunktion. Teil 22 entfällt.
 
 ### Vorgabe gilt, außer Sie widersprechen
 
