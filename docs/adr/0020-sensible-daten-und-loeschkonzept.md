@@ -49,16 +49,16 @@ Gilt, wenn ein **Geheimnis** oder **Daten, die nicht hätten gespeichert werden 
 12. **Aufbewahrungsfrist je Vault** legt der Betreiber fest und trägt sie in `README` des Vaults ein. Für abgelaufene Topics gibt es zwei Wege: Löschen im Arbeitsstand (Punkt 7) mit anschließender Bereinigung nach Punkt 10, wenn die Frist das verlangt, oder Verzicht auf personenbezogene Inhalte von Anfang an (Punkt 2). **Empfohlen ist der zweite Weg**, weil Punkt 10 aufwendig ist und Kopien nicht sicher erfasst.
 13. **Auskunft und Löschung** auf Verlangen betroffener Personen: Die Suche der Anwendung findet Inhalte im Arbeitsstand, die Git-Suche (`git log -S`) in der Historie. Das Löschen folgt Punkt 10.
     **Spannung zwischen Löschpflicht und Dokumentationspflicht** (zur Klärung mit der oder dem Datenschutzbeauftragten, keine Rechtsberatung): Das Recht auf Löschung (Art. 17 DSGVO) steht gegen die Pflicht, Datenschutzverletzungen zu dokumentieren (Art. 33 Abs. 5 DSGVO), und gegen berechtigte Aufbewahrungszwecke. Ein Sicherheitsvorfall-Vault kann genau diese Dokumentation sein. Die Vorgabe ist deshalb Datenminimierung (Punkt 2) und eine Einzelfallentscheidung, kein automatisches Löschen.
-14. **Hoster und Auftragsverarbeitung.** Mit GitHub (oder einem anderen Hoster) liegen Vorfallsdaten bei einem Dritten, gegebenenfalls außerhalb der EU. Ob ein Vertrag zur Auftragsverarbeitung besteht und welcher Standort gilt (z. B. GitHub Enterprise Cloud mit Datenresidenz in der EU), entscheidet der Betreiber. GitHub ist der Standard-Hoster (ADR 0011, Punkt 6), offen sind Tarif, Vertrag und Region. Der Kern der Anwendung bleibt hoster-neutral; ein selbst betriebener Git-Server (Gitea, GitLab) ist „unterstützt, nicht Standard“.
+14. **Hoster und Auftragsverarbeitung.** Mit GitHub (oder einem anderen Hoster) liegen Vorfallsdaten bei einem Dritten, gegebenenfalls außerhalb der EU. Ob ein Vertrag zur Auftragsverarbeitung besteht und welcher Standort gilt (z. B. GitHub Enterprise Cloud mit Datenresidenz in der EU), entscheidet der Betreiber, nicht das Projekt (Entscheidung des Projektinhabers, 2026-10-27: GitHub ist nur der Vorfallsspeicher, in eigenen Vorfall-Repositories). GitHub ist der Standard-Hoster (ADR 0011, Punkt 6). Der Kern der Anwendung bleibt hoster-neutral; ein selbst betriebener Git-Server (Gitea, GitLab) ist „unterstützt, nicht Standard“.
 15. **E-Mail-Adressen von Autoren.** Commits tragen Namen und Adresse (ADR 0014). Vorgabe sind Pseudonym-Adressen des Hosters (`…@users.noreply.github.com`). Die App belegt `git_email` **nie** aus einer privaten Adresse vor (ADR 0014, Punkt 2).
 
 ## Konsequenzen
 
-- Die Entscheidung, Anhänge in den Vault zu legen (ADR 0019), macht Punkt 3 bis 6 zur Voraussetzung für den ersten Einsatz mit echten Daten.
+- Die Entscheidung, Anhänge in den Vault zu legen (ADR 0019), macht Punkt 3 bis 6 zu dem, was Betreiber vor dem ersten Einsatz mit echten Daten umsetzen sollten. Die Betriebsanleitung beschreibt es, `chronicle vault doctor` prüft, was sich prüfen lässt. Die Anwendung erzwingt es nicht.
 - Der Ablauf in Punkt 10 braucht administrative Rechte auf dem Hoster und kostet Betriebszeit. Er ist die Ausnahme.
 - `CONTRIBUTING.md` verbietet echte Evidence im Code-Repository. Das gilt weiter. Echte Daten gehören ausschließlich in Vaults.
 
 ## Offene Punkte
 
-- Hoster, Region, Vertrag zur Auftragsverarbeitung (Entscheidung des Betreibers).
+- ~~Hoster, Region, Vertrag zur Auftragsverarbeitung.~~ Entschieden: Sache des Betreibers.
 - Konkrete Aufbewahrungsfristen.

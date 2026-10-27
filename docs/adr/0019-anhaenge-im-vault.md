@@ -1,6 +1,6 @@
 # ADR 0019: Anhänge im Vault
 
-- **Status:** Entschieden vom Projektinhaber am 2026-10-27: **Anhänge liegen in Git** (Option 2). Große Binärdateien bleiben draußen und werden verlinkt (Punkt 7). **Ändert eine bestätigte Entscheidung** (ADR 0008 Punkt 6, ADR 0009). Die Bedingungen für den ersten Vault mit echten Vorfallsdaten gelten weiter: privater Vault, Hoster-Tarif mit Branch Protection (ADR 0015, Punkt 9), Auftragsverarbeitung und Region geklärt (ADR 0020), Bereinigungsverfahren am Testrepository erprobt (ADR 0020, Punkt 10). Tarif, Vertrag und Region sind noch nicht entschieden (Plan, offene Frage 1).
+- **Status:** Entschieden vom Projektinhaber am 2026-10-27: **Anhänge liegen in Git** (Option 2). Große Binärdateien bleiben draußen und werden verlinkt (Punkt 7). **Ändert eine bestätigte Entscheidung** (ADR 0008 Punkt 6, ADR 0009). GitHub ist der Vorfallsspeicher, in eigenen Vorfall-Repositories der Betreiber. **Tarif, Vertrag zur Auftragsverarbeitung, Region und Aufbewahrung entscheidet der Betreiber**, nicht das Projekt. Chronicle liefert Prüfungen und Hinweise (ADR 0015, Punkt 10, ADR 0020), erzwingt sie aber nicht.
 - **Datum:** 2026-10-25
 - **Bezug:** ADR 0004 (Evidence), ADR 0008 Punkt 6, ADR 0009 (Abschnitt Anhänge), ADR 0012, ADR 0020, `chronicle/evidence.py`
 - **Ändert:** ADR 0008 Punkt 6 und ADR 0009, Abschnitt „Anhänge“ („außerhalb von Git, im Sync-Ordner“).
@@ -48,7 +48,7 @@ Dagegen steht: Was in Git liegt, bleibt in der Historie (ADR 0020), und Anhänge
 ## Konsequenzen
 
 - Der Klon enthält alle Anhänge. Erste Klone und Fetches dauern länger als ohne. Teil-Klone (`--filter=blob:limit`) machen den Zugriff netzabhängig und sind nicht vorgesehen.
-- **Vor dem ersten Einsatz mit echten Vorfallsdaten** müssen ADR 0020 (Bereinigung, Datenschutz) und die Entscheidung zu Hoster und Region (offene Frage 1) feststehen. Danach lässt sich ein Anhang praktisch nicht mehr sicher aus allen Kopien entfernen.
+- **Betreiber sollten vor dem ersten Einsatz mit echten Vorfallsdaten** Hoster, Tarif, Vertrag zur Auftragsverarbeitung, Region und Bereinigung (ADR 0020) geklärt haben. Danach lässt sich ein Anhang praktisch nicht mehr sicher aus allen Kopien entfernen. Die Dokumentation sagt das ausdrücklich, die Anwendung macht es nicht zur Bedingung.
 - Die Prüfung in der CI (ADR 0021) kann jetzt auch Anhänge und Prüfsummen prüfen. `--ohne-anhaenge` bleibt als Option für Vaults mit `evidence.storage` anders als `git`.
 - GitHub lehnt Dateien über 100 MiB beim Push ab und rät zu Repositories unter etwa 1 GiB. Das 10-MiB-Limit liegt weit darunter.
 - Der Server liefert Anhänge unverändert über den autorisierten Endpunkt aus (ADR 0004, `delivery_headers`). Pfade werden als `Vault-Wurzel / relativer Pfad` aufgelöst, ohne Symlinks (ADR 0021).
@@ -56,5 +56,5 @@ Dagegen steht: Was in Git liegt, bleibt in der Historie (ADR 0020), und Anhänge
 ## Offene Punkte
 
 - ~~Ob Anhänge von Anfang an in LFS liegen sollen.~~ Entschieden: nein. Große Dateien werden verlinkt (Punkt 7), kleine liegen in Git. LFS bleibt der spätere Ausweg (Punkt 5).
-- GitHub-Tarif, Vertrag zur Auftragsverarbeitung und Region: noch offen (Plan, offene Frage 1). Voraussetzung für den ersten Vault mit echten Daten.
+- GitHub-Tarif, Vertrag zur Auftragsverarbeitung und Region: Sache des Betreibers (Entscheidung des Projektinhabers, 2026-10-27), kein offener Punkt des Projekts.
 - Die Liste `evidence.link_hosts` und der Umgang mit Links ist eine neue Formatfunktion und gehört in Format 1 (ADR 0012, Plan Teil 6b).
