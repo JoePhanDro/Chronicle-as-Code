@@ -68,5 +68,6 @@ def test_event_details_and_dashboard_use_the_themed_prose_class():
 
 def test_diagrams_follow_the_interface_theme():
     script = (ROOT / "chronicle" / "static" / "diagrams.js").read_text(encoding="utf-8")
-    assert 'theme: isLight() ? "default" : "dark"' in script
+    assert 'theme: "base"' in script and "themeVariables" in script  # the interface's own palette, not mermaid's
+    assert 'attributeFilter: ["data-theme"]' in script  # a theme change redraws what is on the page
     assert "document.documentElement.dataset.theme" in script and "prefers-color-scheme: light" in script
