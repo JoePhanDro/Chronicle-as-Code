@@ -178,3 +178,12 @@ def test_chips_say_that_they_can_be_changed_and_the_panel_names_what_it_holds(ap
 def test_time_fields_say_what_the_entry_comes_to_in_utc(api_client):
     html = api_client("analyst").get("/events/lessons").text
     assert "data-utc-note" in html and "Zeitzone der Eingabe" in html and "Gespeichert als " in html
+
+
+def test_causes_are_a_filterable_checklist_with_the_stored_ones_checked(api_client):
+    html = api_client("analyst").get("/events/exploit").text  # caused by feed-cve
+    picker = html.split("data-cause-picker")[1].split("</fieldset>")[0]
+    assert "<select" not in picker and 'type="checkbox" name="triggered_by" value="feed-cve" checked' in picker
+    assert 'value="exploit"' not in picker  # an event is not its own cause
+    assert 'value="siem-alert" ' in picker and "siem-alert\" checked" not in picker
+    assert "event.key === 'Enter'" in picker + html  # the filter never submits the form

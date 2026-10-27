@@ -99,6 +99,30 @@ def test_mermaid_diagram_is_redrawn_in_the_other_theme(login, app_url):
     assert page.locator(".mermaid-diagram").count() == 1
 
 
+def test_causes_are_picked_from_a_filterable_checklist_and_saved(login, app_url):
+    page = login("anna")
+    page.goto(f"{app_url}/events/analysis")
+    page.get_by_role("link", name="Bearbeiten").click()
+    picker = page.locator("[data-cause-picker]")
+    expect(picker.locator('input[value="exploit"]')).to_be_checked()
+
+    picker.get_by_label("Events filtern").fill("siem")
+    expect(picker.locator("[data-cause-row]:visible")).to_have_count(1)
+    picker.locator('input[value="siem-alert"]').check()
+    expect(picker.locator("[data-cause-count]")).to_have_text("2 Events ausgewählt")
+    picker.get_by_label("Events filtern").press("Enter")  # does not submit the form
+    expect(page).to_have_url(f"{app_url}/events/analysis")
+
+    page.locator('form[action="/events/analysis/edit"]').get_by_role("button", name="Speichern").click()
+    expect(page.get_by_role("link", name="Ungewöhnliche Requests auf /api/upload")).to_be_visible()
+
+    page.get_by_role("link", name="Bearbeiten").click()  # put the data back for the other tests
+    picker = page.locator("[data-cause-picker]")
+    picker.locator('input[value="siem-alert"]').uncheck()
+    page.locator('form[action="/events/analysis/edit"]').get_by_role("button", name="Speichern").click()
+    expect(page.get_by_role("link", name="Ungewöhnliche Requests auf /api/upload")).to_have_count(0)
+
+
 def test_header_search_finds_events(login):
     page = login("viewer")
 
