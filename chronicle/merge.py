@@ -112,26 +112,23 @@ def _merge_refs(base: list[str], ours: list[str], theirs: list[str]) -> list[str
     return result
 
 
+def _merge_events(base: list[Event], ours: list[Event], theirs: list[Event], problems: list[str]) -> list[Event]:
+    """The events of our file in our order, then those that only their side has."""
+    base_by_key = {event.key: event for event in base}
+    ours_by_key = {event.key: event for event in ours}
+    theirs_by_key = {event.key: event for event in theirs}
+    pairs = [(key, ours_by_key[key], theirs_by_key.get(key)) for key in ours_by_key]
+    pairs += [(key, None, event) for key, event in theirs_by_key.items() if key not in ours_by_key]
+    merged = (_merge_event(key, base_by_key.get(key), ours_event, theirs_event, problems)
+              for key, ours_event, theirs_event in pairs)
+    return [event for event in merged if event is not None]
+
+
 def merge_timelines(base: Timeline | None, ours: Timeline, theirs: Timeline) -> Timeline:
     """Merge three versions of one topic file. Raises MergeConflict if a change cannot be merged."""
     problems: list[str] = []
     topic = _merge_topic(base.topic if base else None, ours.topic, theirs.topic, problems)
-
-    base_events = {event.key: event for event in base.events} if base else {}
-    ours_events = {event.key: event for event in ours.events}
-    theirs_events = {event.key: event for event in theirs.events}
-
-    events = []
-    for key in ours_events:
-        merged = _merge_event(key, base_events.get(key), ours_events[key], theirs_events.get(key), problems)
-        if merged is not None:
-            events.append(merged)
-    for key, event in theirs_events.items():
-        if key not in ours_events:
-            merged = _merge_event(key, base_events.get(key), None, event, problems)
-            if merged is not None:
-                events.append(merged)
-
+    events = _merge_events(base.events if base else [], ours.events, theirs.events, problems)
     refs = _merge_refs(base.refs if base else [], ours.refs, theirs.refs)
     if problems:
         raise MergeConflict(problems)
@@ -141,36 +138,44 @@ def merge_timelines(base: Timeline | None, ours: Timeline, theirs: Timeline) -> 
         raise MergeConflict([describe_validation_error(exc)]) from exc
 
 
-def _apply(document, ours: Timeline, merged: Timeline) -> None:
-    """Write the merged values into our YAML document, so its comments and layout stay."""
-    section = document["topic"]
-    if merged.topic.title != ours.topic.title:
-        section["title"] = merged.topic.title
-    if merged.topic.kind != ours.topic.kind:
-        section["kind"] = merged.topic.kind
-    if merged.topic.summary != ours.topic.summary:
-        _put(section, "summary", _text(merged.topic.summary) or None)
+def _apply_topic(section, ours: Topic, merged: Topic) -> None:
+    if merged.title != ours.title:
+        section["title"] = merged.title
+    if merged.kind != ours.kind:
+        section["kind"] = merged.kind
+    if merged.summary != ours.summary:
+        _put(section, "summary", _text(merged.summary) or None)
 
-    if merged.refs != ours.refs:
-        _put(document, "refs", list(merged.refs) or None)
 
-    ours_by_key = {event.key: event for event in ours.events}
-    merged_by_key = {event.key: event for event in merged.events}
+def _apply_event(item, ours: Event, merged: Event) -> None:
+    if merged != ours:
+        _set_changed_fields(item, ours, merged)
+    if merged.evidence != ours.evidence:
+        _put(item, "evidence", [_evidence_document(evidence) for evidence in merged.evidence] or None)
+
+
+def _apply_events(document, ours: list[Event], merged: list[Event]) -> None:
+    ours_by_key = {event.key: event for event in ours}
+    merged_by_key = {event.key: event for event in merged}
     for item in list(document.get("events", [])):
-        key = item["key"]
-        if key not in merged_by_key:
+        if item["key"] in merged_by_key:
+            _apply_event(item, ours_by_key[item["key"]], merged_by_key[item["key"]])
+        else:
             document["events"].remove(item)
-            continue
-        if merged_by_key[key] != ours_by_key[key]:
-            _set_changed_fields(item, ours_by_key[key], merged_by_key[key])
-        if merged_by_key[key].evidence != ours_by_key[key].evidence:
-            _put(item, "evidence", [_evidence_document(evidence) for evidence in merged_by_key[key].evidence] or None)
 
-    added = [_event_document(event) for event in merged.events if event.key not in ours_by_key]
+    added = [_event_document(event) for event in merged if event.key not in ours_by_key]
     if added:
         document.setdefault("events", []).extend(added)
     if "events" in document and not document["events"]:
         del document["events"]
+
+
+def _apply(document, ours: Timeline, merged: Timeline) -> None:
+    """Write the merged values into our YAML document, so its comments and layout stay."""
+    _apply_topic(document["topic"], ours.topic, merged.topic)
+    if merged.refs != ours.refs:
+        _put(document, "refs", list(merged.refs) or None)
+    _apply_events(document, ours.events, merged.events)
 
 
 def merge_texts(base_text: str, ours_text: str, theirs_text: str) -> str:

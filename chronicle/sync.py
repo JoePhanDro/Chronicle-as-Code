@@ -20,7 +20,7 @@ from pathlib import Path
 
 from .check import load_named_folder
 from .loader import TOPIC_SUFFIXES, CheckFailed, TimelineError, decode_topic_bytes, parse_timeline
-from .models import Timeline
+from .models import Event, Timeline, Topic
 from .store import StoreError, folder_lock
 from .yamlscan import MAX_YAML_BYTES, TOO_LARGE, one_line
 
@@ -128,34 +128,48 @@ def _linked(tree: list[tuple[str, str]]) -> list[str]:
     return sorted(path for mode, path in tree if mode in LINK_MODES)
 
 
-def plan(base: Mapping[str, Timeline], current: Mapping[str, Timeline]) -> list[Change]:
-    """The changes from base to current, by event key and by topic. Sorted, so the same input gives the same list."""
+def _event_change(key: str, before: tuple[str, Event] | None, after: tuple[str, Event] | None) -> Change | None:
+    """How one event differs between two states; before and after are (file name, event), or None if it is not there."""
+    if after is None:
+        return Change("entfernt", key, before[0])
+    if before is None:
+        return Change("angelegt", key, after[0])
+    (old_file, old), (new_file, new) = before, after
+    if old != new:
+        return Change("geändert", key, new_file)
+    if old_file != new_file:
+        return Change("verschoben", key, new_file)
+    return None
+
+
+def _event_changes(base: Mapping[str, Timeline], current: Mapping[str, Timeline]) -> list[Change]:
     before = {event.key: (name, event) for name, timeline in base.items() for event in timeline.events}
     after = {event.key: (name, event) for name, timeline in current.items() for event in timeline.events}
+    found = (_event_change(key, before.get(key), after.get(key)) for key in sorted(before.keys() | after.keys()))
+    return [change for change in found if change is not None]
 
-    changes: list[Change] = []
-    for key in sorted(before.keys() | after.keys()):
-        if key not in after:
-            changes.append(Change("entfernt", key, before[key][0]))
-        elif key not in before:
-            changes.append(Change("angelegt", key, after[key][0]))
-        else:
-            (old_file, old), (new_file, new) = before[key], after[key]
-            if old != new:
-                changes.append(Change("geändert", key, new_file))
-            elif old_file != new_file:
-                changes.append(Change("verschoben", key, new_file))
 
-    for name in sorted(base.keys() | current.keys()):
-        old_topic = base[name].topic if name in base else None
-        new_topic = current[name].topic if name in current else None
-        if old_topic is None:
-            changes.append(Change("Topic angelegt", new_topic.key, name))
-        elif new_topic is None:
-            changes.append(Change("Topic entfernt", old_topic.key, name))
-        elif old_topic != new_topic:
-            changes.append(Change("Topic geändert", new_topic.key, name))
-    return changes
+def _topic_change(name: str, old: Topic | None, new: Topic | None) -> Change | None:
+    if old is None:
+        return Change("Topic angelegt", new.key, name)
+    if new is None:
+        return Change("Topic entfernt", old.key, name)
+    if old != new:
+        return Change("Topic geändert", new.key, name)
+    return None
+
+
+def _topic_changes(base: Mapping[str, Timeline], current: Mapping[str, Timeline]) -> list[Change]:
+    found = (
+        _topic_change(name, base[name].topic if name in base else None, current[name].topic if name in current else None)
+        for name in sorted(base.keys() | current.keys())
+    )
+    return [change for change in found if change is not None]
+
+
+def plan(base: Mapping[str, Timeline], current: Mapping[str, Timeline]) -> list[Change]:
+    """The changes from base to current, by event key and by topic. Sorted, so the same input gives the same list."""
+    return [*_event_changes(base, current), *_topic_changes(base, current)]
 
 
 def preview(data_dir: Path) -> Preview:
