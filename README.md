@@ -107,7 +107,7 @@ Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie 
 | `CHRONICLE_ADMIN_PASSWORD` | Passwort zu `CHRONICLE_ADMIN_USER`. Der Admin muss es beim ersten Login ändern | leer |
 | `CHRONICLE_COOKIE_SECURE` | `0` schaltet das `Secure`-Flag am Sitzungscookie ab (nur lokal über HTTP) | `1` |
 | `CHRONICLE_TRUSTED_PROXIES` | Adressen oder Netze von Reverse Proxies, z. B. `172.18.0.2, 10.0.0.0/8`. Nur von dort wird `X-Forwarded-For` gelesen | leer |
-| `CHRONICLE_DATA` | Datenordner mit den Topic-Dateien. Gesetzt, sind die Dateien die Quelle der Wahrheit (siehe unten). `python -m chronicle.serve --data <ordner>` setzt es | leer |
+| `CHRONICLE_DATA` | Datenordner mit den Topic-Dateien, die Quelle der Wahrheit (siehe unten). Pflicht: Ohne ihn startet der Server nicht. `python -m chronicle.serve --data <ordner>` setzt es | – |
 
 Die Werte im Compose-Stack kommen aus `.env` (Vorlage: `.env.example`). `.env` wird nicht versioniert.
 
@@ -181,26 +181,22 @@ python -m chronicle build data --out site
 
 ## Datenhaltung und Bearbeitung
 
-**Mit Datenordner (`--data` bzw. `CHRONICLE_DATA`):** Die Topic-Dateien sind die Quelle der Wahrheit ([ADR 0008](docs/adr/0008-files-as-source-of-truth.md)). Eine Bearbeitung in der Oberfläche oder über die API ändert nur die betroffenen Felder der Datei, Kommentare, Reihenfolge und Layout bleiben erhalten. Danach wird der Index aus den Dateien neu aufgebaut. Hat jemand die Datei außerhalb von Chronicle geändert, schlägt das Speichern mit einem Konflikt fehl, bis `chronicle apply` ausgeführt wurde.
+**Datenordner (`--data` bzw. `CHRONICLE_DATA`, Pflicht):** Die Topic-Dateien sind die Quelle der Wahrheit ([ADR 0008](docs/adr/0008-files-as-source-of-truth.md)). Eine Bearbeitung in der Oberfläche oder über die API ändert nur die betroffenen Felder der Datei, Kommentare, Reihenfolge und Layout bleiben erhalten. Danach wird der Index aus den Dateien neu aufgebaut. Hat jemand die Datei außerhalb von Chronicle geändert, schlägt das Speichern mit einem Konflikt fehl, bis `chronicle apply` ausgeführt wurde.
 
 - **Topics:** Ein neues Topic bekommt eine eigene Datei (`tp-<Datum>-<zufällig>.yaml`) und einen Key, den der Server vergibt. Den Key gibt man nicht ein, und er ändert sich nicht.
 - **Events:** Ein neues Event wird an das Ende der Datei seines Topics geschrieben, den Key vergibt ebenfalls der Server (`ev-<Datum>-<zufällig>`). Ein gelöschtes Event verschwindet aus der Datei, und es gibt keinen Grabstein: Die Historie liefert Git. Ein Event, das ein anderes auslöst, lässt sich nicht löschen, solange der Verweis besteht.
 - **Verknüpfungen** zwischen Topics stehen unter `refs` in der Datei des anderen Topics. Wer ein Event einem weiteren Topic zuordnet, bekommt dort eine Zeile, und wer die Zuordnung entfernt, verliert sie. Beim Löschen eines Events werden seine Verweise aus den anderen Topic-Dateien vorher entfernt.
 - **Topic löschen:** Das löscht die Datei des Topics samt allen Events, die dort ihr Heimat-Topic haben. Events anderer Topics, die nur verknüpft sind, bleiben, nur ihr Verweis verschwindet. Hängt ein Event eines anderen Topics an einem der gelöschten Events (`triggered_by`), wird nichts gelöscht, und die Seite nennt die Events, bei denen der Verweis zuerst zu entfernen ist. Die Anhänge bleiben im Ordner `evidence/` liegen.
 - **Anhänge** liegen als Dateien unter `evidence/<Event-Key>/` im Datenordner. Die Topic-Datei nennt Pfad, Typ und Beschreibung. Gleiche Namen mit anderem Inhalt bekommen eine Nummer, nichts wird überschrieben. Ein Anhang, der bereits am Event hängt, wird nicht doppelt angelegt. Der Ordner `evidence/` gehört in die Synchronisation (z. B. OneDrive), nicht in Git (ADR 0008).
-- **Neu laden:** Wer Dateien von Hand oder durch ein Git-Pull ändert, drückt als Analyst oder Admin in der Kopfzeile **Neu laden** (im Menü „Konto“ auf dem Handy). Chronicle liest den Ordner dann neu ein. Ist eine Datei ungültig, bleibt der bisherige Stand bestehen, und die Seite nennt den Fehler. Den Knopf gibt es nur mit Datenordner.
+- **Neu laden:** Wer Dateien von Hand oder durch ein Git-Pull ändert, drückt als Analyst oder Admin in der Kopfzeile **Neu laden** (im Menü „Konto“ auf dem Handy). Chronicle liest den Ordner dann neu ein. Ist eine Datei ungültig, bleibt der bisherige Stand bestehen, und die Seite nennt den Fehler.
 
-**Ohne Datenordner (entfällt, [ADR 0011](docs/adr/0011-files-only-write-path.md)):** Der Server startet noch ohne `--data`, warnt aber. Die Datenbank ist dann nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
+**Weitere Regeln:**
 
-- Ein erneuter Import überschreibt keine Events, die in der Oberfläche bearbeitet wurden. Das meldet der Import. Ein in der Oberfläche gelöschtes Event kommt beim nächsten Import wieder, wenn die Datei es noch enthält.
-- Ein Import entfernt keine Topic-Verknüpfungen. Die ändert man in der Oberfläche.
 - Jede Änderung erhöht die Version eines Events. Wer auf einer veralteten Fassung speichert, bekommt `409` und muss neu laden.
 - Ein Event, das ein anderes auslöst, lässt sich nicht löschen, solange der Verweis besteht.
-- Ein gelöschtes Event lässt sich nicht wiederherstellen.
-- Wer ein Topic löscht, löscht auch die Events, die dort ihr Heimat-Topic haben.
-- Evidence wird nur über `GET /api/v1/evidence/{id}` ausgeliefert, und nur an angemeldete Nutzer. Dateien können Analyst und Admin in der Oberfläche oder über die API hochladen und entfernen. Uploads ändern das Event wie eine Bearbeitung: Ein erneuter Import überschreibt es nicht.
+- Evidence wird nur über `GET /api/v1/evidence/{id}` ausgeliefert, und nur an angemeldete Nutzer. Dateien können Analyst und Admin in der Oberfläche oder über die API hochladen und entfernen.
 
-**Nach einem Update** auf diese Version einmal den Import ausführen (`docker compose --profile import run --rm importer`). Evidence, die vorher nur als Pfad vorlag, bekommt dabei seinen Inhalt. Bis dahin antwortet der Download mit 404.
+Der Server startet nicht ohne Datenordner. Einen Betrieb mit der Datenbank als Quelle gibt es nicht mehr ([ADR 0011](docs/adr/0011-files-only-write-path.md)). Wer von dort kommt, exportiert mit der alten Version, siehe den Umstieg im Schnellstart.
 
 ### Export und Backup
 

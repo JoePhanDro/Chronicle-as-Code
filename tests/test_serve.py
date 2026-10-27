@@ -22,11 +22,11 @@ def started(monkeypatch):
 
 
 def test_the_server_gets_the_database_and_the_default_address(tmp_path, started):
-    code = serve.main(["--db", str(tmp_path / "x.db")])
+    code = serve.main(["--db", str(tmp_path / "x.db"), "--data", str(tmp_path / "data")])
 
     assert code == 0
     app, options = started[0]
-    assert app == "chronicle.api:app"
+    assert app == "chronicle.api:create_app_from_environment" and options["factory"] is True
     assert options["host"] == "127.0.0.1" and options["port"] == 8000
     assert serve.os.environ["CHRONICLE_DB"] == str(tmp_path / "x.db")
 
@@ -56,11 +56,15 @@ def test_python_m_chronicle_runs_the_command_line():
     assert result.stdout.strip()
 
 
-def test_without_a_data_folder_the_server_warns_that_this_mode_is_going_away(tmp_path, started, capsys):
-    serve.main(["--db", str(tmp_path / "x.db")])
+def test_without_a_data_folder_the_server_does_not_start(tmp_path, started, capsys):
+    with pytest.raises(SystemExit) as excinfo:
+        serve.main(["--db", str(tmp_path / "x.db")])
+
+    assert excinfo.value.code == 2
     assert "0011" in capsys.readouterr().err
+    assert started == []
 
 
-def test_with_a_data_folder_there_is_no_warning(tmp_path, started, capsys):
-    serve.main(["--db", str(tmp_path / "x.db"), "--data", str(tmp_path / "data")])
-    assert capsys.readouterr().err == ""
+def test_a_data_folder_from_the_environment_is_enough(tmp_path, started, monkeypatch):
+    monkeypatch.setenv("CHRONICLE_DATA", str(tmp_path / "data"))
+    assert serve.main(["--db", str(tmp_path / "x.db")]) == 0

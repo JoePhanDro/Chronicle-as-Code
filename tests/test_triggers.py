@@ -4,7 +4,7 @@ import pytest
 
 from chronicle import repository
 from chronicle.db import connect
-from chronicle.models import Event
+from chronicle.models import Event, Topic
 from chronicle.repository import Conflict, Invalid
 from chronicle.check import cycle_problems
 
@@ -26,56 +26,60 @@ def conn(tmp_path):
     connection.close()
 
 
-def add(conn, key, triggered_by=None):
+def add(conn, folder, key, triggered_by=None):
     # actor_id None: these checks do not depend on who acts. Only the audit entry records the user.
-    return repository.create_event(conn, event_model(key, triggered_by), ["inc"], actor_id=None, ip="test")
+    return repository.create_event(conn, event_model(key, triggered_by), ["inc"], actor_id=None, ip="test",
+                                   data_dir=folder)
 
 
 @pytest.fixture
-def topic(conn):
-    conn.execute("INSERT INTO topics (key, title, kind) VALUES ('inc', 'Vorfall', 'incident')")
-    conn.commit()
+def topic(conn, tmp_path):
+    """The data folder with a topic file `inc`. The events of these tests are written to it."""
+    folder = tmp_path / "data"
+    folder.mkdir()
+    repository.create_topic(conn, Topic(key="inc", title="Vorfall", kind="incident"), None, "test", data_dir=folder)
+    return folder
 
 
 def test_an_event_can_have_several_causes(conn, topic):
-    add(conn, "a")
-    add(conn, "b")
-    stored = add(conn, "c", ["b", "a", "a"])
+    add(conn, topic, "a")
+    add(conn, topic, "b")
+    stored = add(conn, topic, "c", ["b", "a", "a"])
     assert stored["triggered_by"] == ["a", "b"]  # sorted and without repeats
 
 
 def test_no_cause_is_an_empty_list(conn, topic):
-    assert add(conn, "a")["triggered_by"] == []
+    assert add(conn, topic, "a")["triggered_by"] == []
 
 
 def test_a_cause_that_does_not_exist_is_refused(conn, topic):
     with pytest.raises(Invalid, match="gibt-es-nicht"):
-        add(conn, "a", ["gibt-es-nicht"])
+        add(conn, topic, "a", ["gibt-es-nicht"])
 
 
 def test_a_cycle_through_the_ui_is_refused(conn, topic):
-    add(conn, "a")
-    add(conn, "b", ["a"])
+    add(conn, topic, "a")
+    add(conn, topic, "b", ["a"])
     expected = conn.execute("SELECT version FROM events WHERE key = 'a'").fetchone()["version"]
     with pytest.raises(Invalid, match="Kreis"):
-        repository.update_event(conn, "a", event_model("a", ["b"]), ["inc"], expected, actor_id=None, ip="test")
+        repository.update_event(conn, "a", event_model("a", ["b"]), ["inc"], expected, actor_id=None, ip="test", data_dir=topic)
 
 
 def test_a_cycle_through_a_second_cause_is_refused(conn, topic):
-    add(conn, "a")
-    add(conn, "b")
-    add(conn, "c", ["a", "b"])
+    add(conn, topic, "a")
+    add(conn, topic, "b")
+    add(conn, topic, "c", ["a", "b"])
     expected = conn.execute("SELECT version FROM events WHERE key = 'b'").fetchone()["version"]
     with pytest.raises(Invalid, match="Kreis"):
-        repository.update_event(conn, "b", event_model("b", ["c"]), ["inc"], expected, actor_id=None, ip="test")
+        repository.update_event(conn, "b", event_model("b", ["c"]), ["inc"], expected, actor_id=None, ip="test", data_dir=topic)
 
 
 def test_an_event_cannot_be_deleted_while_another_one_depends_on_it(conn, topic):
-    add(conn, "a")
-    add(conn, "b")
-    add(conn, "c", ["a", "b"])
+    add(conn, topic, "a")
+    add(conn, topic, "b")
+    add(conn, topic, "c", ["a", "b"])
     with pytest.raises(Conflict, match="von c"):
-        repository.delete_event(conn, "a", actor_id=None, ip="test")
+        repository.delete_event(conn, "a", actor_id=None, ip="test", data_dir=topic)
 
 
 def test_the_migrated_single_value_reads_as_a_list(tmp_path):

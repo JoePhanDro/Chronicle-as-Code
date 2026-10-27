@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import app_for, db_mode_app, import_example
+from tests.conftest import app_for, import_example
 from chronicle import accounts, security
 from chronicle.db import connect
 from chronicle.evidence import MAX_EVIDENCE_BYTES, EvidenceRejected, check_file, delivery_headers
@@ -38,8 +38,8 @@ def db_path(tmp_path):
     return path
 
 
-def api_login(db_path, username, db_mode=False):
-    client = TestClient(db_mode_app(db_path) if db_mode else app_for(db_path))
+def api_login(db_path, username):
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -142,42 +142,10 @@ def test_unknown_evidence_is_not_found(db_path):
     assert viewer.get("/api/v1/evidence/99999").status_code == 404
 
 
-def test_evidence_without_content_says_how_to_fix_it(db_path):
-    conn = connect(db_path)
-    conn.execute(
-        "UPDATE evidence SET content = NULL, mime = NULL WHERE event_pk = (SELECT pk FROM events WHERE key = 'siem-alert')"
-    )
-    conn.commit()
-    conn.close()
-
-    viewer = api_login(db_path, "viewer", db_mode=True)
-    response = viewer.get(f"/api/v1/evidence/{evidence_id(db_path, 'siem-alert')}")
-    assert response.status_code == 404
-    assert "Import erneut" in response.json()["detail"]
-
-
-# Upload and delete
-
 def test_viewer_cannot_upload_or_delete(db_path):
     viewer = api_login(db_path, "viewer")
     assert upload(viewer, "exploit", "probe.png", PNG).status_code == 403
     assert viewer.delete(f"/api/v1/evidence/{evidence_id(db_path, 'siem-alert')}").status_code == 403
-
-
-def test_analyst_uploads_and_the_event_is_marked_manual(db_path):
-    anna = api_login(db_path, "anna", db_mode=True)
-    response = upload(anna, "exploit", "probe.png", PNG, description="Probe")
-    assert response.status_code == 201
-    body = response.json()
-    assert body["file"] == "probe.png"
-    assert body["mime"] == "image/png"
-    assert body["size"] == len(PNG)
-    assert "content" not in body
-
-    event = anna.get("/api/v1/events/exploit").json()
-    assert event["source"] == "manual"
-    assert [item["file"] for item in event["evidence"]] == ["probe.png"]
-    assert anna.get(f"/api/v1/evidence/{body['id']}").content == PNG
 
 
 @pytest.mark.parametrize(
@@ -198,27 +166,6 @@ def test_bad_upload_is_rejected_and_stores_nothing(db_path, name, data, evidence
     assert response.status_code == 422
     after = anna.get("/api/v1/events/exploit").json()
     assert after["evidence"] == before["evidence"]
-    assert after["source"] == "import"
-
-
-def test_upload_is_written_to_the_audit_log_without_content(db_path):
-    anna = api_login(db_path, "anna", db_mode=True)
-    upload(anna, "exploit", "probe.png", PNG)
-
-    conn = connect(db_path)
-    entries = [entry for entry in accounts.list_audit(conn) if entry["action"] == "evidence_added"]
-    conn.close()
-    assert len(entries) == 1
-    assert entries[0]["target"] == "exploit"
-    assert entries[0]["detail"] == "probe.png"
-
-
-def test_analyst_deletes_evidence(db_path):
-    anna = api_login(db_path, "anna", db_mode=True)
-    evidence = evidence_id(db_path, "siem-alert")
-    assert anna.delete(f"/api/v1/evidence/{evidence}").status_code == 204
-    assert anna.get(f"/api/v1/evidence/{evidence}").status_code == 404
-    assert anna.get("/api/v1/events/siem-alert").json()["evidence"] == []
 
 
 def test_evidence_in_the_event_body_is_rejected(db_path):
@@ -257,10 +204,3 @@ def test_html_delete_requires_the_csrf_token(db_path):
     assert anna.get("/api/v1/events/siem-alert").json()["evidence"] == []
 
 
-def test_reimport_keeps_evidence_uploaded_to_an_imported_event(db_path):
-    anna = api_login(db_path, "anna", db_mode=True)
-    upload(anna, "exploit", "probe.png", PNG)
-
-    import_example(db_path)
-
-    assert [item["file"] for item in anna.get("/api/v1/events/exploit").json()["evidence"]] == ["probe.png"]

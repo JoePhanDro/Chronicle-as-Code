@@ -182,7 +182,7 @@
     {% else %}
     {% set count = delete_plan.events | length %}
     {% set evidence_text = 'Dabei ' ~ ('wird 1 Evidence-Datei' if delete_plan.evidence == 1 else 'werden ' ~ delete_plan.evidence ~ ' Evidence-Dateien') ~ ' entfernt.' if delete_plan.evidence else 'Es gibt keine Evidence-Dateien.' %}
-    {% set restore_text = 'Die Datei des Topics wird gelöscht; den früheren Stand liefert Git, Evidence-Dateien bleiben im Ordner liegen.' if file_mode else 'Das lässt sich nicht rückgängig machen.' %}
+    {% set restore_text = 'Die Datei des Topics wird gelöscht; den früheren Stand liefert Git, Evidence-Dateien bleiben im Ordner liegen.' %}
     {% if count %}
     {% set shown = delete_plan.events[:5] | join(', ') ~ (' …' if count > 5 else '') %}
     {% set events_text = count ~ (' Event' if count == 1 else ' Events') ~ ' (' ~ shown ~ ')' %}

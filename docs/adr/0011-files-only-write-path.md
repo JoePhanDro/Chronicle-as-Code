@@ -22,9 +22,9 @@ Das hat Folgen gehabt. Jede Änderung existiert zweimal, und die Pfade sind ause
 
 Jeder Schritt ist ein eigener Pull Request, die Tests bleiben nach jedem grün.
 
-1. **Dieses ADR** und die Bestätigung von ADR 0008. Keine Codeänderung.
-2. **Vorbereitung:** Die Docker-Anleitung und `docker-compose.yml` auf `--data` umstellen. Die Tests auf eine gemeinsame Dateimodus-Fixture bringen. Der Datenbankmodus bleibt bis hierher lauffähig, damit sich der Schritt zurücknehmen lässt. Beim Start ohne Datenordner erscheint eine Warnung.
-3. **Entfernen:** Datenbankpfad, Grabsteine und der Start ohne Datenordner fallen weg. Datenbanken mit vorhandenen Grabsteinen verlieren die Tabelle bei der Migration, die Anleitung nennt vorher den Weg, sie zu sichern.
+1. **Dieses ADR** und die Bestätigung von ADR 0008. Keine Codeänderung. *(erledigt)*
+2. **Vorbereitung:** Die Docker-Anleitung und `docker-compose.yml` auf `--data` umstellen. Die Tests auf eine gemeinsame Dateimodus-Fixture bringen. Der Datenbankmodus bleibt bis hierher lauffähig, damit sich der Schritt zurücknehmen lässt. Beim Start ohne Datenordner erscheint eine Warnung. *(erledigt)*
+3. **Entfernen:** Datenbankpfad, Grabsteine und der Start ohne Datenordner fallen weg. *(erledigt: Grabsteine in 3a, Datenbankpfad und Start ohne Datenordner in 3b; übrig sind Reste in Import und Index, die auf den Datenbankmodus Rücksicht nehmen, etwa die Marke „manuell“)* Datenbanken mit vorhandenen Grabsteinen verlieren die Tabelle bei der Migration, die Anleitung nennt vorher den Weg, sie zu sichern.
 4. **Aufteilen:** Den Schreibteil von `repository.py` in Module teilen (#124, Schritt 1 ist mit `queries.py` und `errors.py` getan).
 
 ## Konsequenzen

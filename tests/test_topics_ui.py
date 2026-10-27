@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import app_for, db_mode_app, import_example
+from tests.conftest import app_for, import_example
 from chronicle import accounts, security
 from chronicle.db import connect
 
@@ -28,8 +28,8 @@ def db_path(tmp_path):
     return path
 
 
-def api_login(db_path, username, db_mode=False):
-    client = TestClient(db_mode_app(db_path) if db_mode else app_for(db_path))
+def api_login(db_path, username):
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -116,13 +116,6 @@ def test_title_can_change_but_key_cannot(db_path):
 
     moved = anna.put("/api/v1/topics/projekt-x", json=topic_body(key="anderer-key"))
     assert moved.status_code == 422
-
-
-def test_deleting_a_topic_takes_its_home_events_along(db_path):
-    anna = api_login(db_path, "anna", db_mode=True)
-    assert anna.delete("/api/v1/topics/inc-2026-042").status_code == 204
-    assert anna.get("/api/v1/topics/inc-2026-042").status_code == 404
-    assert anna.get("/api/v1/events/feed-cve").status_code == 404
 
 
 def test_events_linked_into_another_topic_stay_when_their_home_goes(db_path):

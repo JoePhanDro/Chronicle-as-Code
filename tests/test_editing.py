@@ -5,10 +5,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import app_for, db_mode_app, import_example
+from tests.conftest import app_for, import_example
 from chronicle import accounts, security
 from chronicle.db import connect
-from chronicle.importer import import_folder
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 PASSWORD = "correct horse battery"
@@ -32,8 +31,8 @@ def db_path(tmp_path):
     return path
 
 
-def api_login(db_path, username, db_mode=False):
-    client = TestClient(db_mode_app(db_path) if db_mode else app_for(db_path))
+def api_login(db_path, username):
+    client = TestClient(app_for(db_path))
     response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
     assert response.status_code == 200, response.text
     client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
@@ -68,16 +67,6 @@ def test_viewer_cannot_write(db_path):
     viewer = api_login(db_path, "viewer")
     assert viewer.post("/api/v1/events", json=new_event()).status_code == 403
     assert viewer.delete("/api/v1/events/exploit").status_code == 403
-
-
-def test_analyst_creates_event_and_it_is_listed(db_path):
-    anna = api_login(db_path, "anna", db_mode=True)
-    response = anna.post("/api/v1/events", json=new_event())
-    assert response.status_code == 201
-    assert response.json()["version"] == 1
-    assert response.json()["source"] == "manual"
-    assert response.json()["topics"] == ["inc-2026-042"]
-    assert len(anna.get("/api/v1/topics/inc-2026-042/events").json()) == 8
 
 
 def test_api_generates_key_when_none_is_sent(db_path):
@@ -134,34 +123,6 @@ def test_delete_blocked_while_another_event_depends_on_it(db_path):
     response = anna.delete("/api/v1/events/feed-cve")  # siem-alert and exploit are triggered by it
     assert response.status_code == 409
     assert "siem-alert" in response.json()["detail"]
-
-
-def test_manually_edited_event_is_not_overwritten_by_import(db_path):
-    anna = api_login(db_path, "anna", db_mode=True)
-    current = anna.get("/api/v1/events/analysis").json()
-    body = writable(current, action="Von Hand korrigiert")
-    assert anna.put("/api/v1/events/analysis", json=body).status_code == 200
-
-    (report,) = import_example(db_path)
-    assert ("analysis", "in der Oberfläche bearbeitet") in report.skipped
-    assert anna.get("/api/v1/events/analysis").json()["action"] == "Von Hand korrigiert"
-
-
-def test_import_keeps_links_added_in_the_ui(db_path, tmp_path):
-    anna = api_login(db_path, "anna", db_mode=True)
-    # Create a second topic through a new import file, then link an existing event to it in the UI.
-    second = tmp_path / "second"
-    second.mkdir()
-    (second / "timeline.yaml").write_text(
-        "topic:\n  key: projekt-x\n  title: Projekt X\n  kind: project\nevents: []\nrefs: []\n"
-    )
-    import_folder(db_path, second)
-    current = anna.get("/api/v1/events/containment").json()
-    body = writable(current, topics=["projekt-x"])
-    assert anna.put("/api/v1/events/containment", json=body).status_code == 200
-
-    import_example(db_path)
-    assert set(anna.get("/api/v1/events/containment").json()["topics"]) == {"inc-2026-042", "projekt-x"}
 
 
 def test_every_change_is_audited_without_content(db_path):
