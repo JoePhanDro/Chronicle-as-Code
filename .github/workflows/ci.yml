@@ -168,8 +168,8 @@ jobs:
 
       - name: Container logs
         if: failure()
-        run: docker compose -f docker-compose.yml -f docker-compose.proxy.yml logs || true
+        run: docker compose logs || true
 
       - name: Remove the stack
         if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.proxy.yml down -v || true
+        run: docker compose down -v || true

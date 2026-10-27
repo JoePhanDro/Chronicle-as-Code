@@ -1,0 +1,20 @@
+# Local development without TLS: the API on http://127.0.0.1:8000, no proxy.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Needs Docker Compose 2.24 or newer (for !reset). Never expose this beyond the machine it runs on.
+
+services:
+  api:
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      CHRONICLE_TRUSTED_PROXIES: !reset null
+      # Plain HTTP: the session cookie must not require HTTPS.
+      CHRONICLE_COOKIE_SECURE: "0"
+
+  proxy:
+    profiles: ["tls"]
+
+# The fixed subnet of the proxy is not needed without it, so it cannot collide with another network.
+networks:
+  default:
+    ipam: !reset {}
