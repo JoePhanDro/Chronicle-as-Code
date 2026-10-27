@@ -120,3 +120,13 @@ def test_embedded_dashboard_has_no_phase_legend_and_no_empty_detail_panel(api_cl
     assert "#details:empty { display: none; }" in embedded and "#details:empty" not in standalone
     assert 'rounded-full bg-white/[.03] px-2.5 py-1' not in embedded
     assert 'rounded-full bg-white/[.03] px-2.5 py-1' in standalone
+
+
+def test_topic_list_offers_a_filter_only_when_it_is_long(api_client):
+    client = api_client("analyst")
+    assert 'id="topic-filter"' not in client.get("/topics").text
+    for number in range(6):
+        create_empty_topic(client, key=f"t{number}")
+    html = client.get("/topics").text
+    assert 'id="topic-filter"' in html and 'id="topic-status"' in html and 'data-status=""' in html
+    assert "event.key === 'Enter'" in html  # the filter never submits anything
