@@ -36,6 +36,8 @@ TOO_LARGE = f"Datei größer als {MAX_YAML_BYTES // 2**20} MiB (Grenze für eine
 
 _STR_TAG = "tag:yaml.org,2002:str"
 _RESOLVER = Resolver()
+_NODE_EVENTS = frozenset({yaml.ScalarEvent, yaml.MappingStartEvent, yaml.SequenceStartEvent})
+_END_EVENTS = frozenset({yaml.MappingEndEvent, yaml.SequenceEndEvent})
 
 
 class YamlRejected(Exception):
@@ -61,23 +63,11 @@ def scan(text: str) -> None:
     nodes = documents = 0
     for event in yaml.parse(text, Loader=YAML_LOADER):  # lazy: stops at the first refusal, deep input is never read
         kind = type(event)
-        if kind is yaml.ScalarEvent or kind is yaml.MappingStartEvent or kind is yaml.SequenceStartEvent:
-            if event.anchor:
-                raise _rejected("Anker (&) ist nicht erlaubt", event)
-            if event.tag:
-                raise _rejected("Tags (!) sind nicht erlaubt", event)
+        if kind in _NODE_EVENTS:
             nodes += 1
-            if nodes > MAX_NODES:
-                raise _rejected(f"mehr als {MAX_NODES} Knoten", event)
-            if stack and stack[-1][0] is not None:  # in a mapping: every second node is a key
-                stack[-1][1] += 1
-                if stack[-1][1] % 2 == 1:
-                    _check_key(event, stack[-1][0])
-            if kind is not yaml.ScalarEvent:
-                if len(stack) >= MAX_DEPTH:
-                    raise _rejected(f"Verschachtelung tiefer als {MAX_DEPTH} Ebenen", event)
-                stack.append([set() if kind is yaml.MappingStartEvent else None, 0])
-        elif kind is yaml.MappingEndEvent or kind is yaml.SequenceEndEvent:
+            _check_node(event, nodes)
+            _enter_node(event, kind, stack)
+        elif kind in _END_EVENTS:
             stack.pop()
         elif kind is yaml.AliasEvent:
             raise _rejected("Alias (*) ist nicht erlaubt", event)
@@ -85,6 +75,26 @@ def scan(text: str) -> None:
             documents += 1
             if documents > 1:
                 raise _rejected("mehrere Dokumente in einer Datei", event)
+
+
+def _check_node(event: yaml.NodeEvent, nodes: int) -> None:
+    if event.anchor:
+        raise _rejected("Anker (&) ist nicht erlaubt", event)
+    if event.tag:
+        raise _rejected("Tags (!) sind nicht erlaubt", event)
+    if nodes > MAX_NODES:
+        raise _rejected(f"mehr als {MAX_NODES} Knoten", event)
+
+
+def _enter_node(event: yaml.NodeEvent, kind: type, stack: list[list]) -> None:
+    if stack and stack[-1][0] is not None:  # in a mapping: every second node is a key
+        stack[-1][1] += 1
+        if stack[-1][1] % 2 == 1:
+            _check_key(event, stack[-1][0])
+    if kind is not yaml.ScalarEvent:
+        if len(stack) >= MAX_DEPTH:
+            raise _rejected(f"Verschachtelung tiefer als {MAX_DEPTH} Ebenen", event)
+        stack.append([set() if kind is yaml.MappingStartEvent else None, 0])
 
 
 @lru_cache(maxsize=1024)  # the keys of a folder are the same few field names
