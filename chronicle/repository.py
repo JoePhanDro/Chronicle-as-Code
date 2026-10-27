@@ -823,29 +823,34 @@ def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, dat
     if data_dir is not None:
         return _delete_in_folder(conn, key, data_dir, actor_id, ip)
 
+    with conn:
+        _bury_event(conn, key, row["pk"])
+    accounts.audit(conn, "event_deleted", user_id=actor_id, target=key, ip=ip)
+
+
+def _bury_event(conn: sqlite3.Connection, key: str, event_pk: int) -> None:
+    """Remove an event from the database and leave the tombstone. The caller owns the transaction."""
     # Copied before the event goes, so that the tombstone can bring it back (issue #34).
-    snapshot = _snapshot(conn, row["pk"])
+    snapshot = _snapshot(conn, event_pk)
     evidence = conn.execute(
         "SELECT file, type, description, mime, size, sha256, content FROM evidence WHERE event_pk = ? ORDER BY pk",
-        (row["pk"],),
+        (event_pk,),
     ).fetchall()
-    with conn:
-        conn.execute("DELETE FROM events WHERE pk = ?", (row["pk"],))  # links and evidence cascade
-        conn.execute("DELETE FROM deleted_evidence WHERE event_key = ?", (key,))
-        conn.execute(
-            """
-            INSERT INTO deleted_events (key, snapshot) VALUES (?, ?)
-            ON CONFLICT (key) DO UPDATE SET snapshot = excluded.snapshot,
-                deleted_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-            """,
-            (key, snapshot),
-        )
-        conn.executemany(
-            "INSERT INTO deleted_evidence (event_key, file, type, description, mime, size, sha256, content) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [(key, *item) for item in evidence],
-        )
-    accounts.audit(conn, "event_deleted", user_id=actor_id, target=key, ip=ip)
+    conn.execute("DELETE FROM events WHERE pk = ?", (event_pk,))  # links and evidence cascade
+    conn.execute("DELETE FROM deleted_evidence WHERE event_key = ?", (key,))
+    conn.execute(
+        """
+        INSERT INTO deleted_events (key, snapshot) VALUES (?, ?)
+        ON CONFLICT (key) DO UPDATE SET snapshot = excluded.snapshot,
+            deleted_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+        """,
+        (key, snapshot),
+    )
+    conn.executemany(
+        "INSERT INTO deleted_evidence (event_key, file, type, description, mime, size, sha256, content) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [(key, *item) for item in evidence],
+    )
 
 
 def _snapshot(conn: sqlite3.Connection, event_pk: int) -> str:
@@ -1279,20 +1284,76 @@ def update_topic(
     return get_topic(conn, key)
 
 
-def delete_topic(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, data_dir: Path | None = None) -> None:
-    if get_topic(conn, key) is None:
-        raise NotFound(f"Topic {key!r} nicht gefunden")
-    if data_dir is not None:
-        # Not yet in file mode: a deleted row would come back with the next reindex, so the request is refused.
-        raise Invalid("Ein Topic kann im Dateimodus noch nicht gelöscht werden. Die Datei bitte von Hand entfernen.")
+def topic_delete_plan(conn: sqlite3.Connection, key: str) -> dict:
+    """What deleting a topic takes with it: its home events (`events`), and the events elsewhere that those would leave
+    without a cause (`blockers`, pairs of the dependent event and the home event that triggers it), and how many
+    evidence files the events hold."""
     homes = [row["key"] for row in conn.execute(
         "SELECT key FROM events WHERE home_topic = ? ORDER BY key", (key,)
     ).fetchall()]
-    if homes:
-        raise Conflict(f"Im Topic liegen noch Heimat-Events: {', '.join(homes)}. Zuerst diese Events löschen.")
+    blockers = [(row["dependent"], row["cause"]) for row in conn.execute(
+        "SELECT events.key AS dependent, json_each.value AS cause FROM events, json_each(events.triggered_by) "
+        "WHERE events.home_topic != ? ORDER BY events.key, json_each.value", (key,)
+    ).fetchall() if row["cause"] in homes]
+    evidence = conn.execute(
+        "SELECT COUNT(*) FROM evidence JOIN events ON events.pk = evidence.event_pk WHERE events.home_topic = ?", (key,)
+    ).fetchone()[0]
+    return {"events": homes, "blockers": blockers, "evidence": evidence}
+
+
+def delete_topic(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, data_dir: Path | None = None) -> None:
+    """Delete a topic together with the events that have it as their home. Events of other topics that are only linked
+    to it stay. If an event of another topic is triggered by one of the deleted events, nothing is deleted."""
+    if get_topic(conn, key) is None:
+        raise NotFound(f"Topic {key!r} nicht gefunden")
+    plan = topic_delete_plan(conn, key)
+    if plan["blockers"]:
+        pairs = ", ".join(f"{dependent} (ausgelöst von {cause})" for dependent, cause in plan["blockers"])
+        raise Conflict(f"Events anderer Topics hängen an Events dieses Topics: {pairs}. "
+                       "Zuerst dort den Verweis entfernen, dann lässt sich das Topic löschen.")
+    if data_dir is not None:
+        return _delete_topic_in_folder(conn, key, plan["events"], data_dir, actor_id, ip)
     with conn:
+        for event_key in plan["events"]:
+            _bury_event(conn, event_key, _event_pk(conn, event_key))
         conn.execute("DELETE FROM topics WHERE key = ?", (key,))  # links cascade
-    accounts.audit(conn, "topic_deleted", user_id=actor_id, target=key, ip=ip)
+    _audit_topic_deleted(conn, key, plan["events"], actor_id, ip)
+
+
+def _audit_topic_deleted(conn: sqlite3.Connection, key: str, events: list[str], actor_id: int, ip: str) -> None:
+    for event_key in events:
+        accounts.audit(conn, "event_deleted", user_id=actor_id, target=event_key, detail=f"mit Topic {key}", ip=ip)
+    accounts.audit(conn, "topic_deleted", user_id=actor_id, target=key,
+                   detail=f"{len(events)} Events" if events else None, ip=ip)
+
+
+def _delete_topic_in_folder(
+    conn: sqlite3.Connection, key: str, events: list[str], data_dir: Path, actor_id: int, ip: str
+) -> None:
+    """The topic file goes, and with it its events and the links it holds. Links that other files hold to its events
+    are removed first. Evidence files stay in the folder; Git has the earlier state (ADR 0008)."""
+    located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (key,)).fetchone()
+    if located is None:
+        raise NotFound(f"Topic {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    path = data_dir / located["path"]
+    with _all_or_nothing(data_dir):
+        if file_version(path) != _recorded_version(conn, located["path"]):
+            raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
+                           "Nichts wurde gelöscht.")
+        for event_key in events:
+            # One file change per event, with the index following: the next change reads the new version of the file.
+            elsewhere = set(_linked_elsewhere(conn, event_key))
+            if elsewhere:
+                _change_links(conn, event_key, add=set(), remove=elsewhere, data_dir=data_dir)
+                reindex(conn, data_dir)
+        path.unlink()
+        reindex(conn, data_dir)  # the events of the file are gone from the folder, so they go from the index
+        with conn:
+            conn.execute("DELETE FROM topics WHERE key = ?", (key,))
+            conn.execute("DELETE FROM topic_files WHERE topic_key = ?", (key,))
+            conn.execute("DELETE FROM source_files WHERE path = ?", (located["path"],))
+            conn.execute("DELETE FROM event_files WHERE path = ?", (located["path"],))
+    _audit_topic_deleted(conn, key, events, actor_id, ip)
 
 
 def link_event(

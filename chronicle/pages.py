@@ -456,11 +456,11 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
         events = repository.list_topic_events(conn, key)
         linked = {event["key"] for event in events}
         addable = [event for event in repository.list_events(conn) if event["key"] not in linked]
-        home_events = [event["key"] for event in events if event["home_topic"] == key]
+        delete_plan = repository.topic_delete_plan(conn, key)
         return render(request, "topic.html", user, status_code=status_code, mode="view", topic=topic,
                       events=events, addable=addable, errors=errors, kinds=TOPIC_KINDS, form=None,
                       status=repository.most_pressing_status(event["status"] for event in events),
-                      home_events=home_events)
+                      delete_plan=delete_plan)
 
     @router.get("/topics", response_class=HTMLResponse)
     def topics_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

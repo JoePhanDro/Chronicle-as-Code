@@ -6,7 +6,7 @@ import pytest
 import yaml
 
 from chronicle import repository
-from chronicle.models import Topic
+from chronicle.models import Event, Topic
 from chronicle.repository import Conflict, Invalid
 
 
@@ -82,13 +82,57 @@ def test_an_existing_file_of_that_name_is_never_overwritten(folder, conn):
     assert stray.read_bytes() == before
 
 
-def test_a_topic_cannot_be_deleted_in_file_mode_yet(folder, conn):
-    repository.create_topic(conn, new_topic("weg"), actor_id=None, ip="test", data_dir=folder)
+def event(key, **changes):
+    data = {"key": key, "t0": "2026-10-27T10:00:00+02:00", "phase": "Activity", "actor": "Analyst",
+            "action": f"Schritt {key}", "status": "open"}
+    data.update(changes)
+    return Event.model_validate(data)
 
-    with pytest.raises(Invalid):
+
+def make_topic_with_events(folder, conn):
+    """Topic 'weg' with w1 and w2 (w2 triggered by w1); w1 is also linked into the example topic."""
+    repository.create_topic(conn, new_topic("weg"), actor_id=None, ip="test", data_dir=folder)
+    repository.create_event(conn, event("w1"), ["weg"], actor_id=None, ip="test", data_dir=folder)
+    repository.create_event(conn, event("w2", triggered_by=["w1"]), ["weg"], actor_id=None, ip="test", data_dir=folder)
+    repository.link_event(conn, "inc-2026-042", "w1", actor_id=None, ip="test", data_dir=folder)
+
+
+def test_deleting_a_topic_removes_its_file_its_events_and_the_links_to_them(folder, conn):
+    make_topic_with_events(folder, conn)
+    main_before = load(folder / "timeline.yaml")["events"]
+
+    repository.delete_topic(conn, "weg", actor_id=None, ip="test", data_dir=folder)
+
+    assert not (folder / "weg.yaml").exists()
+    assert repository.get_topic(conn, "weg") is None
+    assert repository.get_event(conn, "w1") is None and repository.get_event(conn, "w2") is None
+    assert "w1" not in (folder / "timeline.yaml").read_text(encoding="utf-8")  # the ref in the other file is gone
+    assert load(folder / "timeline.yaml")["events"] == main_before  # and nothing else in it changed
+    repository.reindex(conn, folder)  # the folder and the index agree
+    assert repository.get_topic(conn, "weg") is None and repository.get_event(conn, "w1") is None
+
+
+def test_events_of_another_topic_that_depend_on_the_topic_block_its_deletion(folder, conn):
+    make_topic_with_events(folder, conn)
+    repository.create_event(conn, event("fremd", triggered_by=["w2"]), ["inc-2026-042"], actor_id=None, ip="test",
+                            data_dir=folder)
+    files_before = {path: path.read_bytes() for path in folder.glob("*.yaml")}
+
+    with pytest.raises(Conflict, match="fremd"):
         repository.delete_topic(conn, "weg", actor_id=None, ip="test", data_dir=folder)
-    assert (folder / "weg.yaml").exists()
-    assert repository.get_topic(conn, "weg") is not None
+
+    assert {path: path.read_bytes() for path in folder.glob("*.yaml")} == files_before
+    assert repository.get_event(conn, "w2") is not None
+
+
+def test_a_topic_file_changed_outside_is_not_deleted(folder, conn):
+    make_topic_with_events(folder, conn)
+    with (folder / "weg.yaml").open("a", encoding="utf-8") as handle:
+        handle.write("# von Hand ergänzt\n")
+
+    with pytest.raises(Conflict):
+        repository.delete_topic(conn, "weg", actor_id=None, ip="test", data_dir=folder)
+    assert (folder / "weg.yaml").exists() and repository.get_topic(conn, "weg") is not None
 
 
 def test_a_topic_file_is_removed_again_when_the_folder_no_longer_checks(folder, conn):
