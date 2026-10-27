@@ -1,6 +1,6 @@
 # ADR 0003: Bearbeiten von Events in der Oberfläche
 
-- **Status:** Vorgeschlagen (zu bestätigen)
+- **Status:** Abgelöst durch ADR 0008 und ADR 0011 (Dateien sind der einzige Schreibpfad)
 - **Datum:** 2026-10-21
 - **Bezug:** ADR 0001 (Rollen, Audit), ADR 0002 (Topics und Events)
 

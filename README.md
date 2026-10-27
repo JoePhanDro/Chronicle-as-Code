@@ -373,14 +373,15 @@ Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/is
 - Architekturentscheidungen: [`docs/adr/`](docs/adr/)
   - [ADR 0001](docs/adr/0001-backend-auth-pages.md): Server, Anmeldung, Seiten (akzeptiert)
   - [ADR 0002](docs/adr/0002-topics-and-events.md): Events und Topics (zu bestätigen)
-  - [ADR 0003](docs/adr/0003-editing-in-the-ui.md): Bearbeiten in der Oberfläche (zu bestätigen, für den Dateimodus durch ADR 0008 ersetzt)
+  - [ADR 0003](docs/adr/0003-editing-in-the-ui.md): Bearbeiten in der Oberfläche (abgelöst durch ADR 0008 und ADR 0011)
   - [ADR 0004](docs/adr/0004-evidence-storage.md): Evidence in der Datenbank, Abweichung von ADR 0001 (zu bestätigen)
   - [ADR 0005](docs/adr/0005-export-and-backup.md): YAML-Export, Backup und Import mehrerer Topic-Dateien (zu bestätigen)
   - [ADR 0006](docs/adr/0006-reports-from-the-app.md): Berichte aus der Datenbank, nur für Admins (zu bestätigen)
   - [ADR 0007](docs/adr/0007-reading-lock.md): Lesesperre mit Passwort (angenommen)
-  - [ADR 0008](docs/adr/0008-files-as-source-of-truth.md): Dateien als Quelle der Wahrheit (zu bestätigen)
+  - [ADR 0008](docs/adr/0008-files-as-source-of-truth.md): Dateien als Quelle der Wahrheit (akzeptiert)
   - [ADR 0009](docs/adr/0009-cli-first.md): CLI als Kernprodukt, Server als Oberfläche (akzeptiert für den CLI-Teil)
   - [ADR 0010](docs/adr/0010-operations-separate.md): Betriebsdaten getrennt vom Index (akzeptiert)
+  - [ADR 0011](docs/adr/0011-files-only-write-path.md): Dateien sind der einzige Schreibpfad (akzeptiert, wird in Schritten umgesetzt)
 - Notation der Topic-Dateien: [`docs/notation.md`](docs/notation.md). Produktkontext und Designsystem: [`PRODUCT.md`](PRODUCT.md) und [`DESIGN.md`](DESIGN.md).
 - Wie man beiträgt, steht in [CONTRIBUTING.md](CONTRIBUTING.md).
 
