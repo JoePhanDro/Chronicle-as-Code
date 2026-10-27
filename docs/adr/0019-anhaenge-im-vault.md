@@ -1,6 +1,6 @@
 # ADR 0019: Anhänge im Vault
 
-- **Status:** Vorgeschlagen (zu bestätigen). **Ändert eine bestätigte Entscheidung** und braucht deshalb ausdrücklich die Zustimmung des Projektinhabers. Empfehlung des Reviews: Ja, aber **nur unter Bedingungen**: privater Vault, Hoster-Tarif mit Branch Protection (ADR 0015, Punkt 9), Auftragsverarbeitung und Region geklärt (ADR 0020), Bereinigungsverfahren am Testrepository erprobt (ADR 0020, Punkt 10). Der PR mit diesen ADRs wird vor der Entscheidung nicht gemergt.
+- **Status:** Entschieden vom Projektinhaber am 2026-10-27: **Anhänge liegen in Git** (Option 2). Große Binärdateien bleiben draußen und werden verlinkt (Punkt 7). **Ändert eine bestätigte Entscheidung** (ADR 0008 Punkt 6, ADR 0009). Die Bedingungen für den ersten Vault mit echten Vorfallsdaten gelten weiter: privater Vault, Hoster-Tarif mit Branch Protection (ADR 0015, Punkt 9), Auftragsverarbeitung und Region geklärt (ADR 0020), Bereinigungsverfahren am Testrepository erprobt (ADR 0020, Punkt 10). Tarif, Vertrag und Region sind noch nicht entschieden (Plan, offene Frage 1).
 - **Datum:** 2026-10-25
 - **Bezug:** ADR 0004 (Evidence), ADR 0008 Punkt 6, ADR 0009 (Abschnitt Anhänge), ADR 0012, ADR 0020, `chronicle/evidence.py`
 - **Ändert:** ADR 0008 Punkt 6 und ADR 0009, Abschnitt „Anhänge“ („außerhalb von Git, im Sync-Ordner“).
@@ -35,7 +35,15 @@ Dagegen steht: Was in Git liegt, bleibt in der Historie (ADR 0020), und Anhänge
    - **Git darf Anhänge nicht verändern.** Zeilenenden-Umwandlung, `.gitattributes` mit `text=auto`, `eol`, `ident` oder `filter` ändern die Bytes und damit `sha256`. Gegenmaßnahmen: pro Aufruf `core.autocrlf=false`, `core.eol=lf`, `core.safecrlf=false`, in `.git/info/attributes` `evidence/** -text -ident -filter binary`, und `.gitattributes` im Vault enthält nur die Zeilen der Vorlage (ADR 0021, Punkte 6 und 22).
 4. **Anhänge werden nicht verändert.** Eine neue Fassung ist eine neue Datei (Nummer im Namen, wie heute) und eine neue Prüfsumme. Das Entfernen eines Anhangs entfernt die Datei und den Eintrag.
 5. **Der Ausweg:** Das Manifest darf später `evidence.storage: lfs` nennen. Dann steht in `.gitattributes` `evidence/** filter=lfs …`, und die Anwendung verlangt `git-lfs`. Der Umstieg ist eine Formatänderung (ADR 0022) und wird nicht beiläufig eingeführt. Bis dahin ist LFS nicht Teil des Plans.
-6. **Cloud-Sync-Ordner entfallen** als Weg für Anhänge. Wer sie weiter verwendet, tut es außerhalb von Chronicle. Der Hinweis in ADR 0008 zu Konfliktkopien (`waf-block (1).png`) gilt nur noch für Altbestand.
+6. **Cloud-Sync-Ordner entfallen** als Weg für Anhänge, die ein Prüfer sehen soll. Wer sie weiter verwendet, tut es außerhalb von Chronicle. Der Hinweis in ADR 0008 zu Konfliktkopien (`waf-block (1).png`) gilt nur noch für Altbestand.
+
+7. **Große Binärdateien kommen nicht in den Vault, sie werden verlinkt (Entscheidung des Projektinhabers).** Wer eine Datei über der Grenze hat (Speicherabbild, Mitschnitt, Video), legt sie am Speicherort der Organisation ab, etwa OneDrive oder SharePoint, und trägt im Event einen Link ein statt einer Datei:
+   - Ein Anhang hat **entweder** `file` (liegt im Vault, mit `sha256`) **oder** `link` (liegt außerhalb), nie beides. Beschreibung und Typ bleiben Pflicht, `sha256` der externen Datei ist optional, damit der Stand nachvollziehbar bleibt. Der Server kann sie nicht prüfen.
+   - Zulässig sind nur `https://`-Adressen, und nur von Servern, die das Manifest in `evidence.link_hosts` nennt (z. B. `*.sharepoint.com`, `onedrive.live.com`). Ohne Eintrag sind Links verboten, damit ein Tippfehler oder ein fremder Link nicht stillschweigend durchgeht.
+   - Der Link wird nur **angezeigt**: `rel="noopener noreferrer"`, kein Einbetten, keine Vorschau, **kein Abruf durch den Server** (kein SSRF, kein Dateiabgleich). Der Server liefert ihn nicht als Anhang aus.
+   - Die Zugriffsrechte liegen beim Speicherort, nicht bei Chronicle. Ein Link „jeder mit dem Link“ ist ein Datenabfluss und wird vom Vorabscan (ADR 0021, Punkt 19) gewarnt, ebenso eine Adresse mit Zugriffsschlüssel in der Abfrage (`?sig=`, `?token=`).
+   - Ein Link kann ins Leere zeigen, wenn die Datei verschoben oder gelöscht wird. Die Prüfung meldet das nicht. Beim Löschen eines Events (ADR 0020) bleibt die externe Datei bestehen und muss dort entfernt werden.
+8. **Erlaubte Dateien im Vault:** Bilder (PNG, JPEG, GIF, WebP), PDF, Text und Log (`.txt`, `.log`) und **Markdown (`.md`, neu)**, jeweils bis 10 MiB (ADR 0004). Markdown-Anhänge werden wie Text ausgeliefert (`text/plain`, nie als HTML dargestellt, `X-Content-Type-Options: nosniff`) und in der Oberfläche als Text angezeigt. Andere Typen bleiben verboten. Die Grenze von 10 MiB gilt je Datei und ist die Obergrenze für „normales Git“. Alles darüber ist ein Link.
 
 ## Konsequenzen
 
@@ -47,4 +55,6 @@ Dagegen steht: Was in Git liegt, bleibt in der Historie (ADR 0020), und Anhänge
 
 ## Offene Punkte
 
-- Ob Anhänge von Anfang an in LFS liegen sollen (Zustimmung des Projektinhabers nötig, Kosten und Löschbarkeit abwägen). Empfehlung: nein, solange die Menge klein ist.
+- ~~Ob Anhänge von Anfang an in LFS liegen sollen.~~ Entschieden: nein. Große Dateien werden verlinkt (Punkt 7), kleine liegen in Git. LFS bleibt der spätere Ausweg (Punkt 5).
+- GitHub-Tarif, Vertrag zur Auftragsverarbeitung und Region: noch offen (Plan, offene Frage 1). Voraussetzung für den ersten Vault mit echten Daten.
+- Die Liste `evidence.link_hosts` und der Umgang mit Links ist eine neue Formatfunktion und gehört in Format 1 (ADR 0012, Plan Teil 6b).
