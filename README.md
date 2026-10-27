@@ -38,10 +38,12 @@ cp .env.example .env
 # Ohne diese Werte zeigt der Server beim Start einen Einmal-Code im Log, siehe unten.
 
 docker compose --profile import run --rm importer   # Index aus den Topic-Dateien in ./data aufbauen
-docker compose up -d api                            # Server starten
+docker compose up -d                                # Server und HTTPS-Proxy starten
 ```
 
-Dann http://localhost:8000/login öffnen. Der Port ist nur auf `127.0.0.1` gebunden.
+Dann https://localhost/login öffnen. Der Server ist nur über den Proxy erreichbar, der HTTPS auf Port 443 erzwingt (Port 80 leitet um). Liegen `certs/cert.pem` und `certs/key.pem` vor, nimmt der Proxy sie, sonst erzeugt er ein eigenes, selbst signiertes Zertifikat, und der Browser warnt. Für eine Domain mit echtem Zertifikat siehe [docs/betrieb-tls.md](docs/betrieb-tls.md).
+
+**Lokale Entwicklung ohne HTTPS:** `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` startet nur den Server auf `http://127.0.0.1:8000`, ohne Proxy.
 
 Die Topic-Dateien in `./data` sind die Quelle der Wahrheit ([ADR 0011](docs/adr/0011-files-only-write-path.md)): Der Server schreibt Änderungen aus der Oberfläche in diese Dateien. Der Ordner muss für den Benutzer `1000` beschreibbar sein, unter dem der Container läuft. Falls nicht: `sudo chown -R 1000:1000 data`. Unter macOS und Windows ist das meist nicht nötig. Am besten steht `data` unter Versionskontrolle (Git), denn gelöschte Events lassen sich nur darüber zurückholen.
 
@@ -63,7 +65,7 @@ Grabsteine (gelöschte Events der älteren Version) gibt es nicht mehr, ihre Tab
 docker compose logs api | grep "Einmal-Code"
 ```
 
-Dann `http://localhost:8000/setup` öffnen, den Code, einen Benutzernamen und ein Passwort (mindestens 12 Zeichen) eintragen. Der Benutzer wird Admin und ist sofort angemeldet. Danach ist `/setup` geschlossen. Wer den Code nicht aus dem Log lesen kann, kann den Admin nicht über die Oberfläche anlegen. Der Weg über die Kommandozeile bleibt möglich.
+Dann `https://localhost/setup` öffnen, den Code, einen Benutzernamen und ein Passwort (mindestens 12 Zeichen) eintragen. Der Benutzer wird Admin und ist sofort angemeldet. Danach ist `/setup` geschlossen. Wer den Code nicht aus dem Log lesen kann, kann den Admin nicht über die Oberfläche anlegen. Der Weg über die Kommandozeile bleibt möglich.
 
 **Admin über die Kommandozeile anlegen:**
 
@@ -221,7 +223,7 @@ Die Ordner `export` und `backup` müssen für den Benutzer `1000` beschreibbar s
 docker compose stop api
 docker compose run --rm -v "$PWD/backup:/backup:ro" --entrypoint python api -c \
   "import shutil; shutil.copyfile('/backup/chronicle-JJJJMMTT-HHMMSS.db', '/db/chronicle.db')"
-docker compose up -d api
+docker compose up -d
 ```
 
 Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ersatz für ein Backup. Er stellt Inhalte in lesbarer Form bereit, nicht Konten oder Protokoll.

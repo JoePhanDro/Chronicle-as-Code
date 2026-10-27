@@ -1,6 +1,21 @@
 # TLS reverse proxy in front of the Chronicle API. See docs/betrieb-tls.md.
-# The site address comes from CHRONICLE_HOSTNAME. For localhost Caddy issues a certificate from its own CA.
+# The site address comes from CHRONICLE_HOSTNAME, the certificate source from CHRONICLE_TLS (set by proxy-entrypoint.sh).
+# Port 80 only redirects to HTTPS.
+
+(tls-files) {
+	tls /certs/cert.pem /certs/key.pem
+}
+
+(tls-internal) {
+	tls internal
+}
+
+# Caddy's default: a real certificate for a public domain.
+(tls-acme) {
+}
+
 {$CHRONICLE_HOSTNAME:localhost} {
+	import tls-{$CHRONICLE_TLS:internal}
 	encode zstd gzip
 	reverse_proxy api:8000
 	header {
