@@ -1,0 +1,270 @@
+# Umsetzungsplan: Vaults in Git
+
+- **Status:** Entwurf, überarbeitet nach Review (Sicherheit und Architektur). Umgesetzt sind bisher: Teil 0a (PR #138), die Schritte aus #125 (PR #136) und Teil 2a bis 2c mit ADR 0011 (siehe dort). Alles Übrige ist offen.
+- **Stand:** 2026-10-25, abgeglichen mit `main` am 2026-10-27
+- **Grundlage:** [`vault-git.md`](vault-git.md) und ADR 0012 bis 0024
+
+## Regeln für jeden Teil
+
+- Ein Teil ist ein Pull Request, eigener Branch von aktuellem `main`, klein und einzeln reviewbar (CONTRIBUTING). Richtwert: unter 500 geänderte Zeilen ohne Tests.
+- Ein Teil lässt `main` lauffähig und die Tests grün. Kein Teil setzt einen Zwischenzustand voraus, der nicht gemergt ist.
+- Verhalten ändert sich nur dort, wo es der Teil nennt.
+- Tests laufen ohne Netz. Git-Tests nutzen lokale Repositories in `tmp_path` und einen lokalen „Remote“ (bare Repo).
+- Jeder Teil passt die betroffene Dokumentation im selben PR an. Das Gesamtkapitel (Teil 17) kommt zum Schluss.
+
+## Reihenfolge der Ausführung
+
+Die Nummern sind Namen, nicht die Reihenfolge. Ausgeführt wird so:
+
+1. **Sofort, wirkt auf `main`:** 0a, 0b, dann 1. Sie beheben im Review **belegte** Lücken des Ist-Zustands und hängen an nichts.
+2. **Vereinfachen:** ~~2a, 2b, 2c (Datenbankmodus entfernen)~~ **erledigt** (ADR 0011). Offen: 3 (`git.py`).
+3. **Format:** 4, 5, danach **7 (Migration) vor oder zusammen mit 6b**, 6a, 6b, **18 direkt nach 6b**.
+4. **Lokale Konfiguration:** 8, 8b, 10.
+5. **Vault anlegen und prüfen:** 11, 12, 12b, **12a (Annahmen zu GitHub am Testrepository prüfen) vor 14**.
+6. **Zusammenarbeit:** 13, 14a, 14b (zusammen ausgeliefert, bis dahin Funktionsschalter aus), 15a, 15b, 20.
+7. **Bereinigung und Doku:** 16a, 16b, 17 (am Ende).
+8. **Entfallen (entschieden 2026-10-27):** 19 (Incident-Branch und Live-Modus), 22 (Verschlüsselung, nicht im Scope). **Zurückgestellt:** 9 (mehrere Vaults).
+
+Abhängigkeiten (vereinfacht): `0a,0b → 1 → 4 → 5 → 7 → 6b → 18`; `2 → 6b`; `4 → 8 → 8b, 10`; `3 → 11, 14a`; `12a → 14b`; `6b, 8, 13 → 14a → 14b → 15a, 15b, 20, 21`.
+
+## Übersicht
+
+| Teil | Titel | Hängt ab von | Größe | ADR | Behebt | Verhalten ändert sich |
+|---|---|---|---|---|---|---|
+| **0a** | Sofort: Treiber isolieren, sicher schreiben, Links abweisen | nichts | S | 0022 | K1, H2 | ja (strenger) |
+| **0b** | Sofort: YAML-Vorabscan, Fehlermeldungen, `fullmatch` | nichts | S/M | 0022 | H1, M1, M2 | ja (strenger) |
+| 1 | Sicheres Lesen, Rest: Größen, Zeichen, strenge Typen, Host-Prüfung | 0a, 0b | S | 0022 | N1, N2, N3, N5 | ja |
+| ~~2a~~ | Datenbankmodus entfernen: Events **(erledigt, ADR 0011)** | nichts | M | 0012 | | ja |
+| ~~2b~~ | Datenbankmodus entfernen: Topics, Verknüpfungen **(erledigt, ADR 0011)** | 2a | M | 0012 | | ja |
+| ~~2c~~ | Datenbankmodus entfernen: Anhänge, Grabsteine, Start nur mit Datenordner **(erledigt, ADR 0011)** | 2b | M | 0012 | | ja |
+| 3 | Modul `git.py` mit Härtung | nichts (Matrix vorab) | M/L | 0022 | H3, H4, M8, M9 | nein (Umbau) |
+| 4 | Manifest und Formatversion | 1 | S | 0013, 0023 | M4 | nein |
+| 5 | Format 1 lesen und prüfen | 1, 4 | M | 0013 | M5, N5 | nein (nur CLI) |
+| 7 | Migration `vault migrate`, Prüfsumme Pflicht | 5 | M | 0023, 0020 | H8 | nein (neuer Befehl) |
+| 6a | Format 1 schreiben: Events, Topics, Verknüpfungen | 2c, 5 | L | 0013 | | ja |
+| 6b | Server liest und schreibt Format 1, Anhänge, Index je Datei | 6a, **7** | L | 0013, 0018 | H8 | ja |
+| 18 | Beispiel-Vault statt `data/`, alte Lesepfade entfernen | 6b, 12 | S | 0023 | H8 | nein |
+| 8 | Zustandsordner, Registry, `init`, `ops.db` umziehen, Backup/Restore | 2c, 4 | M | 0014 | H7 | ja |
+| 8b | Container-Betrieb (Git, SSH, Volumes) auf dem Stand von `main`: Datenordner schreibbar, TLS-Proxy | 3, 8 | M | 0014 | M10 | ja |
+| 10 | Cache-Ordner und `meta`-Kopf des Index | 6b, 8 | S | 0018 | M7 | nein |
+| 11 | `vault init`, `vault clone`, Vorlage (inkl. Ruleset-JSON) | 3, 4, 8 | M | 0012, 0022 | H9 | nein |
+| 12 | Wiederverwendbarer Prüf-Workflow (erweitert) | 5 | M | 0022 | M13 | nein |
+| 12a | Annahmen zu GitHub im Testrepository prüfen | 11, 12 | S | 0016, 0017 | | nein (Bericht) |
+| 12b | `chronicle vault doctor` | 3, 11 | S | 0016 | H9 | nein |
+| 13 | Identität: `git_name`, `git_email` | 8 | S | 0015 | M14 | ja |
+| 14a | Arbeits-Branch, Commit je Speichern (hinter Schalter) | 3, 6b, 8, 13 | M | 0016 | M12 | nur mit Schalter |
+| 14b | Einreichen, Aktualisieren, Zustandsautomat, Arbeitsstand verwerfen | 12a, 14a | L | 0016, 0017 | H4, H5 | ja |
+| 15a | Freigabestatus je Event in der Oberfläche | 14b | M | 0016 | H5 | ja |
+| 15b | Konfliktauflösung in der Oberfläche | 14b | M | 0017 | | ja |
+| 16a | Prüfung auf Geheimnisse (`check --secrets`) | 5 | M | 0021 | | nein |
+| 16b | Bereinigungsskript und Erprobung am Testrepository | 11 | M | 0021 | M14 | nein |
+| 17 | Dokumentation auf den neuen Stand | alle zuvor | S | alle | N6 | nein |
+| ~~19~~ | Incident-Branch und Live-Modus (**entfällt**, Entscheidung 2026-10-27) | 14b | M | 0016 | H6 | ja |
+| 20 | Berichte und Exporte aus dem freigegebenen Stand | 14b | S | 0016 | M11 | ja |
+| 8c | Audit-Log mit Hash-Kette, Verankerung in Commits (optional) | 8, 14a | S/M | 0014 | | nein |
+| ~~22~~ | Verschlüsselung: SQLCipher für `ops.db`/Index oder Vault-Verschlüsselung (**entfällt, nicht im Scope**, Entscheidung 2026-10-27) | 8, Entscheidung 11 | M bis L | 0024 | | ja |
+| 9 | Mehrere Vaults, URL-Präfix (**zurückgestellt**) | #127, 6b, 8 | M | 0019 | M15 | ja |
+
+Größe: S bis etwa 150 Zeilen, M bis etwa 400, L darüber (dann in zwei PRs teilen). Teile mit L werden geteilt, wenn der Entwurf größer wird.
+
+---
+
+## Teil 0a: Sofort-Härtung, Treiber und Schreiben (K1, H2)
+
+- **Stand:** Wesentliche Teile dieses Teils sind mit PR #138 umgesetzt (Erkenntnisse unten). Dieser Plan hält fest, was gilt.
+- **Inhalt:** Merge-Treiber als `<python> -P -c <Start> <Paketordner> %O %A %B` eintragen (`sync._use_merge_driver`; Paketordner aus `__file__` der App, nie aus dem Vault; der Start entfernt cwd und leere Einträge aus `sys.path`; `-I` wurde verworfen, weil es `pip --user` bricht). Das Arbeitsverzeichnis des Treibers bleibt die Vault-Wurzel, der Schutz kommt vom `-P`-Start. Ein Treiberabsturz ist ein Fehler, kein Konflikt. Start der App mit Vault als cwd verweigern. **Blocklist** der Wurzel (Suffixe `.py`/`.pyc`/`.pyw`/`.pyd`/`.so` inkl. Tags, Ordner mit `__init__.*`, Namen `chronicle`/`sitecustomize`/`usercustomize`). `store._atomic_write`: Temp-Datei per `mkstemp` oder `O_CREAT|O_EXCL|O_NOFOLLOW` im selben Ordner, `lstat` des Ziels. `folder_lock`: `.chronicle.lock` mit `O_NOFOLLOW` öffnen, Link ist Fehler. Modusprüfung `git ls-tree -r` auf `120000` und `160000` **im Merge-Ergebnis** (Rücknahme mit `git reset --merge`, nicht `--hard`); `base_timelines` überspringt Links, damit ein Link im Remote den Vault nicht dauerhaft sperrt. Im Dateisystem sind Links im ganzen Baum ein Prüffehler (`os.scandir`-Durchlauf, der Datenordner selbst darf ein Link sein); `.gitmodules` wird nicht eigens abgewiesen. (Die volle Allowlist der Vault-Wurzel kommt mit Format 1 in Teil 5.)
+- **Akzeptanz:** Test: `yaml.py` im Vault-Ordner wird beim Merge **nicht** importiert (Marker-Datei wird nicht geschrieben). Test: Symlink `.ev-1.yaml.tmp` und `.chronicle.lock` führen zu Fehler, Zieldatei unverändert. Test: Link `x.yaml` auf Datei außerhalb wird mit Dateiname abgewiesen, Zielinhalt erscheint nicht in der Meldung.
+- **Risiko:** gering. Der Vault-Ordner mit Links wird unbrauchbar, was gewollt ist.
+
+## Teil 0b: Sofort-Härtung, YAML, Meldungen, Muster (H1, M1, M2)
+
+- **Inhalt:** Vorabscan über den Ereignisstrom von `yaml.parse` (ADR 0022, Punkt 19: Tiefe 12, Anker, Alias, Tags, Merge-Key `<<`, doppelte Schlüssel, 20.000 Knoten, Nicht-String-Schlüssel), dann erst `SafeLoader`. Für Fremdinhalt der reine Python-Lader, der C-Lader nur für geprüfte eigene Dateien. Der Scan läuft in `loader.parse_timeline`, `merge.main` und `sync.base_timelines`. Pydantic-Modelle `hide_input_in_errors=True`, Meldungen auf eine Zeile kürzen. `USERNAME_PATTERN` mit `fullmatch`, ebenso Keys und weitere Muster (`re.match` mit `$` akzeptiert `"anna\n"`, belegt).
+- **Akzeptanz:** 120 KB `[`-Verschachtelung ergibt eine Fehlermeldung statt SIGSEGV (Test in Unterprozess). Alias, Anker, Tag, `<<`, doppelter Schlüssel: je ein Test mit Datei und Zeile. `"anna\n"` wird abgelehnt. Keine Meldung enthält Dateiinhalt (Test mit einem Link-Ziel als Inhalt). `scripts/measure_index.py` zeigt die Wirkung des Lader-Wechsels (Vollaufbau 10.000 Dateien war 0,63 s).
+- **Risiko:** Bestehende Dateien mit Aliasen oder doppelten Schlüsseln werden unbrauchbar. Im PR mit `chronicle check data` belegen.
+
+## Teil 1: Sicheres Lesen, Rest
+
+- **Inhalt:** Größenbegrenzung vor dem Lesen, Steuer- und Bidi-Zeichen, strikte Typen für Textfelder (`no`, `on`, `1:30` in YAML 1.1, N3), Homoglyphen-Warnung (N2), Prüfung auf Keys, die sich nur in der Schreibweise unterscheiden, **auch lokal** (N5), `TrustedHostMiddleware` und `Origin`-Prüfung in `api.py` (N1). Die Allowlist der Wurzel folgt in Teil 5.
+- **Akzeptanz:** Je Regel ein Test; `data/` besteht unverändert.
+- **Risiko:** gering.
+
+## Teil 2a bis 2c: Zweiten Schreibpfad über die Datenbank entfernen (Issue #123) — erledigt
+
+**Stand:** umgesetzt mit ADR 0011 („Dateien sind der einzige Schreibpfad“, Entscheidung des Projektinhabers vom 2026-10-27), in dieser Aufteilung statt der drei ursprünglich geplanten PRs:
+
+| Schritt | PR | Inhalt |
+|---|---|---|
+| 1 | #180 | ADR 0011 |
+| 2a | #181 | Docker mit Datenordner (`--data`, `./data` schreibbar), Warnung ohne `--data` |
+| 2b | #183 (mit #182) | Tests laufen im Dateimodus (`import_example`, `app_for`, `db_mode_app`); dabei gefundener Fehler: Details mit CRLF scheiterten im Dateimodus |
+| 3a | #184 | Grabsteine entfernt (Seite, Funktionen, Tabellen `deleted_events`/`deleted_evidence` werden beim Öffnen gelöscht) |
+| 3b | #185 | Datenbankpfad entfernt (alle zehn Zweige), `serve` verlangt `--data` |
+| 3c | #188 | Der Importer baut denselben Index wie „Neu laden“; Spalte `source` und gespeicherte Evidence-Bytes entfallen; Live-Dashboard braucht keine Bytes |
+| Aufteilung | #179, #186, #187 | `repository.py` in `queries`, `index`, `folder_writes`, `events`, `topics`, `evidence_store`, `errors`; Wiederholungen in Hilfsfunktionen (#124) |
+
+**Klarstellung (Entscheidung des Projektinhabers):** Die Datenbank bleibt. Sie dient weiter für Konten, Sitzungen, Audit-Log, etwaige Schlüssel-Metadaten (`ops.db`) und als Index. Entfernt ist der Weg, Topics, Events und Anhänge **über die Datenbank** zu schreiben und zu speichern. Die Wahrheit für Inhalte liegt in den Dateien.
+
+- **Was geblieben ist:** Exporter, Backup und `get_evidence_content` können Evidence-Bytes weiter aus älteren Datenbanken lesen, damit Betreiber aus dem alten Datenbankmodus exportieren können (README, Abschnitt „Umstieg“). Die Spalte `evidence.content` bleibt im Schema, wird aber nie mehr geschrieben.
+- **Akzeptanz (erfüllt):** `repository.py` hat einen Schreibpfad. `serve` ohne `--data` endet mit klarer Meldung. Tests laufen im Dateimodus.
+- **Für die weiteren Teile wichtig:** Der Index entsteht aus den Dateien in einer Funktion (`build_index`, Teil 10 knüpft daran an). Der Server schreibt bereits in den Datenordner, nur Git fehlt (Teil 8b).
+
+## Teil 3: Modul `git.py`
+
+- **Inhalt:** ADR 0022, Punkte 1 bis 14 und 25 (der Treiber-Start nach Punkt 18 liegt bereits in Teil 0a und wird hier nur in `git.py` übernommen): Programmpfad und **Mindestversion gepatchter Stand ab 2.45.1 beziehungsweise aktuelle Wartungsversion** (Verifikation der genannten CVE-Hinweise vor der Umsetzung), `cwd`, `branch_slug()` mit `fullmatch` und `check-ref-format`, Umgebungs-Whitelist, feste `-c` (inkl. `core.sshCommand=ssh`, `core.pager=cat`, `core.autocrlf=false`), Fetch/Push nur benötigter Refs (H4), Prüfung des erwarteten `origin`, URL-Regeln, Zeitlimits, Parsing nur stabiler Formate. `sync.py` nutzt nur noch `git.py`.
+- **Vorab:** Test-Matrix (macOS Keychain, Linux libsecret, Git Credential Manager, `ssh-agent`, SSH- und GPG-Signierung) mit Ergebnis im PR; die Whitelist folgt der Matrix (M8).
+- **Akzeptanz:** Kein `subprocess` außerhalb von `chronicle/git.py` (Test). Zeitlimit beendet einen hängenden Prozess. Böse URLs und Branch-Namen werden abgelehnt (Tabellentest). Ein `core.sshCommand` in `.git/config` eines Testklons wird nicht ausgeführt. Hooks laufen nicht. Alle Tests in `tests/test_sync.py` bleiben grün.
+- **Risiko:** Eingeschränkte Umgebung bricht Anmeldung am Hoster. Daher die Matrix.
+
+## Teil 4: Manifest und Formatversion
+
+- **Inhalt:** `VaultManifest` (`format`, `id` als Etikett, `name`, `limits` nur senkend), Erkennen von Format 0 und 1, Ablehnen unbekannter Formate. `chronicle vault info`.
+- **Akzeptanz:** `format: 2` führt zu einer Meldung zum Aktualisieren. `limits` über der Obergrenze werden abgelehnt. Bidi im `name` wird abgelehnt.
+
+## Teil 5: Format 1 lesen und prüfen
+
+- **Inhalt:** Lader und Regeln aus ADR 0013 (inkl. **voller Allowlist der Wurzel**, die die Blocklist aus Teil 0a ablöst, K1) und ADR 0022; `also_in`-Hinweis an die CI (M5); JSON-Schemas; `check`, `plan`, `build`, `apply` für beide Formate. Intern dieselbe `Timeline`-Darstellung.
+- **Akzeptanz:** Beispiel-Vault in `tests/fixtures/vault/` besteht. Jede Prüfregel hat einen Fehlertest, auch `yaml.py` in der Wurzel. Schreibweisen-Duplikate werden gemeldet.
+- **Risiko:** Gleichwertigkeit der inneren Darstellung (Heimat im Pfad). Gezielt reviewen.
+
+## Teil 7: Migration `vault migrate`
+
+- **Inhalt:** ADR 0023, Punkte 4 bis 7, Gleichwertigkeitsprüfung, deterministische Ausgabe. `sha256` Pflicht in Format 1.
+- **Akzeptanz:** `data/` migriert und ist gleichwertig. Zweiter Lauf ergibt gleiche Bytes. Absichtlich verfälschte Ausgabe lässt den Befehl scheitern und den Ausgabeordner entfernen.
+- **Risiko:** Sinnverlust bei `refs` zu `also_in` (Richtung gedreht), durch Mengenvergleich abgesichert.
+
+## Teil 6a und 6b: Format 1 schreiben und bedienen
+
+- **6a:** `store.py` schreibt Events als eigene Dateien (anlegen, ändern feldweise mit Kommentaren, löschen, Heimat wechseln, `also_in`), Topics (Ordner), atomar, mit Versionsvergleich und sicherem Schreiben (Teil 0a). Anhänge ändern sich beim Heimatwechsel nicht (`evidence/<event-key>/`).
+- **6b:** `index.py`, `events.py`, `topics.py` und `evidence_store.py` (früher `repository.py`) auf Event-Dateien, Anhänge mit `sha256`, Link-Anhänge (`link`, `evidence.link_hosts`, ADR 0020 Punkt 7), Markdown als Anhangstyp (Punkt 8), Server liest Format 1. **Format 0 wird erst abgeschaltet, wenn Teil 7 gemergt ist.**
+- **Akzeptanz:** Alle Schreibtests laufen auf Format 1, Rollback und 409 wie heute, eine Änderung schreibt genau eine Datei, 10.000 Events unter 1 Sekunde je Änderung. Die Schritte aus #125 sind bereits auf `main` (`c7bb327`, `5c017a6`, PR #136) und bleiben.
+- **Risiko:** Größter fachlicher Teil. Reihenfolge 2 vor 6 einhalten.
+
+## Teil 18: Beispiel-Vault, alte Lesepfade
+
+- **Inhalt:** `data/` wird per `vault migrate` zu `examples/vault/`. `topic-files.yml` und `ci.yml` angepasst. Format-0-Lader nur noch für `vault migrate`.
+- **Akzeptanz:** CI grün, `data/` entfernt. Direkt nach 6b.
+
+## Teil 8 und 8b: Zustandsordner und Container
+
+- **8:** `CHRONICLE_HOME` (0700), `config.toml` mit lokaler ID, Klon-Kennung, Manifest-Etikett, `origin`, Linkvorlage; `init`, `vault add` (Allowlist der `.git/config`), `list`, `remove`; `serve` liest die Registry; `ops.db` zieht um (`init --adopt-ops`); Spalten `git_name`, `git_email`, Audit `vault_id`. **`backup.py` sichert `config.toml` und `ops.db`, Wiederherstellung wird getestet.**
+- **8 (Ergänzung):** Abgrenzung der Orte nach ADR 0014, Punkt 5 (Tabelle). `ops.db` bekommt **keine** Tabelle `key_metadata`: ADR 0024 (b) ist nicht im Scope.
+- **8c (optional):** Audit-Log mit `prev_hash`/`entry_hash` (SHA-256), Prüfbefehl `chronicle audit verify`, Kopfwert als Trailer `Chronicle-Audit-Head` in Commits (ab 14a). Macht Veränderungen erkennbar, verhindert sie nicht. Test: Löschen oder Ändern eines mittleren Eintrags wird gemeldet.
+- **8b:** Container mit `git`, `ssh`, `/state`, Deploy Key als Datei, `read_only` und `cap_drop` wo möglich. **Ausgangslage auf `main`:** Der Container schreibt bereits in den eingebundenen Datenordner (ADR 0011), hat aber weder `git` noch `ssh`. Der Stack läuft hinter einem TLS-Proxy (Caddy, `docker-compose.yml`, `docs/betrieb-tls.md`), `read_only` und `cap_drop: ALL` gelten für den Server.
+- **Akzeptanz:** Start ohne Parameter öffnet den Vault. Doppelte Manifest-ID wird abgelehnt. Bootstrap-Wege funktionieren. Docker-Smoke-Test in der CI passt.
+- **Risiko:** `docker-compose.yml`, `Dockerfile`, CI-Jobs `docker` und `proxy` (`scripts/check_proxy.sh`) ändern sich.
+
+## Teil 10: Cache-Ordner und `meta`-Kopf (verkleinert)
+
+- **Inhalt:** `cache/<local-id>/index.db`, `meta`, Gültigkeitsregeln. Aktualisierung bleibt über den Fingerabdruck je Datei (ADR 0018, Punkt 4), Git nur als Beschleuniger mit `--no-renames`.
+- **Akzeptanz:** Löschen von `cache/` ändert nichts außer der Startzeit. Inkrementeller Index gleich frisch gebautem (Vergleichstest).
+
+## Teil 11: `vault init`, `vault clone`, Vorlage
+
+- **GitHub ist der Standard:** Vorlage-Repository, Ruleset-JSON, Linkvorlage und Workflow sind GitHub-Voreinstellungen; die Schicht ist ein Erweiterungspunkt, andere Hoster sind „unterstützt, nicht Standard“ (ADR 0012, Punkt 6). `vault doctor` (12b) nutzt `gh`.
+- **Inhalt:** Manifest mit **neuer** `id`, `.gitignore`, `.gitattributes` (nur Vorlagenzeilen), `.github/CODEOWNERS`, **`.github/ruleset.json`** (importierbar), Workflow-Aufruf mit SHA, PR-Vorlage, Dependabot, README mit Checkliste; `vault init --adopt`; `vault clone` mit URL-Regeln und `core.symlinks=false`.
+- **Akzeptanz:** Neuer Vault besteht `check`. Böse URLs abgelehnt. Kein Netz im Test.
+- **Risiko:** Die Checkliste kann veralten; Ersatz ist `vault doctor` (12b).
+
+## Teil 12, 12a, 12b: CI, Annahmen, Doktor
+
+- **12:** `.github/workflows/vault-check.yml` (`workflow_call`), `pull_request` **und `merge_group`**, nie übersprungen, `contents: read`, keine Secrets, `pip --require-hashes`, Doppel-Pinning (Workflow und Code-Repo-SHA), `also_in`-Hinweis. `topic-files.yml` prüft vorerst `data/`.
+- **12a:** In einem Testrepository prüfen und im PR berichten: (1) GitHub-Merge ruft **keinen** eigenen Merge-Treiber auf, (2) Sichtbarkeit und Verhalten von `refs/pull/*` bei Bereinigung, (3) Squash-Merge und Signaturen, (4) übersprungener erforderlicher Check, (5) Tarifgrenzen für Rulesets bei privaten Repositories.
+- **12b:** `chronicle vault doctor`: lesend, über das `gh` des Benutzers (keine gespeicherten Tokens), prüft Schutz des Standard-Branches, Freigabeanzahl, Code-Owner, erforderliche Checks, Force-Push, Bypass-Liste.
+- **Risiko:** Kopplung von Vault-CI und Code-Version (SHA wird beim Formatwechsel angehoben).
+
+## Teil 13: Identität
+
+- **Inhalt:** `git_name`, `git_email` in Oberfläche und CLI, Pflicht vor dem ersten Schreiben, Vorgabe `noreply`-Adresse (kein Vorbelegen aus privater Adresse).
+- **Akzeptanz:** Benutzer ohne `git_email` kann lesen, nicht schreiben.
+
+## Teil 14a und 14b: Arbeits-Branch und Einreichen
+
+- **14a:** Arbeits-Branch `chronicle/<klon-kennung>/<datum>-<name>`, lokaler Commit je Speichern (Autor = App-Benutzer, Trailer), höchstens eine Schreibsitzung je Klon. **Hinter Funktionsschalter; nicht ohne 14b ausgeliefert.**
+- **14b:** `sync.synchronise` wird zu „Einreichen“ und „Aktualisieren“ (ADR 0016, Punkte 4 bis 8; ADR 0017): Zustandsautomat (offen, eingereicht, geändert nach Einreichen, abgeschlossen, verworfen), „Arbeitsstand verwerfen“, Remote-Branch eingeführt statt Force, Netz außerhalb der Sperre mit Zeitlimit (#131), Blob-ID-Vergleich, Abschluss über `git diff --quiet origin/<standard> HEAD`, Link aus der Registry-Vorlage. Der Merge-Treiber auf Event-Dateien vereinfacht.
+- **Akzeptanz:** Kein Push auf den Standard-Branch (Test). Squash-Merge im Testrepository führt zu „abgeschlossen“. Zwei Klone, verschiedene Felder desselben Events: feldweise zusammengeführt, gleiches Feld: Abbruch mit Dateiliste. Hängender Remote hält die Sperre nicht.
+- **Risiko:** Größter Eingriff in `sync.py`. Rücknahmen mit `git reset --merge`, nie `reset --hard` (Fehlerklasse von #126).
+
+## Teil 15a und 15b: Oberfläche
+
+- **15a:** Freigabestatus je Event (Blob-ID), Kopfzeile, Hinweis „Schutz des Hosters nicht bestätigt“, wenn `doctor` nicht grün war.
+- **15b:** Konfliktauflösung (#131), Anhangs-Konflikte (ADR 0017, Punkt 7).
+- **Risiko:** Auflösung in der Oberfläche braucht eigene Sicherheitsprüfung (CSRF, Parallelität).
+
+## Teil 16a und 16b: Geheimnisse und Bereinigung
+
+- **16a:** `chronicle check --secrets` (ADR 0021, Punkt 3), Prüfung vor jedem Speichern, Allowlist.
+- **16b:** Bereinigungsskript mit Trockenlauf, am Testrepository durchgespielt (Issue #98), inklusive `refs/pull/*`, Spiegel und Entfernen von `origin` durch `filter-repo`. **Erst danach kann ADR 0021 „Angenommen“ werden.**
+
+## Teil 17: Dokumentation (am Ende)
+
+- README, `docs/notation-v1.md`, CONTRIBUTING (Hinweis „0003 ist die letzte“ ist veraltet), Statuszeilen ADR 0008/0009, Betriebsanleitung für Branch Protection, Tarifhinweise.
+
+## Teil 19: Incident-Branch — entfällt
+
+- Entscheidung des Projektinhabers (2026-10-27): kein Live-Modus, kein Incident-Branch (ADR 0016, Punkte 12 bis 14). Im Vorfall dokumentiert in der Regel eine Person, andere teilen Informationen. Sammel-Pull-Requests und andere Abläufe sind außerhalb des Werkzeugs abzustimmen.
+
+## Teil 20: Berichte aus freigegebenem Stand
+
+- Bericht und Export bauen standardmäßig aus `origin/<standard>`, ungeprüfte Events nur auf ausdrücklichen Wunsch und gekennzeichnet (ADR 0016, Punkt 15).
+
+## Teil 22: Verschlüsselung — entfällt
+
+- Entscheidung des Projektinhabers (2026-10-27): zunächst keine Verschlüsselung, nicht im Scope (ADR 0024). Es bleibt bei Hoster-Zugriff und Festplattenverschlüsselung als Betriebsregel. Eine spätere Einführung, etwa für eine Archivfunktion, wäre ein neuer Plan-Teil auf Grundlage der Optionen in ADR 0024 (mit Prototyp vorher).
+
+## Teil 9: Mehrere Vaults (zurückgestellt)
+
+- Erst bei Bedarf und nach #127. Standard bleibt eine Installation mit einem Vault.
+
+---
+
+## Vorschläge für Issues (nicht angelegt)
+
+| Vorschlag | Titel | Inhalt in einem Satz |
+|---|---|---|
+| Epic | Vaults in Git: Code und Inhalte trennen, Freigabe per Pull Request | Verweist auf ADR 0012 bis 0023 und diesen Plan |
+| 0a | Sicherheit: Merge-Treiber importiert Code aus dem Vault, Schreiben folgt Symlinks | `python -m` mit Vault als cwd, `.ev-1.yaml.tmp`, `.chronicle.lock` |
+| 0b | Sicherheit: tief verschachteltes YAML stürzt den C-Lader ab, doppelte Schlüssel, `USERNAME_PATTERN` | belegt im Review |
+| 3 | Ein Modul für alle Git-Aufrufe, `.git/config`-Allowlist | ADR 0022 |
+| 14b | „Abgleichen“ durch „Einreichen“ ersetzen | ersetzt Teile von #90 und #131 |
+| 16 | Prüfung auf Geheimnisse und Bereinigungsverfahren | zusammen mit #98 |
+| bestehend | #123 | ADR 0011 (Variante A), erledigt |
+| bestehend | #125 | Schritte sind in `main` (`c7bb327`, `5c017a6`, #136), Rest erledigt Format 1 |
+| bestehend | #127, #128, #131 | #127 vor Teil 9, #128 vereinfacht sich in 14b, #131 in 14b und 15b |
+
+---
+
+## Offene Fragen
+
+Die Fragen 1, 9 und 11 sind vom Projektinhaber **entschieden** (siehe unten), die Frage 10 liegt beim Betreiber. Zu den übrigen steht ein begründeter Vorgabewert, der gilt, wenn nichts anderes gesagt wird.
+
+### Entscheidung nötig
+
+1. **Anhänge in Git (ADR 0020): entschieden am 2026-10-27, Ja.** Bilder, Markdown, PDF, Text und Logs bis 10 MiB liegen im Vault; größere Binärdateien liegen außerhalb (OneDrive/SharePoint) und werden im Event verlinkt (ADR 0020, Punkte 7 und 8, Teil 6b). **GitHub-Tarif, Vertrag zur Auftragsverarbeitung, Region und Aufbewahrung sind Sache des Betreibers** (Entscheidung des Projektinhabers, 2026-10-27): GitHub ist nur der Vorfallsspeicher, in eigenen Vorfall-Repositories. Das Projekt liefert Anleitung, Checklisten und Prüfungen (`vault doctor`, Teil 12a und 16b), aber keine Bedingung, ohne die der Code nicht läuft. Der PR kann gemergt werden, sobald die ADR-Nummern angepasst (0012 ist inzwischen vergeben) und die Konflikte gelöst sind.
+
+   Ursprüngliche Frage und Vorschlag des Reviews: Ja, aber unter Bedingungen (privater Vault, Tarif mit Branch Protection, Vertrag und Region geklärt, Bereinigung erprobt). Diese Bedingungen bleiben als **Empfehlung an Betreiber** bestehen. Geschützte Branches und erforderliche Reviews in privaten Repositories sind nach unserem Kenntnisstand bezahlt (zu prüfen, Teil 12a).
+6. **Zweiten Schreibpfad über die Datenbank streichen (#123): entschieden und umgesetzt (ADR 0011).** Die Datenbank bleibt für Login, Audit und etwaige Verschlüsselungs-Metadaten, die Wahrheit für Inhalte liegt in den Dateien. Der Exportweg für Installationen aus dem alten Datenbankmodus steht in der README („Umstieg“).
+9. **Live-Dokumentation bei Vorfällen (ADR 0016, Punkte 12 bis 14): entschieden am 2026-10-27, kein Live-Modus.** Im Vorfall dokumentiert in der Regel eine Person, jede andere kann Informationen teilen. Sammel-Pull-Request und Abläufe sind außerhalb des Werkzeugs abzustimmen. Teil 19 entfällt.
+10. **Aufbewahrung und Löschung (ADR 0021): Sache des Betreibers.** Fristen und Löschpflichten legt der Betreiber mit seiner oder seinem Datenschutzbeauftragten fest. Das Projekt liefert den Ablauf zur Bereinigung (Teil 16b) als Anleitung und eine Checkliste, aber keine Frist und keine Sperre.
+
+11. **Verschlüsselung der Einträge (ADR 0024): entschieden am 2026-10-27, zunächst keine, nicht im Scope.** Möglich später, etwa für eine Archivfunktion. Teil 22 entfällt.
+
+### Vorgabe gilt, außer Sie widersprechen
+
+2. **Signierte Commits:** nur Empfehlung. Bei Squash-Merge geht die Signatur verloren (ADR 0015).
+3. **Einzelperson:** Pull Request mit 0 erforderlichen Freigaben und erforderlicher CI statt Direkt-Modus (ADR 0016, Punkt 16).
+4. **Branch Protection:** Checkliste, importierbares Ruleset-JSON in der Vorlage und lesender Befehl `vault doctor` ohne gespeichertes Token (ADR 0016, Punkt 10).
+5. **Pull Request:** Link statt Token. Die Linkvorlage steht je Vault in der Registry.
+7. **Plattformen:** nur macOS und Linux.
+8. **Mehrbenutzer:** schon im ersten Ausbau mehrere App-Benutzer, aber ein Arbeits-Branch je Klon und höchstens eine aktive Schreibsitzung (ADR 0016, Punkt 1). Ein gemeinsamer Teamserver bleibt später.
+
+## Bereiche mit der größten Unsicherheit (zum gezielten Review)
+
+1. ADR 0013: Heimat im Pfad, Verschieben beim Wechsel der Heimat (Rename-Erkennung bei kleinen Dateien).
+2. ADR 0022, Punkte 5 und 25: Umgebungs-Whitelist gegen Credential Helper und Signierung. Nur die Matrix kann das klären.
+3. ADR 0022, Punkt 1: genaue Mindestversion von Git und die genannten CVE-Hinweise sind nicht von mir verifiziert.
+4. ADR 0022, Punkt 19: Der Vorabscan ist neuer Code im sicherheitskritischen Pfad. Fehler dort sind ein Umgehungsweg.
+5. ADR 0016, Punkte 4 und 5: Zustandsautomat und Blob-ID-Status bei Squash und bei Änderungen nach dem Merge.
+6. ADR 0016, Punkt 9: Tarifaussagen zu GitHub sind Annahmen und gegen die aktuellen Bedingungen zu prüfen (Teil 12a).
+7. ADR 0021, Punkt 10: Bereinigung ist nicht erprobt (Teil 16b).
+8. ADR 0020: Schwellen 200 MiB und 1 GiB sind geschätzt.
+9. ADR 0015, Punkt 2: Aussage zur Ablehnung privater Adressen durch GitHub (Fehler GH007) ist aus dem Review übernommen, nicht selbst geprüft.

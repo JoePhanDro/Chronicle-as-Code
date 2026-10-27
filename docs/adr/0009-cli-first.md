@@ -1,6 +1,6 @@
 # ADR 0009: CLI als Kernprodukt, Server als Oberfläche
 
-- **Status:** Akzeptiert für den CLI-Teil. Die Entscheidung zu Git LFS ist offen.
+- **Status:** Akzeptiert für den CLI-Teil. Der Abschnitt „Anhänge“ ist durch ADR 0020 geändert (Entscheidung des Projektinhabers am 2026-10-27): Anhänge liegen in Git, große Binärdateien werden verlinkt, Git LFS bleibt nur ein späterer Ausweg.
 - **Datum:** 2026-10-22
 - **Bezug:** ADR 0001 (Server), ADR 0002 (Topics und Events), ADR 0003 (wird durch ADR 0008 ersetzt), ADR 0004 (Evidence), ADR 0005 (Export und Backup), ADR 0008 (Dateien als Quelle der Wahrheit), `docs/notation.md`. Issues #85, #87, #89, #90
 

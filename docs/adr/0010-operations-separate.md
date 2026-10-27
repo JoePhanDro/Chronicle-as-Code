@@ -15,7 +15,7 @@ Konten und Protokoll gehören nicht in Dateien, die in Git oder in einen Sync-Or
 1. **Zwei Dateien.** `chronicle.db` ist der Index: Topics, Events, Verknüpfungen, Zuordnungen zu Dateien, Suchindex. `chronicle.ops.db` neben ihr hält Konten, Sitzungen, Login-Sperren, Einstellungen und das Audit-Log.
 2. **Kein doppelter Anhang im Dateimodus.** Mit Datenordner speichert der Index von Anhängen nur Pfad, Typ, Größe und Prüfsumme. Die Bytes liest die Anwendung aus der Datei und prüft sie gegen die gespeicherte Prüfsumme. Stimmt sie nicht, gibt es einen Konflikt statt einer stillen Auslieferung.
 3. **Backup kopiert beide Dateien.** Die Betriebsdatei ist die einzige Kopie der Konten.
-4. **Ohne Datenordner bleibt alles wie bisher.** Die Datenbank ist dann die Quelle, mit Anhangsinhalten und Grabsteinen. *(Durch ADR 0011 abgelöst: Der Server braucht künftig einen Datenordner.)*
+4. **Ohne Datenordner bleibt alles wie bisher.** Die Datenbank ist dann die Quelle, mit Anhangsinhalten und Grabsteinen. *(Durch ADR 0012 abgelöst: Der Server braucht künftig einen Datenordner.)*
 
 ## Konsequenzen
 
@@ -27,4 +27,4 @@ Konten und Protokoll gehören nicht in Dateien, die in Git oder in einen Sync-Or
 
 ## Offen
 
-- ~~Ob der DB-Modus langfristig entfällt.~~ Entschieden in ADR 0011: Er entfällt.
+- ~~Ob der DB-Modus langfristig entfällt.~~ Entschieden in ADR 0012: Er entfällt.
