@@ -7,15 +7,21 @@ from pathlib import Path
 
 from . import accounts
 from .errors import Conflict, Invalid, NotFound
-from .folder_writes import all_or_nothing, change_links, linked_elsewhere, recorded_version
+from .folder_writes import (
+    all_or_nothing,
+    change_links,
+    file_of_event,
+    file_of_topic,
+    linked_elsewhere,
+    recorded_version,
+    store_change,
+)
 from .index import check_triggers, event_pk_of, event_values, reindex
 from .loader import find_topic_files
 from .models import Event
 from .queries import get_event, topic_keys_of
 from .store import (
     EventNotInFile,
-    StoreError,
-    VersionConflict,
     add_event_to_file,
     file_version,
     remove_event_from_file,
@@ -33,20 +39,9 @@ def _update_in_folder(
     with all_or_nothing(data_dir):
         written = None
         if [name for name in changed if name != "topics"]:
-            located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
-            if located is None:
-                raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
-            written = located["path"]
-            try:
-                update_event_in_file(data_dir / located["path"], key, event,
-                                     expected_version=recorded_version(conn, located["path"]))
-            except VersionConflict as exc:
-                raise Conflict(
-                    f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                    f"Die Änderung wurde nicht gespeichert ({exc})."
-                ) from exc
-            except (EventNotInFile, StoreError) as exc:
-                raise Invalid(str(exc)) from exc
+            written = file_of_event(conn, key)
+            with store_change(written, "Die Änderung wurde nicht gespeichert", also_invalid=(EventNotInFile,)):
+                update_event_in_file(data_dir / written, key, event, expected_version=recorded_version(conn, written))
         if "topics" in changed:
             home = conn.execute("SELECT home_topic FROM events WHERE key = ?", (key,)).fetchone()["home_topic"]
             linked = set(linked_elsewhere(conn, key))
@@ -99,19 +94,11 @@ def _create_in_folder(
     if event_pk_of(conn, event.key) is not None:
         raise Conflict(f"Event-Key {event.key!r} ist bereits vergeben")
     check_triggers(conn, event.triggered_by, own_key=event.key)
-    located = conn.execute("SELECT path FROM topic_files WHERE topic_key = ?", (topic_keys[0],)).fetchone()
-    if located is None:
-        raise NotFound(f"Topic {topic_keys[0]!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    path = file_of_topic(conn, topic_keys[0])
     # The event and its links are one change: if a link or the index fails, nothing of it stays in the files.
     with all_or_nothing(data_dir):
-        try:
-            add_event_to_file(data_dir / located["path"], event,
-                              expected_version=recorded_version(conn, located["path"]))
-        except VersionConflict as exc:
-            raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                           f"Das Event wurde nicht angelegt ({exc}).") from exc
-        except StoreError as exc:
-            raise Invalid(str(exc)) from exc
+        with store_change(path, "Das Event wurde nicht angelegt"):
+            add_event_to_file(data_dir / path, event, expected_version=recorded_version(conn, path))
         change_links(conn, event.key, add=set(topic_keys[1:]), remove=set(), data_dir=data_dir)
         reindex(conn, data_dir)
     accounts.audit(conn, "event_created", user_id=actor_id, target=event.key, detail=f"topics={','.join(topic_keys)}", ip=ip)
@@ -119,20 +106,12 @@ def _create_in_folder(
 
 
 def _delete_in_folder(conn: sqlite3.Connection, key: str, data_dir: Path, actor_id: int, ip: str) -> None:
-    located = conn.execute("SELECT path FROM event_files WHERE event_key = ?", (key,)).fetchone()
-    if located is None:
-        raise Invalid(f"Event {key!r} steht in keiner Datei des Datenordners. Bitte chronicle apply ausführen.")
+    path = file_of_event(conn, key)
     with all_or_nothing(data_dir):
         # The links go first: an event without links is still valid, a link to a missing event is not.
         change_links(conn, key, add=set(), remove=set(linked_elsewhere(conn, key)), data_dir=data_dir)
-        try:
-            remove_event_from_file(data_dir / located["path"], key,
-                                   expected_version=recorded_version(conn, located["path"]))
-        except VersionConflict as exc:
-            raise Conflict(f"{located['path']} wurde außerhalb von Chronicle geändert. Bitte chronicle apply ausführen. "
-                           f"Nichts wurde gelöscht ({exc}).") from exc
-        except (EventNotInFile, StoreError) as exc:
-            raise Invalid(str(exc)) from exc
+        with store_change(path, "Nichts wurde gelöscht", also_invalid=(EventNotInFile,)):
+            remove_event_from_file(data_dir / path, key, expected_version=recorded_version(conn, path))
         reindex(conn, data_dir)
     accounts.audit(conn, "event_deleted", user_id=actor_id, target=key, ip=ip)
 
