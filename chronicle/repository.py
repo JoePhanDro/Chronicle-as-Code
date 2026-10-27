@@ -1018,7 +1018,7 @@ def most_pressing_status(statuses) -> str | None:
 
 
 def list_topics(conn: sqlite3.Connection, *, by_attention: bool = False) -> list[dict]:
-    """All topics with their event count, the time of the latest event (last_event_at, UTC) and a status.
+    """All topics with their event count, the time of the latest event (last_event_at, UTC), its phase (phase) and a status.
 
     The status is the most pressing one among the topic's events (open, then in_progress, then resolved),
     None for a topic without events. By default the list is sorted by key; with by_attention the topics
@@ -1029,6 +1029,8 @@ def list_topics(conn: sqlite3.Connection, *, by_attention: bool = False) -> list
         SELECT topics.key, topics.title, topics.kind, topics.summary, topics.updated_at,
                COUNT(events.pk) AS event_count,
                MAX(events.t0) AS last_event_at,
+               (SELECT latest.phase FROM topic_events AS link JOIN events AS latest ON latest.pk = link.event_pk
+                WHERE link.topic_pk = topics.pk ORDER BY latest.t0 DESC, latest.pk DESC LIMIT 1) AS phase,
                COALESCE(SUM(events.status = 'open'), 0) AS open_count,
                COALESCE(SUM(events.status = 'in_progress'), 0) AS in_progress_count
         FROM topics
