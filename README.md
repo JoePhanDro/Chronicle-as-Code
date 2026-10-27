@@ -10,15 +10,17 @@ Chronicle organisiert Sicherheitswissen: **Events** (Ereignisse mit Zeitpunkt, A
 
 *Dashboard eines Topics aus dem Beispiel `data/`, so wie es auf der Topic-Seite eingebettet ist. Fiktive Demo-Daten.*
 
-> **Status:** Entwicklungsstand. Anmeldung, Rollen, Benutzerverwaltung, Event- und Topic-Pflege in der Oberfläche, Evidence, Berichte, API und CLI laufen. Timeline, Graph und Detailansicht sind in der Oberfläche auf der Topic-Seite eingebettet. Offene Punkte stehen in den [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
+> **Status:** Entwicklungsstand. Anmeldung, Rollen, Benutzerverwaltung, Pflege von Topics und Events in der Oberfläche (auch direkt in den Topic-Dateien), Evidence, Berichte, API und CLI laufen. Die Oberfläche gibt es in einem hellen und einem dunklen Design. Offene Punkte stehen in den [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
 
 ## Inhalt
 
 - [Schnellstart mit Docker](#schnellstart-mit-docker)
 - [Lokal ohne Docker](#lokal-ohne-docker)
+- [Berichte](#berichte)
 - [Konfiguration](#konfiguration)
 - [Datenformat (`timeline.yaml`)](#datenformat-timelineyaml)
 - [Datenhaltung und Bearbeitung](#datenhaltung-und-bearbeitung)
+- [Oberfläche](#oberfläche)
 - [API](#api)
 - [Rollen und Sicherheit](#rollen-und-sicherheit)
 - [Projektstruktur](#projektstruktur)
@@ -81,7 +83,7 @@ Ein Bericht ist eine einzelne HTML-Datei zu einem Topic, etwa als Anhang zu eine
 
 - **In der Anwendung:** Admins öffnen **Berichte**, wählen ein Topic und laden die Datei. Die API hat dafür `GET /api/v1/topics/{key}/report`. Andere Rollen bekommen 403.
 
-Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie nur bewusst und lösche sie danach. Der Standard-Entrypoint des Images ist die API.
+Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie nur bewusst und lösche sie danach.
 
 ## Konfiguration
 
@@ -166,13 +168,14 @@ python -m chronicle build data --out site
 
 ## Datenhaltung und Bearbeitung
 
-**Mit Datenordner (`--data` bzw. `CHRONICLE_DATA`):** Die Topic-Dateien sind die Quelle der Wahrheit ([ADR 0008](docs/adr/0008-files-as-source-of-truth.md)). Eine Bearbeitung in der Oberfläche oder über die API ändert nur die betroffenen Felder der Datei. Ein neues Event wird an das Ende der Datei seines Topics geschrieben. Ein gelöschtes Event verschwindet aus der Datei, und es gibt keinen Grabstein: Die Historie liefert Git. Kommentare, Reihenfolge und Layout bleiben erhalten. Danach wird der Index aus den Dateien neu aufgebaut. Hat jemand die Datei außerhalb von Chronicle geändert, schlägt das Speichern mit einem Konflikt fehl, bis `chronicle apply` ausgeführt wurde.
+**Mit Datenordner (`--data` bzw. `CHRONICLE_DATA`):** Die Topic-Dateien sind die Quelle der Wahrheit ([ADR 0008](docs/adr/0008-files-as-source-of-truth.md)). Eine Bearbeitung in der Oberfläche oder über die API ändert nur die betroffenen Felder der Datei, Kommentare, Reihenfolge und Layout bleiben erhalten. Danach wird der Index aus den Dateien neu aufgebaut. Hat jemand die Datei außerhalb von Chronicle geändert, schlägt das Speichern mit einem Konflikt fehl, bis `chronicle apply` ausgeführt wurde.
 
-Verknüpfungen zwischen Topics stehen im Dateimodus unter `refs` in der Datei des anderen Topics. Wer ein Event einem weiteren Topic zuordnet, bekommt dort eine Zeile, und wer die Zuordnung entfernt, verliert sie. Beim Löschen eines Events werden seine Verweise aus den anderen Topic-Dateien vorher entfernt. Wer ein Topic löscht, löscht dessen Datei samt allen Events, die dort ihr Heimat-Topic haben (die Anhänge bleiben im Ordner `evidence/` liegen). Hängt ein Event eines anderen Topics an einem davon, wird nichts gelöscht.
-
-Anhänge liegen im Dateimodus als Dateien unter `evidence/<Event-Key>/` im Datenordner. Die Topic-Datei nennt Pfad, Typ und Beschreibung. Gleiche Namen mit anderem Inhalt bekommen eine Nummer, nichts wird überschrieben. Ein Anhang, der bereits am Event hängt, wird nicht doppelt angelegt. Der Ordner `evidence/` gehört in die Synchronisation (z. B. OneDrive), nicht in Git (ADR 0008).
-
-Noch offen: Topics anlegen und bearbeiten im Dateimodus (Issue #89).
+- **Topics:** Ein neues Topic bekommt eine eigene Datei (`tp-<Datum>-<zufällig>.yaml`) und einen Key, den der Server vergibt. Den Key gibt man nicht ein, und er ändert sich nicht.
+- **Events:** Ein neues Event wird an das Ende der Datei seines Topics geschrieben, den Key vergibt ebenfalls der Server (`ev-<Datum>-<zufällig>`). Ein gelöschtes Event verschwindet aus der Datei, und es gibt keinen Grabstein: Die Historie liefert Git. Ein Event, das ein anderes auslöst, lässt sich nicht löschen, solange der Verweis besteht.
+- **Verknüpfungen** zwischen Topics stehen unter `refs` in der Datei des anderen Topics. Wer ein Event einem weiteren Topic zuordnet, bekommt dort eine Zeile, und wer die Zuordnung entfernt, verliert sie. Beim Löschen eines Events werden seine Verweise aus den anderen Topic-Dateien vorher entfernt.
+- **Topic löschen:** Das löscht die Datei des Topics samt allen Events, die dort ihr Heimat-Topic haben. Events anderer Topics, die nur verknüpft sind, bleiben, nur ihr Verweis verschwindet. Hängt ein Event eines anderen Topics an einem der gelöschten Events (`triggered_by`), wird nichts gelöscht, und die Seite nennt die Events, bei denen der Verweis zuerst zu entfernen ist. Die Anhänge bleiben im Ordner `evidence/` liegen.
+- **Anhänge** liegen als Dateien unter `evidence/<Event-Key>/` im Datenordner. Die Topic-Datei nennt Pfad, Typ und Beschreibung. Gleiche Namen mit anderem Inhalt bekommen eine Nummer, nichts wird überschrieben. Ein Anhang, der bereits am Event hängt, wird nicht doppelt angelegt. Der Ordner `evidence/` gehört in die Synchronisation (z. B. OneDrive), nicht in Git (ADR 0008).
+- **Neu laden:** Wer Dateien von Hand oder durch ein Git-Pull ändert, drückt als Analyst oder Admin in der Kopfzeile **Neu laden** (im Menü „Konto“ auf dem Handy). Chronicle liest den Ordner dann neu ein. Ist eine Datei ungültig, bleibt der bisherige Stand bestehen, und die Seite nennt den Fehler. Den Knopf gibt es nur mit Datenordner.
 
 **Ohne Datenordner:** Die Datenbank ist nach dem Import die Quelle der Wahrheit ([ADR 0003](docs/adr/0003-editing-in-the-ui.md)):
 
@@ -180,7 +183,8 @@ Noch offen: Topics anlegen und bearbeiten im Dateimodus (Issue #89).
 - Ein Import entfernt keine Topic-Verknüpfungen. Die ändert man in der Oberfläche.
 - Jede Änderung erhöht die Version eines Events. Wer auf einer veralteten Fassung speichert, bekommt `409` und muss neu laden.
 - Ein Event, das ein anderes auslöst, lässt sich nicht löschen, solange der Verweis besteht.
-
+- Ein gelöschtes Event hinterlässt einen Grabstein mit seiner letzten Fassung. Admins stellen es unter **Verwaltung, Gelöschte Events** wieder her oder entfernen den Grabstein endgültig.
+- Wer ein Topic löscht, löscht auch die Events, die dort ihr Heimat-Topic haben (jedes mit Grabstein). Zum Wiederherstellen legt man das Topic zuerst neu an, denn ein Event braucht sein Heimat-Topic.
 - Evidence wird nur über `GET /api/v1/evidence/{id}` ausgeliefert, und nur an angemeldete Nutzer. Dateien können Analyst und Admin in der Oberfläche oder über die API hochladen und entfernen. Uploads ändern das Event wie eine Bearbeitung: Ein erneuter Import überschreibt es nicht.
 
 **Nach einem Update** auf diese Version einmal den Import ausführen (`docker compose --profile import run --rm importer`). Evidence, die vorher nur als Pfad vorlag, bekommt dabei seinen Inhalt. Bis dahin antwortet der Download mit 404.
@@ -215,25 +219,29 @@ Den Dateinamen ersetzt man durch das gewünschte Backup. Der Export ist kein Ers
 
 ## Oberfläche
 
+Die Oberfläche ist serverseitig gerendert, Formulare sind mit einem CSRF-Token der Sitzung geschützt. Das Design (hell, dunkel oder wie das Betriebssystem), die Zeitzone der Anzeige (UTC oder lokale Zeit des Browsers) und die Dichte der Tabellen stellt man unter **Einstellungen** ein. Sie gelten pro Browser. Texte der Oberfläche sind deutsch, Phasennamen, Evidence, Timeline und Graph bleiben englisch, wie im Datenmodell.
+
 | Pfad | Wer | Inhalt |
 |---|---|---|
 | `/login` | alle | Anmeldung mit Benutzername und Passwort |
+| `/setup` | solange kein Konto existiert | ersten Admin mit dem Einmal-Code aus dem Server-Log anlegen |
 | `/account/password` | angemeldet | eigenes Passwort ändern. Wer ein Passwort ändern muss, landet hier |
 | `/` | angemeldet | Startseite |
-| `/events` | angemeldet | alle Events, zeitlich sortiert. Mit `?topic=<key>` nur die Events eines Topics (Heimat und verknüpft), mit `?system=<name>` nur die eines Systems |
+| `/events` | angemeldet | alle Events, zeitlich sortiert und seitenweise. Mit `?topic=<key>` nur die Events eines Topics (Heimat und verknüpft), mit `?system=<name>` oder `?actor=<name>` nur die eines Systems oder Akteurs |
 | `/suche` | angemeldet | Suche in Ereignissen, Akteuren und Systemen, als getrennte Treffer. Aufruf aus der Kopfzeile oder mit `/` |
 | `/hilfe` | angemeldet | Tastenkürzel und Erklärung der Einstellungen |
-| `/topics` | angemeldet | alle Topics mit Anzahl der Events |
+| `/topics` | angemeldet | alle Topics: offene zuerst, dann nach neuestem Event. Zeigt Status, Phase des neuesten Events und Anzahl der Events. Ab sechs Topics gibt es einen Filter nach Text und Status |
 | `/topics/new` | analyst, admin | Topic anlegen (Titel, Art, Zusammenfassung). Den Key vergibt der Server |
-| `/topics/{key}` | angemeldet | Topic und seine Events; bearbeiten, löschen, Events verknüpfen und lösen für analyst und admin. Enthält das Dashboard als eingebettete Ansicht |
+| `/topics/{key}` | angemeldet | Topic mit Status und seinen Events (je mit Phasenfarbe und Status), darunter das Dashboard als eingebettete Ansicht. Analyst und Admin bearbeiten das Topic, verknüpfen und lösen Events und löschen das Topic samt seinen Heimat-Events |
 | `/topics/{key}/dashboard` | angemeldet | Dashboard des Topics: Timeline, Entitäten-Graph und Details (die Ansicht auf `/topics/{key}` lädt sie als Frame) |
-| `/events/new` | analyst, admin | Event anlegen |
-| `/events/{key}` | angemeldet | Details, Evidence mit Vorschau, Topics; bearbeiten, Evidence hochladen und löschen für analyst und admin |
+| `/events/new` | analyst, admin | Event anlegen. Die Zeit wird in einer wählbaren Zone eingegeben, die Zeile darunter zeigt, was das in UTC ergibt |
+| `/events/{key}` | angemeldet | Details mit Phase und Status, Beschreibung (Markdown, auch Mermaid-Diagramme), Auslöser und Folgen, Evidence mit Vorschau, Topics. Analyst und Admin ändern Phase und Status direkt über die beiden Auswahlfelder im Kopf, bearbeiten die übrigen Felder im Bereich „Weitere Felder bearbeiten“, laden Evidence hoch und löschen das Event |
 | `/reports` | admin | Topics mit Download des HTML-Berichts |
 | `/admin/users` | admin | Konten anlegen, Rolle und Status ändern, Passwort setzen, Sperre aufheben |
+| `/admin/grabsteine` | admin | gelöschte Events (nur ohne Datenordner) wiederherstellen oder endgültig entfernen |
 | `/admin/audit` | admin | Audit-Log, filterbar nach Aktion, Benutzer und Datum |
 
-Die Oberfläche ist serverseitig gerendert. Formulare sind mit einem CSRF-Token der Sitzung geschützt.
+Mermaid-Diagramme in Event-Beschreibungen werden im Browser gezeichnet. Die Bibliothek lädt dafür vom CDN und nur, wenn ein Diagramm auf der Seite steht. Die Diagramme übernehmen die Farben des gewählten Designs.
 
 ## API
 
@@ -276,8 +284,8 @@ Die Antworten sind JSON. Eine interaktive Beschreibung der API gibt es noch nich
 | Rolle | Darf |
 |---|---|
 | `viewer` | lesen |
-| `analyst` | lesen, Events anlegen, ändern, löschen |
-| `admin` | alles, plus Benutzer und Audit-Log |
+| `analyst` | lesen, Topics und Events anlegen, ändern und löschen, Events verknüpfen, Evidence hochladen und entfernen |
+| `admin` | alles, plus Benutzer, Audit-Log, Berichte, gelöschte Events und Sperr-Passwort |
 
 - Passwörter mit Argon2id gehasht, Mindestlänge 12 Zeichen.
 - **Sperre (Lesen ohne Konto):** Ein Admin setzt unter „Einstellungen“ ein Sperr-Passwort. Dann lesen Besucher ohne Konto nur nach Eingabe dieses Passworts auf der Anmeldeseite. Der Server liefert vorher keine Daten aus. Ändern dürfen weiter nur Konten mit Rolle `analyst` oder `admin`. Entsperren gilt pro Browser, Passwort ändern oder Sperre aufheben beendet alle Entsperrungen ([ADR 0007](docs/adr/0007-reading-lock.md)).
@@ -295,46 +303,63 @@ Der Standard-Stack hat kein TLS und bindet nur auf `127.0.0.1`. Für einen Betri
 
 ```
 chronicle/
-  api.py           HTTP-App: API, Routen für Benutzer und Audit, Bootstrap-Admin
-  pages.py         Oberfläche: Events anlegen, bearbeiten, löschen (Formulare)
-  auth.py          Anmeldung, Sitzung, CSRF, Rollen
-  accounts.py      Konten, Sitzungen, Drosselung, Audit-Log (Datenbank)
-  security.py      Passwort-Hashing, Token
-  repository.py    Topics und Events: Import und Schreibzugriffe
-  event_input.py   Eingabemodell für Schreibzugriffe (gleiche Regeln wie der Import)
-  db.py            SQLite-Schema und Migration
-  importer.py      YAML in die Datenbank importieren
-  exporter.py      Datenbank als YAML-Dateien je Topic exportieren
-  backup.py        konsistente Kopie der Datenbank
-  serve.py         API mit uvicorn starten
-  admin_cli.py     Konten über die Kommandozeile verwalten
-  models.py        Pydantic-Schema der YAML (strikt)
-  loader.py        Suche, Validierung und Evidence-Prüfung der YAML
-  renderer.py      Dashboard-Ansicht als HTML, Grundlage der Berichte
-  report.py        Bericht zu einem Topic aus der Datenbank
-  templates/       Jinja2-Vorlagen für Oberfläche und Dashboard
-  static/          input.css (Quelle) und app.css (gebaut, nicht versioniert)
-  static/vendor/   vis-timeline und vis-network, unverändert mitgeliefert (Herkunft in der README dort)
-data/              Beispiel-YAML und Platzhalter-Evidence
-docs/adr/          Architekturentscheidungen
-tests/             pytest
+  api.py             HTTP-App: API, Bootstrap-Admin, Einmal-Code für /setup
+  pages.py           Oberfläche: Topics, Events, Evidence, Suche, Neu laden (Formulare)
+  admin_pages.py     Verwaltung: Konten, Sperre, gelöschte Events, Audit-Log
+  administration.py  Regeln für Konten und Sperren, von API und Verwaltung gemeinsam genutzt
+  auth.py            Anmeldung, Sitzung, CSRF, Rollen
+  reading_lock.py    Lesesperre mit Passwort für Besucher ohne Konto
+  accounts.py        Konten, Sitzungen, Drosselung, Audit-Log (Betriebsdatei)
+  security.py        Passwort-Hashing, Token
+  repository.py      Topics und Events: Lesen, Schreiben, Löschen, Verknüpfen, Grabsteine
+  store.py           gezielte Änderungen in den Topic-Dateien (Dateimodus)
+  event_input.py     Eingabemodell für Schreibzugriffe, Keys und Zeitangaben
+  db.py              SQLite-Schema und Migration
+  models.py          Pydantic-Schema der YAML (strikt)
+  loader.py          Suche, Validierung und Evidence-Prüfung der YAML
+  yamlscan.py        Lesen von Fremd-YAML mit Grenzen (Größe, Tiefe, keine Aliase)
+  check.py           chronicle check: Ordner prüfen, schreibt nichts
+  importer.py        YAML in die Datenbank importieren
+  exporter.py        Datenbank als YAML-Dateien je Topic exportieren
+  backup.py          konsistente Kopie der Datenbank
+  sync.py, merge.py  Abgleich mit dem Git-Remote und Merge-Treiber für Topic-Dateien
+  build.py           chronicle build: statische Seiten
+  schema.py          JSON Schema der Topic-Dateien
+  evidence.py        erlaubte Dateien, Namen, Auslieferung
+  markdown.py        Markdown der Event-Beschreibung, bereinigt
+  renderer.py        Dashboard-Ansicht als HTML, Grundlage der Berichte
+  report.py          Bericht zu einem Topic aus der Datenbank
+  cli.py, __main__.py  chronicle check | apply | build | schema
+  serve.py           API mit uvicorn starten
+  admin_cli.py       Konten über die Kommandozeile verwalten
+  templates/         Jinja2-Vorlagen für Oberfläche und Dashboard
+  static/            input.css (Quelle), app.css (gebaut, nicht versioniert), diagrams.js (Mermaid)
+  static/vendor/     vis-timeline und vis-network, unverändert mitgeliefert (Herkunft in der README dort)
+data/                Beispiel-YAML und Platzhalter-Evidence
+docs/                ADRs, Notation der Topic-Dateien, TLS-Betrieb
+tests/               pytest; tests/ui/ sind Browser-Tests
+PRODUCT.md           Produktkontext (Nutzer, Zweck, Grundsätze)
+DESIGN.md            Designsystem (Farben, Typografie, hell und dunkel, Komponenten)
 ```
 
 ## Entwicklung und Tests
 
 ```bash
 npm ci && npm run build:css      # nach jeder Template-Änderung mit neuen Tailwind-Klassen
+ruff check .                     # Lint
 pytest                           # Tests (requirements-dev.txt)
+pytest -m browser                # Browser-Tests (einmalig: python -m playwright install chromium)
 ```
 
-Die CI läuft bei jeder Pull-Request: Tests, Render-Lauf des Dashboards aus den Beispieldaten, JavaScript-Syntaxprüfung, Docker-Build und Start des API-Containers mit Health-Check. Ein Merge ist nur möglich, wenn beide Checks grün sind.
+Die CI läuft bei jedem Pull-Request: Lint und Tests mit Render-Lauf des Dashboards und JavaScript-Syntaxprüfung („Tests & smoke build“), Browser-Tests, Docker-Build mit Start des API-Containers und Health-Check, die Prüfung des Caddy-Proxys und `chronicle check` auf den Beispieldaten. Ein Merge erfolgt von Hand und nur bei grünen Checks (siehe [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## Bekannte Einschränkungen
 
-Die wichtigsten offenen Punkte, mit Issue-Nummern:
+Die wichtigsten offenen Punkte:
 
-- Ein Bericht liefert ein Topic ohne Anmeldung, sobald man die Datei hat. Er ist ein Snapshot und kein Live-Stand ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24))
-- Keine Suche und keine Paginierung ([#30](https://github.com/JoePhanDro/Chronicle-as-Code/issues/30))
+- Ein Bericht liefert ein Topic ohne Anmeldung, sobald man die Datei hat. Er ist ein Snapshot und kein Live-Stand ([#24](https://github.com/JoePhanDro/Chronicle-as-Code/issues/24)).
+- Mermaid-Diagramme brauchen beim Anzeigen Zugriff auf das CDN. Berichte und statische Seiten sind deshalb nahezu, aber nicht vollständig offline nutzbar.
+- Im Dateimodus bleiben Anhänge beim Löschen eines Events oder Topics im Ordner `evidence/` liegen, und es gibt keine Wiederherstellung in der Oberfläche. Die frühere Fassung der Topic-Datei liefert Git.
 
 Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/issues).
 
@@ -343,10 +368,15 @@ Vollständige Liste: [Issues](https://github.com/JoePhanDro/Chronicle-as-Code/is
 - Architekturentscheidungen: [`docs/adr/`](docs/adr/)
   - [ADR 0001](docs/adr/0001-backend-auth-pages.md): Server, Anmeldung, Seiten (akzeptiert)
   - [ADR 0002](docs/adr/0002-topics-and-events.md): Events und Topics (zu bestätigen)
-  - [ADR 0003](docs/adr/0003-editing-in-the-ui.md): Bearbeiten in der Oberfläche (zu bestätigen)
+  - [ADR 0003](docs/adr/0003-editing-in-the-ui.md): Bearbeiten in der Oberfläche (zu bestätigen, für den Dateimodus durch ADR 0008 ersetzt)
   - [ADR 0004](docs/adr/0004-evidence-storage.md): Evidence in der Datenbank, Abweichung von ADR 0001 (zu bestätigen)
   - [ADR 0005](docs/adr/0005-export-and-backup.md): YAML-Export, Backup und Import mehrerer Topic-Dateien (zu bestätigen)
   - [ADR 0006](docs/adr/0006-reports-from-the-app.md): Berichte aus der Datenbank, nur für Admins (zu bestätigen)
+  - [ADR 0007](docs/adr/0007-reading-lock.md): Lesesperre mit Passwort (angenommen)
+  - [ADR 0008](docs/adr/0008-files-as-source-of-truth.md): Dateien als Quelle der Wahrheit (zu bestätigen)
+  - [ADR 0009](docs/adr/0009-cli-first.md): CLI als Kernprodukt, Server als Oberfläche (akzeptiert für den CLI-Teil)
+  - [ADR 0010](docs/adr/0010-operations-separate.md): Betriebsdaten getrennt vom Index (akzeptiert)
+- Notation der Topic-Dateien: [`docs/notation.md`](docs/notation.md). Produktkontext und Designsystem: [`PRODUCT.md`](PRODUCT.md) und [`DESIGN.md`](DESIGN.md).
 - Wie man beiträgt, steht in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Die Beispieldaten in `data/` sind fiktiv. Die Evidence-PNGs in `data/evidence/` sind Platzhalter, aus SVG-Vorlagen gerendert, keine echten Screenshots. `docs/screenshots/dashboard.png` zeigt das Dashboard mit diesen Demo-Daten.
