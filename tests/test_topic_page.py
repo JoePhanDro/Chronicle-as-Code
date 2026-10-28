@@ -52,7 +52,7 @@ def test_viewer_sees_no_edit_panel_and_no_delete(api_client):
 def test_analyst_edit_panel_is_closed_and_delete_sits_inside_it(api_client):
     html = api_client("analyst").get("/topics/inc-2026-042").text
     panel = html[html.index('<details id="bearbeiten"'):]
-    assert panel.startswith('<details id="bearbeiten" class="rounded-xl border border-white/10" >')  # closed
+    assert panel.startswith('<details id="bearbeiten" class="group rounded-xl border border-white/10" >')  # closed
     assert 'id="edit-link"' in html
     # a topic that is the home of events takes them along: the button says how many
     assert "Entfernt das Topic samt seinen 7 Events" in panel and "Topic mit 7 Events löschen</button>" in panel
@@ -148,7 +148,7 @@ def test_viewers_get_no_link_form_and_no_entry_point(api_client):
 def test_long_event_lists_show_five_rows_and_fold_the_rest(api_client):
     client = api_client("analyst")
     html = client.get("/topics/inc-2026-042").text  # seven events
-    assert "Weitere 2 Events anzeigen" in html
+    assert "Weitere 2 Events anzeigen" in html and "Weitere 2 Events ausblenden" in html
     shown = html.split('aria-label="Events dieses Topics"')[1].split("</ul>")[0]
     assert shown.count('href="/events/') == 5
     assert html.count('href="/events/') >= 7  # the folded ones are still in the page

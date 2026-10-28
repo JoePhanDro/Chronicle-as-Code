@@ -90,8 +90,8 @@
       {% for event in events[:5] %}{{ event_row(event) }}{% endfor %}
     </ul>
     {% if events | length > 5 %}
-    <details class="border-t border-white/10">
-      <summary class="cursor-pointer select-none px-4 py-3 text-sm text-sky-300 hover:bg-white/5">Weitere {{ events | length - 5 }} {{ 'Event' if events | length - 5 == 1 else 'Events' }} anzeigen</summary>
+    <details class="group border-t border-white/10">
+      <summary class="cursor-pointer select-none px-4 py-3 text-sm text-sky-300 hover:bg-white/5">{% set more = events | length - 5 %}<span class="group-open:hidden">Weitere {{ more }} {{ 'Event' if more == 1 else 'Events' }} anzeigen</span><span class="hidden group-open:inline">Weitere {{ more }} {{ 'Event' if more == 1 else 'Events' }} ausblenden</span></summary>
       <ul class="divide-y divide-white/10 border-t border-white/10" aria-label="Weitere Events dieses Topics">
         {% for event in events[5:] %}{{ event_row(event) }}{% endfor %}
       </ul>
@@ -126,8 +126,8 @@
 <div id="nach-zeitleiste"></div>
 
 {% if can_write %}
-<details id="bearbeiten" class="rounded-xl border border-white/10" {{ 'open' if errors }}>
-  <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-100">Topic bearbeiten</summary>
+<details id="bearbeiten" class="group rounded-xl border border-white/10" {{ 'open' if errors }}>
+  <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-slate-100"><span class="group-open:hidden">Topic bearbeiten</span><span class="hidden group-open:inline">Bearbeiten schließen</span></summary>
   <div class="border-t border-white/10 px-4 py-5">
   <form method="post" action="/topics/{{ topic.key }}/edit" class="max-w-2xl space-y-5">
     <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
