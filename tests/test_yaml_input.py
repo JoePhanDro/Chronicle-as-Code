@@ -447,12 +447,26 @@ def test_a_blob_over_the_limit_is_never_shown(repository, monkeypatch):
     commit(repository, b"# " + b"x" * (4 * 1024 * 1024 + 10) + b"\n")
     calls = []
     original = sync._run
-    monkeypatch.setattr(sync, "_run", lambda data_dir, *args, **kwargs: calls.append(args[0]) or original(data_dir, *args, **kwargs))
+    monkeypatch.setattr(sync, "_run", lambda data_dir, *args, **kwargs: calls.append(args) or original(data_dir, *args, **kwargs))
 
     with pytest.raises(sync.SyncError, match="MiB"):
         sync.base_timelines(repository)
 
-    assert "show" not in calls
+    assert ("cat-file", "--batch") not in calls and ("show",) not in [call[:1] for call in calls]
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git ist nicht installiert")
+def test_several_files_and_an_odd_name_are_read_from_git_unchanged(repository):
+    contents = {"a.yaml": TOPIC, "b.yaml": TOPIC.replace("a1", "b1"), "mit\nUmbruch.yaml": TOPIC.replace("a1", "c1")}
+    for name, text in contents.items():
+        (repository / name).write_text(text, encoding="utf-8")
+    for args in (["init", "-q", "-b", "main"], ["add", "."], ["commit", "-q", "-m", "Stand"]):
+        subprocess.run(["git", "-C", str(repository), *args], check=True, capture_output=True)
+
+    base = sync.base_timelines(repository)
+
+    assert {name: [event.key for event in timeline.events] for name, timeline in base.items()} == {
+        "a.yaml": ["a1"], "b.yaml": ["b1"], "mit\nUmbruch.yaml": ["c1"]}
 
 
 # --- limits for what is read and written in one go ------------------------------------------------------------------------

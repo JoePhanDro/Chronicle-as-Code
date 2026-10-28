@@ -46,10 +46,12 @@ class Preview:
     problems: list[str]  # not empty: the files fail the checks, so no plan can be made
 
 
-def _run(data_dir: Path, *args: str, text: bool = True) -> subprocess.CompletedProcess:
-    """Run git in the data folder. The exit code is the caller's to read. With text=False the output stays bytes."""
+def _run(data_dir: Path, *args: str, text: bool = True, stdin: bytes | None = None) -> subprocess.CompletedProcess:
+    """Run git in the data folder. The exit code is the caller's to read. With text=False the output stays bytes.
+    `stdin` is fed to git as bytes, which needs text=False."""
     try:
-        return subprocess.run(["git", "-C", str(data_dir), *args], capture_output=True, text=text, check=False)
+        return subprocess.run(["git", "-C", str(data_dir), *args], capture_output=True, text=text, check=False,
+                              input=stdin)
     except FileNotFoundError as exc:
         raise SyncError("Git ist auf diesem Rechner nicht installiert.") from exc
 
@@ -83,6 +85,47 @@ def _blob(data_dir: Path, commit: str, name: str, where: str) -> bytes:
     if result.returncode != 0:
         raise SyncError(f"Git meldet einen Fehler beim Lesen von {one_line(where)}")
     return result.stdout
+
+
+def _blobs(data_dir: Path, commit: str, names: list[str], ref: str) -> dict[str, bytes]:
+    """The bytes of several files at a commit, in two calls of git instead of two per file. The sizes are asked first
+    (`--batch-check`), so that a huge blob is never read into memory: the content is only requested when all are
+    within the limit. A name with a line break cannot be sent line by line and is read on its own."""
+    single = [name for name in names if "\n" in name]
+    batch = [name for name in names if name not in single]
+    blobs = {name: _blob(data_dir, commit, name, f"{ref}: {name}") for name in single}
+    if not batch:
+        return blobs
+    request = "".join(f"{commit}:{name}\n" for name in batch).encode()
+    sizes = _git_batch(data_dir, "--batch-check", request).split(b"\n")
+    for name, line in zip(batch, sizes, strict=False):
+        _refuse_large(int(_header_size(line)), f"{ref}: {name}")
+    content = _git_batch(data_dir, "--batch", request)
+    for name in batch:
+        header, _, content = content.partition(b"\n")
+        size = int(_header_size(header))
+        blobs[name], content = content[:size], content[size + 1:]
+    return blobs
+
+
+def _refuse_large(size: int, where: str) -> None:
+    if size > MAX_YAML_BYTES:
+        raise TimelineError(f"{one_line(where)}: {TOO_LARGE}")
+
+
+def _git_batch(data_dir: Path, mode: str, request: bytes) -> bytes:
+    result = _run(data_dir, "cat-file", mode, text=False, stdin=request)
+    if result.returncode != 0:
+        raise SyncError("Git meldet einen Fehler beim Lesen der Dateien des Standes.")
+    return result.stdout
+
+
+def _header_size(header: bytes) -> bytes:
+    """The size in a line `<object> <type> <size>`. A line like `<object> missing` means the file is gone."""
+    parts = header.split()
+    if len(parts) != 3 or not parts[2].isdigit():
+        raise SyncError("Git meldet einen Fehler beim Lesen der Dateien des Standes.")
+    return parts[2]
 
 
 def _is_repository_root(data_dir: Path) -> bool:
@@ -121,11 +164,15 @@ def base_timelines(data_dir: Path) -> dict[str, Timeline]:
         return {}
     commit = _git(data_dir, "rev-parse", "--verify", ref).strip()  # @{u} may move between two calls of git
     names = [path for mode, path in _tree(data_dir, commit) if mode not in LINK_MODES and path.endswith(TOPIC_SUFFIXES)]
+    try:
+        files = _blobs(data_dir, commit, names, ref)
+    except TimelineError as exc:
+        raise SyncError(f"Der Stand {ref} enthält eine Datei, die nicht lesbar ist: {exc}") from exc
     timelines = {}
-    for name in names:
+    for name, data in files.items():
         try:
             where = f"{ref}: {name}"
-            timelines[name] = parse_timeline(decode_topic_bytes(_blob(data_dir, commit, name, where), where), where)
+            timelines[name] = parse_timeline(decode_topic_bytes(data, where), where)
         except TimelineError as exc:
             raise SyncError(f"Der Stand {ref} enthält eine Datei, die nicht lesbar ist: {exc}") from exc
     return timelines
