@@ -99,6 +99,7 @@ def test_a_conflict_is_shown_and_nothing_is_pushed(tmp_path, git_folder):
 
     assert response.status_code == 200
     assert "Konflikt in timeline.yaml" in response.text
+    assert "Von anderswo" in response.text and "Hier" in response.text  # both sides are shown
     assert git(remote, "log", "-1", "--format=%s", "main").startswith("Anders")
 
 

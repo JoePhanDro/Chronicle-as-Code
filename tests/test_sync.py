@@ -249,6 +249,35 @@ def test_the_same_field_changed_on_both_sides_is_a_conflict_and_nothing_is_pushe
     assert not (folder / ".git" / "MERGE_HEAD").exists()
 
 
+def test_a_conflict_carries_both_sides_of_the_file(tmp_path, folder):
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    edit(other, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Anna"')
+    sync.synchronise(other)
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Bernd"')
+
+    (side,) = sync.synchronise(folder).sides
+
+    assert side.name == "timeline.yaml"
+    assert 'action: "Bernd"' in side.ours and 'action: "Anna"' in side.theirs
+    assert '-    action: "Bernd"' in side.diff and '+    action: "Anna"' in side.diff
+
+
+def test_a_side_without_the_file_is_none(tmp_path, folder):
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    git(other, "rm", "-q", "timeline.yaml")
+    git(other, "commit", "-q", "-m", "Weg")
+    git(other, "push", "-q", "origin", "main")
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Bernd"')
+
+    result = sync.synchronise(folder)
+
+    assert result.conflicts == ["timeline.yaml"]
+    (side,) = result.sides
+    assert side.ours is not None and side.theirs is None and side.diff
+
+
 def test_an_unreachable_remote_keeps_the_local_commit(tmp_path, folder):
     remote_of(tmp_path, folder)
     git(folder, "remote", "set-url", "origin", str(tmp_path / "gibt-es-nicht.git"))

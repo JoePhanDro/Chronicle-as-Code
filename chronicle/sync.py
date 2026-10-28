@@ -7,6 +7,7 @@ like `terraform plan`. Attachments are not in Git (ADR 0009) and are not compare
 
 from __future__ import annotations
 
+import difflib
 import os
 import re
 import secrets
@@ -14,7 +15,7 @@ import shlex
 import subprocess
 import sys
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -208,11 +209,28 @@ MERGE_DRIVER = "chronicle"  # the name in .gitattributes and in the git config, 
 
 
 @dataclass(frozen=True)
+class ConflictFile:
+    """One file the merge could not resolve: its text on both sides (None: the file is not there on that side)."""
+
+    name: str
+    ours: str | None  # this copy, with the local changes committed
+    theirs: str | None  # the remote's state
+
+    @property
+    def diff(self) -> list[str]:
+        """The lines that differ, as a unified diff without its header."""
+        lines = difflib.unified_diff((self.ours or "").splitlines(), (self.theirs or "").splitlines(),
+                                     "dieser Stand", "Remote", lineterm="", n=2)
+        return list(lines)[2:]
+
+
+@dataclass(frozen=True)
 class SyncResult:
     committed: bool  # the local topic files were committed (nothing was committed if they had no changes)
     merged: bool  # the remote's state was taken in and changed the files
     conflicts: list[str]  # the merge conflicted; it was aborted, nothing was pushed
     problems: list[str]  # the merged files fail the checks; the merge was undone, nothing was pushed
+    sides: list[ConflictFile] = field(default_factory=list)  # both sides of each conflicting file
 
 
 def synchronise(data_dir: Path) -> SyncResult:
@@ -270,15 +288,7 @@ def _take_in_remote(data_dir: Path, branch: str, marker: str, committed: bool) -
     before = _git(data_dir, "rev-parse", "HEAD").strip()
     outcome = _run(data_dir, "merge", "--no-edit", remote_ref)
     if outcome.returncode != 0:
-        failure = _driver_failure(outcome, marker)  # git counts a crashed driver as a conflict
-        if failure is not None:
-            _run(data_dir, "merge", "--abort")
-            raise SyncError(f"Der Merge-Treiber ist abgestürzt, das Zusammenführen wurde abgebrochen: {failure}")
-        conflicts = _git(data_dir, "diff", "--name-only", "--diff-filter=U").splitlines()
-        if not conflicts:  # refused before it started, e.g. an untracked file is in the way: nothing to abort
-            raise SyncError(f"Das Zusammenführen ist fehlgeschlagen: {outcome.stderr.strip() or outcome.stdout.strip()}")
-        _git(data_dir, "merge", "--abort")
-        return SyncResult(committed=committed, merged=False, conflicts=conflicts, problems=[]), False
+        return _failed_merge(data_dir, remote_ref, marker, outcome, committed), False
 
     merged = _git(data_dir, "rev-parse", "HEAD").strip() != before
     linked = _linked(_tree(data_dir, "HEAD"))
@@ -292,6 +302,38 @@ def _take_in_remote(data_dir: Path, branch: str, marker: str, committed: bool) -
         _undo_merge(data_dir, before)
         return SyncResult(committed=committed, merged=False, conflicts=[], problems=list(exc.problems)), False
     return SyncResult(committed=committed, merged=merged, conflicts=[], problems=[]), True
+
+
+def _failed_merge(
+    data_dir: Path, remote_ref: str, marker: str, outcome: subprocess.CompletedProcess, committed: bool
+) -> SyncResult:
+    """A merge that did not succeed: a crashed driver and a merge that never started are errors, anything else is a
+    conflict. The merge is aborted, and both sides of each conflicting file are read first."""
+    failure = _driver_failure(outcome, marker)  # git counts a crashed driver as a conflict
+    if failure is not None:
+        _run(data_dir, "merge", "--abort")
+        raise SyncError(f"Der Merge-Treiber ist abgestürzt, das Zusammenführen wurde abgebrochen: {failure}")
+    conflicts = _git(data_dir, "diff", "--name-only", "--diff-filter=U").splitlines()
+    if not conflicts:  # refused before it started, e.g. an untracked file is in the way: nothing to abort
+        raise SyncError(f"Das Zusammenführen ist fehlgeschlagen: {outcome.stderr.strip() or outcome.stdout.strip()}")
+    sides = [_conflict_file(data_dir, remote_ref, name) for name in conflicts]
+    _git(data_dir, "merge", "--abort")
+    return SyncResult(committed=committed, merged=False, conflicts=conflicts, problems=[], sides=sides)
+
+
+def _side(data_dir: Path, commit: str, name: str) -> str | None:
+    """The text of a file at a commit, or None if the commit has no such file. A file too large to show is replaced
+    by a note, and bytes that are not UTF-8 are shown with replacement characters: this is for reading only."""
+    if _run(data_dir, "cat-file", "-e", f"{commit}:{name}").returncode != 0:
+        return None
+    try:
+        return _blob(data_dir, commit, name, f"{commit}: {name}").decode("utf-8", errors="replace")
+    except TimelineError as exc:
+        return str(exc)
+
+
+def _conflict_file(data_dir: Path, remote_ref: str, name: str) -> ConflictFile:
+    return ConflictFile(name, ours=_side(data_dir, "HEAD", name), theirs=_side(data_dir, remote_ref, name))
 
 
 def _driver_failure(outcome: subprocess.CompletedProcess, marker: str) -> str | None:
