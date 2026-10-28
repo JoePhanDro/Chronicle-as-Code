@@ -15,7 +15,7 @@ from starlette.datastructures import UploadFile  # form uploads are Starlette ob
 from .. import repository
 from ..auth import client_ip
 from ..evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, Blob, check_file
-from ..models import Phase, Status
+from ..models import TECHNIQUE_ID, Phase, Status
 from ..event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
 from .common import TEMPLATES, WRITER_ROLES, PageContext, _text_param, _choice_param, _day_param, _page_param, _error_text
 
@@ -31,6 +31,12 @@ def _raw(form, name: str) -> str:
 
 def _field(form, name: str) -> str:
     return _raw(form, name).strip()
+
+
+def _technique_param(params) -> str | None:
+    """The technique filter from the query string; a value that is no ATT&CK ID is ignored."""
+    value = (_text_param(params, "technique") or "").upper()
+    return value if TECHNIQUE_ID.fullmatch(value) else None
 
 
 def _payload_from_form(form, topic_home: str | None = None) -> dict:
@@ -110,12 +116,13 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
         flt = repository.EventFilter(
             topic=topic_key, query=_text_param(params, "q"), phase=_choice_param(params, "phase", Phase),
             status=_choice_param(params, "status", Status), actor=_text_param(params, "actor"),
-            system=_text_param(params, "system"), since=_day_param(params, "since"), until=_day_param(params, "until"),
+            system=_text_param(params, "system"), technique=_technique_param(params),
+            since=_day_param(params, "since"), until=_day_param(params, "until"),
         )
         # Filters go into every page link; empty ones are left out of the URL.
         query = {
             "topic": topic_key, "q": flt.query, "phase": flt.phase, "status": flt.status, "actor": flt.actor,
-            "system": flt.system,
+            "system": flt.system, "technique": flt.technique,
             "since": flt.since.isoformat() if flt.since else None,
             "until": flt.until.isoformat() if flt.until else None,
         }

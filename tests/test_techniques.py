@@ -170,3 +170,52 @@ def test_closing_all_events_of_a_topic_keeps_their_techniques(api_client):
 
     after = client.get("/api/v1/events/analysis").json()
     assert after["status"] == "resolved" and after["techniques"] == ["T1505.003"]
+
+
+# --- the filter ------------------------------------------------------------------------------------------------------
+
+def tagged(client, key, techniques):
+    current = client.get(f"/api/v1/events/{key}").json()
+    response = client.put(f"/api/v1/events/{key}", json=body_from(current, techniques=techniques))
+    assert response.status_code == 200, response.text
+
+
+def keys(response):
+    return sorted(item["key"] for item in response.json())
+
+
+def test_the_api_filters_by_technique_and_a_family_id_finds_its_sub_techniques(api_client):
+    client = api_client("analyst")
+    tagged(client, "analysis", ["T1059.001"])
+    tagged(client, "exploit", ["T1059", "T1190"])
+
+    assert keys(client.get("/api/v1/events", params={"technique": "T1059"})) == ["analysis", "exploit"]
+    assert keys(client.get("/api/v1/events", params={"technique": "t1059.001"})) == ["analysis"]
+    assert keys(client.get("/api/v1/events", params={"technique": "T1190"})) == ["exploit"]
+    assert keys(client.get("/api/v1/events", params={"technique": "T1566"})) == []
+
+
+def test_a_malformed_technique_in_the_api_filter_is_a_422(api_client):
+    assert api_client("analyst").get("/api/v1/events", params={"technique": "alles"}).status_code == 422
+
+
+def test_the_event_list_page_filters_by_technique_and_ignores_garbage(api_client):
+    client = api_client("analyst")
+    tagged(client, "analysis", ["T1505.003"])
+
+    page = client.get("/events", params={"technique": "T1505"}).text
+    assert "mit Technik" in page and "/events/analysis" in page and page.count('href="/events/') < 5
+    assert 'name="technique" value="T1505"' in page
+
+    everything = client.get("/events", params={"technique": "irgendwas"}).text
+    assert "mit Technik" not in everything and "/events/exploit" in everything
+
+
+def test_the_event_page_links_a_technique_to_the_filter_and_to_mitre(api_client):
+    client = api_client("analyst")
+    tagged(client, "analysis", ["T1505.003"])
+
+    page = client.get("/events/analysis").text
+
+    assert 'href="/events?technique=T1505.003"' in page
+    assert 'href="https://attack.mitre.org/techniques/T1505/003/"' in page and 'rel="noopener noreferrer"' in page
