@@ -221,3 +221,23 @@ def test_folding_panels_name_the_action_the_next_click_does(login, app_url):
     upload.locator("summary").click()
     expect(upload.get_by_text("Evidence hinzufügen schließen")).to_be_visible()
     expect(upload.get_by_text("Evidence hinzufügen", exact=True)).to_be_hidden()
+
+
+def test_a_taller_view_makes_the_frame_on_the_topic_page_taller(login, app_url):
+    page = login("anna")
+    page.goto(f"{app_url}/topics/inc-2026-042")
+    FRAME = "iframe[title^='Zeitleiste und Zusammenhänge']"
+    frame = page.locator(FRAME)
+    inside = page.frame_locator(FRAME)
+    inside.locator("#panel-grip").wait_for()
+    page.wait_for_timeout(500)  # the frame has fitted itself to the content
+    before = frame.evaluate("frame => frame.getBoundingClientRect().height")
+
+    inside.locator("#panel-grip").focus()
+    for _ in range(5):
+        page.keyboard.press("ArrowDown")
+
+    page.wait_for_function(
+        "([selector, before]) => document.querySelector(selector).getBoundingClientRect().height >= before + 150",
+        arg=[FRAME, before],
+    )

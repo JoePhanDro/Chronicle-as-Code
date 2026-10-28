@@ -199,6 +199,10 @@
     @media (min-width: 1024px) {
       .view-panel { flex: 1 1 0; min-height: 0; }
     }
+    /* A height chosen with the grip under the views. Where the views fill the window (from 1024px), the window is the size. */
+    @media (max-width: 1023.98px) {
+      html[data-panel-height] .view-panel { height: var(--panel-height); }
+    }
 
     /* Markdown in details */
     .prose-chronicle code { background: var(--code); padding: 1px 5px; border-radius: 5px; }
@@ -210,8 +214,10 @@
     /* In the topic page's frame the layout is always stacked and the frame grows to fit it, so the panels get
        fixed heights: vh units would depend on the frame's own height and feed back into it. */
     :root:root body { height: auto; overflow: visible; min-height: 0; }
-    :root:root #panel-timeline { height: 320px; min-height: 0; flex: none; }
-    :root:root #panel-graph, :root:root #panel-events, :root:root #panel-evidence { height: 420px; min-height: 0; flex: none; }
+    :root:root #panel-timeline { height: var(--panel-height, 320px); min-height: 0; flex: none; }
+    :root:root #panel-graph, :root:root #panel-events, :root:root #panel-evidence { height: var(--panel-height, 420px); min-height: 0; flex: none; }
+    /* The reader can change the height with the grip (it is hidden from 1024px in the full page, where the window is the size). */
+    :root:root #panel-grip { display: flex; }
     :root:root main { grid-template-columns: minmax(0, 1fr); }
     :root:root #details { overflow: visible; }
     /* Without a selected event there is nothing to show: no empty panel, the event list above already names them. */
@@ -287,6 +293,12 @@
 
       <section role="tabpanel" id="panel-events" aria-labelledby="tab-events" hidden class="view-panel h-[60vh] overflow-y-auto p-4 lg:h-auto lg:min-h-0"></section>
       <section role="tabpanel" id="panel-evidence" aria-labelledby="tab-evidence" hidden class="view-panel h-[60vh] overflow-y-auto p-4 lg:h-auto lg:min-h-0"></section>
+      <div id="panel-grip" role="separator" aria-orientation="horizontal" tabindex="0"
+           aria-label="Höhe der Ansicht ändern. Pfeil hoch oder runter ändert die Höhe, Pos1 setzt sie zurück."
+           title="Ziehen, um die Ansicht höher oder niedriger zu machen. Doppelklick setzt die Höhe zurück."
+           class="group flex h-5 cursor-row-resize touch-none items-center justify-center border-t border-white/10 hover:bg-white/5 max-sm:h-8 lg:hidden">
+        <span class="h-1 w-12 rounded-full bg-slate-500 group-hover:bg-sky-400"></span>
+      </div>
     </div>
     <article id="details" class="glass p-5 lg:order-first lg:col-span-2 lg:min-h-0 lg:overflow-y-auto" style="border-width: 0 1px 0 0"></article>
   </main>
@@ -825,6 +837,60 @@
       }));
       document.getElementById('panel-evidence').replaceChildren(el('div', 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3', cards), galleryEmpty);
     }
+
+    // The height of the views is the reader's to choose where they do not fill the window. It is remembered in this
+    // browser; a saved report has no app storage and keeps it for the visit. The frame on the topic page grows with it.
+    (() => {
+      const grip = document.getElementById('panel-grip');
+      const root = document.documentElement;
+      const KEY = 'chronicle.panel.height';
+      const MIN = 280, MAX = 1600, STEP = 40;
+      const clamp = value => Math.min(MAX, Math.max(MIN, Math.round(value)));
+      const current = () => Math.round(document.querySelector('.view-panel:not([hidden])').getBoundingClientRect().height);
+      const show = height => {
+        grip.setAttribute('aria-valuemin', String(MIN));
+        grip.setAttribute('aria-valuemax', String(MAX));
+        grip.setAttribute('aria-valuenow', String(height));
+      };
+      const set = (height, { persist = true } = {}) => {
+        height = clamp(height);
+        root.dataset.panelHeight = '';
+        root.style.setProperty('--panel-height', `${height}px`);
+        show(height);
+        if (persist) try { localStorage.setItem(KEY, String(height)); } catch (error) { /* kept for this visit only */ }
+      };
+      const reset = () => {
+        delete root.dataset.panelHeight;
+        root.style.removeProperty('--panel-height');
+        try { localStorage.removeItem(KEY); } catch (error) { /* nothing was kept */ }
+        show(current());
+      };
+      const saved = Number(setting(KEY));
+      if (Number.isFinite(saved) && saved >= MIN) set(saved, { persist: false });
+      else show(current());
+
+      let drag = null;
+      grip.addEventListener('pointerdown', event => {
+        drag = { y: event.clientY, height: current() };
+        grip.setPointerCapture(event.pointerId);
+      });
+      grip.addEventListener('pointermove', event => { if (drag) set(drag.height + event.clientY - drag.y, { persist: false }); });
+      grip.addEventListener('pointerup', () => {
+        if (!drag) return;
+        drag = null;
+        set(current());
+      });
+      grip.addEventListener('pointercancel', () => { drag = null; });
+      grip.addEventListener('dblclick', reset);
+      grip.addEventListener('keydown', event => {
+        const now = current();
+        const next = { ArrowUp: now - STEP, ArrowDown: now + STEP, PageUp: now - 5 * STEP, PageDown: now + 5 * STEP }[event.key];
+        if (event.key === 'Home') reset();
+        else if (next !== undefined) set(next);
+        else return;
+        event.preventDefault();
+      });
+    })();
 
     // Toolbar
     document.getElementById('btn-fit').addEventListener('click', () => network.fit({ animation: motion({ duration: 500 }) }));
