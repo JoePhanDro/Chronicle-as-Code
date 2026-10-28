@@ -233,7 +233,7 @@ class SyncResult:
     sides: list[ConflictFile] = field(default_factory=list)  # both sides of each conflicting file
 
 
-def synchronise(data_dir: Path) -> SyncResult:
+def synchronise(data_dir: Path, choices: Mapping[str, str] | None = None) -> SyncResult:
     """Commit the local topic files, take in the remote's state and push (ADR 0008, point 3).
 
     Stops before each step that could lose data: a file that fails the checks, a conflict, a merge that breaks the
@@ -243,7 +243,12 @@ def synchronise(data_dir: Path) -> SyncResult:
     run outside the lock, so that a slow remote does not hold up the changes made in the app (issue #131). The local
     changes are committed before the fetch, so that an unreachable remote still leaves them committed. Changes made
     while the fetch runs are committed again before the merge.
+
+    `choices` settles conflicts: a file name mapped to "ours" (keep this copy's file) or "theirs" (take the remote's).
+    It only applies to files that conflict in this run's merge; if any conflicting file has no choice, nothing is
+    settled and the merge is aborted as without choices.
     """
+    _check_choices(choices or {})
     state = preview(data_dir)
     if state.problems:
         return SyncResult(committed=False, merged=False, conflicts=[], problems=state.problems)
@@ -254,7 +259,7 @@ def synchronise(data_dir: Path) -> SyncResult:
             committed = _commit_topic_files(data_dir)
         _fetch(data_dir)
         with folder_lock(data_dir):
-            result, upload = _take_in_remote(data_dir, branch, marker, committed)
+            result, upload = _take_in_remote(data_dir, branch, marker, committed, choices or {})
         if upload:
             _push(data_dir, branch)
         return result
@@ -275,7 +280,9 @@ def _current_branch(data_dir: Path) -> str:
     return branch
 
 
-def _take_in_remote(data_dir: Path, branch: str, marker: str, committed: bool) -> tuple[SyncResult, bool]:
+def _take_in_remote(
+    data_dir: Path, branch: str, marker: str, committed: bool, choices: Mapping[str, str]
+) -> tuple[SyncResult, bool]:
     """The local steps, with the folder locked: commit what changed since, merge the fetched state, check the result.
     `committed` says whether the first commit took changes. The flag returned says whether the state is ready to be
     uploaded."""
@@ -286,9 +293,9 @@ def _take_in_remote(data_dir: Path, branch: str, marker: str, committed: bool) -
         return SyncResult(committed=committed, merged=False, conflicts=[], problems=[]), True  # the first upload
 
     before = _git(data_dir, "rev-parse", "HEAD").strip()
-    outcome = _run(data_dir, "merge", "--no-edit", remote_ref)
-    if outcome.returncode != 0:
-        return _failed_merge(data_dir, remote_ref, marker, outcome, committed), False
+    failed = _merge_remote(data_dir, remote_ref, marker, committed, choices)
+    if failed is not None:
+        return failed, False
 
     merged = _git(data_dir, "rev-parse", "HEAD").strip() != before
     linked = _linked(_tree(data_dir, "HEAD"))
@@ -304,11 +311,24 @@ def _take_in_remote(data_dir: Path, branch: str, marker: str, committed: bool) -
     return SyncResult(committed=committed, merged=merged, conflicts=[], problems=[]), True
 
 
-def _failed_merge(
-    data_dir: Path, remote_ref: str, marker: str, outcome: subprocess.CompletedProcess, committed: bool
-) -> SyncResult:
-    """A merge that did not succeed: a crashed driver and a merge that never started are errors, anything else is a
-    conflict. The merge is aborted, and both sides of each conflicting file are read first."""
+SIDES = ("ours", "theirs")
+
+
+def _check_choices(choices: Mapping[str, str]) -> None:
+    wrong = sorted(name for name, side in choices.items() if side not in SIDES)
+    if wrong:
+        raise SyncError(f"Unbekannte Wahl für {', '.join(wrong)}: erlaubt sind {' oder '.join(SIDES)}.")
+
+
+def _merge_remote(
+    data_dir: Path, remote_ref: str, marker: str, committed: bool, choices: Mapping[str, str]
+) -> SyncResult | None:
+    """Merge the remote's state. None: the merge went through, by itself or with the conflicts settled by `choices`.
+    Otherwise the conflict: the merge is aborted, and both sides of each conflicting file are read first.
+    A crashed driver and a merge that never started are errors."""
+    outcome = _run(data_dir, "merge", "--no-edit", remote_ref)
+    if outcome.returncode == 0:
+        return None
     failure = _driver_failure(outcome, marker)  # git counts a crashed driver as a conflict
     if failure is not None:
         _run(data_dir, "merge", "--abort")
@@ -316,9 +336,25 @@ def _failed_merge(
     conflicts = _git(data_dir, "diff", "--name-only", "--diff-filter=U").splitlines()
     if not conflicts:  # refused before it started, e.g. an untracked file is in the way: nothing to abort
         raise SyncError(f"Das Zusammenführen ist fehlgeschlagen: {outcome.stderr.strip() or outcome.stdout.strip()}")
+    if all(name in choices for name in conflicts):
+        _settle(data_dir, conflicts, choices)
+        return None
     sides = [_conflict_file(data_dir, remote_ref, name) for name in conflicts]
     _git(data_dir, "merge", "--abort")
     return SyncResult(committed=committed, merged=False, conflicts=conflicts, problems=[], sides=sides)
+
+
+def _settle(data_dir: Path, conflicts: list[str], choices: Mapping[str, str]) -> None:
+    """Take the chosen side of each conflicting file and finish the merge commit. A side that has no such file
+    (deleted there) means the file is removed."""
+    for name in conflicts:
+        commit = "HEAD" if choices[name] == "ours" else "MERGE_HEAD"
+        if _side(data_dir, commit, name) is None:
+            _git(data_dir, "rm", "-q", "--", name)
+        else:
+            _git(data_dir, "checkout", f"--{choices[name]}", "--", name)
+            _git(data_dir, "add", "--", name)
+    _git(data_dir, "commit", "-q", "--no-edit")
 
 
 def _side(data_dir: Path, commit: str, name: str) -> str | None:
