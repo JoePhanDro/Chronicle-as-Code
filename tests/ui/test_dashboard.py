@@ -75,6 +75,24 @@ def test_hovering_a_graph_node_shows_its_type_and_name(new_page, dashboard_url):
     expect(tooltip).to_contain_text(EVENT_TITLE)
 
 
+@pytest.mark.parametrize("size", [(1280, 900), (800, 700)])
+def test_the_whole_graph_is_in_view_and_fills_it_after_it_settles(new_page, dashboard_url, size):
+    # The graph settles while its tab is hidden. It must still end up fitted when the tab opens (issue #211).
+    page = new_page(width=size[0], height=size[1])
+    page.goto(dashboard_url)
+    page.get_by_role("tab", name="Graph").click()
+    wait_for_graph_layout(page)
+
+    canvas = page.locator("#graph canvas").first.bounding_box()
+    points = page.evaluate(
+        "Object.values(network.getPositions()).map(position => network.canvasToDOM(position))"
+    )
+    xs, ys = [point["x"] for point in points], [point["y"] for point in points]
+    assert min(xs) >= 0 and max(xs) <= canvas["width"] and min(ys) >= 0 and max(ys) <= canvas["height"]
+    # fitted: the nodes span a good part of the canvas, not a corner of it
+    assert max(xs) - min(xs) > 0.5 * canvas["width"] or max(ys) - min(ys) > 0.5 * canvas["height"]
+
+
 def test_tabs_switch_views_and_keep_the_selection(new_page, dashboard_url):
     page = new_page(width=1280, height=900)
     page.goto(f"{dashboard_url}#/timeline/siem-alert")
