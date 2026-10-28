@@ -161,8 +161,8 @@
     {% endif %}
 
     {% if can_write %}
-    <details id="evidence-add" class="mt-4 rounded-xl border border-white/10" {{ 'open' if upload_failed }}>
-      <summary class="cursor-pointer select-none rounded-xl px-4 py-3 text-sm text-sky-300 hover:bg-white/5">Evidence hinzufügen</summary>
+    <details id="evidence-add" class="group mt-4 rounded-xl border border-white/10" {{ 'open' if upload_failed }}>
+      <summary class="cursor-pointer select-none rounded-xl px-4 py-3 text-sm text-sky-300 hover:bg-white/5"><span class="group-open:hidden">Evidence hinzufügen</span><span class="hidden group-open:inline">Evidence hinzufügen schließen</span></summary>
       <div class="border-t border-white/10 p-4">
       <form method="post" action="/events/{{ event.key }}/evidence" enctype="multipart/form-data"
             class="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_auto] sm:items-end">
@@ -195,8 +195,8 @@
   </section>
 
   {% if editing %}
-  <details id="bearbeiten" class="rounded-xl border border-white/10" {{ 'open' if errors and not upload_failed }}>
-    <summary class="cursor-pointer select-none rounded-xl px-5 py-3 text-sm font-medium text-slate-200 hover:bg-white/5">Weitere Felder bearbeiten · Event löschen</summary>
+  <details id="bearbeiten" class="group rounded-xl border border-white/10" {{ 'open' if errors and not upload_failed }}>
+    <summary class="cursor-pointer select-none rounded-xl px-5 py-3 text-sm font-medium text-slate-200 hover:bg-white/5"><span class="group-open:hidden">Weitere Felder bearbeiten · Event löschen</span><span class="hidden group-open:inline">Bearbeiten schließen</span></summary>
     <div class="border-t border-white/10 p-5">
       {% set f = edit_form(event) %}
       <form method="post" action="/events/{{ event.key }}/edit" class="space-y-6">

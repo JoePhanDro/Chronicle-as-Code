@@ -194,3 +194,30 @@ def test_reading_lock_hides_the_data_until_unlocked(login, new_page, app_url):
         chef.get_by_role("button", name="Einstellungen").click()
         dialog.get_by_role("button", name="Sperre aufheben").click()
         expect(chef).to_have_url(f"{app_url}/")
+
+
+def test_folding_panels_name_the_action_the_next_click_does(login, app_url):
+    page = login("anna")
+
+    page.goto(f"{app_url}/topics/inc-2026-042")
+    more = page.locator("details", has=page.get_by_text("Weitere 2 Events", exact=False)).first
+    expect(more.get_by_text("Weitere 2 Events anzeigen")).to_be_visible()
+    expect(more.get_by_text("Weitere 2 Events ausblenden")).to_be_hidden()
+    more.locator("summary").click()
+    expect(more.get_by_text("Weitere 2 Events ausblenden")).to_be_visible()
+    expect(more.get_by_text("Weitere 2 Events anzeigen")).to_be_hidden()
+    more.locator("summary").click()
+    expect(more.get_by_text("Weitere 2 Events anzeigen")).to_be_visible()
+
+    panel = page.locator("details#bearbeiten")
+    expect(panel.get_by_text("Topic bearbeiten", exact=True)).to_be_visible()
+    panel.locator("summary").click()
+    expect(panel.get_by_text("Bearbeiten schließen")).to_be_visible()
+    expect(panel.get_by_text("Topic bearbeiten", exact=True)).to_be_hidden()
+
+    page.goto(f"{app_url}/events/lessons")
+    upload = page.locator("details#evidence-add")
+    expect(upload.get_by_text("Evidence hinzufügen", exact=True)).to_be_visible()
+    upload.locator("summary").click()
+    expect(upload.get_by_text("Evidence hinzufügen schließen")).to_be_visible()
+    expect(upload.get_by_text("Evidence hinzufügen", exact=True)).to_be_hidden()
