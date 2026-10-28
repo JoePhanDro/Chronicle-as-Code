@@ -97,7 +97,10 @@
         <dt class="text-xs text-slate-400">ATT&amp;CK-Techniken</dt>
         <dd class="mt-1 flex flex-wrap gap-2">
           {% for technique in event.techniques %}
-          <a href="{{ technique | attack_url }}" target="_blank" rel="noopener noreferrer" title="{{ technique }} bei MITRE ATT&amp;CK öffnen (neues Fenster)" class="rounded-md border border-white/10 px-2 py-0.5 font-mono text-xs text-sky-300 hover:bg-white/5 max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ technique }}</a>
+          <span class="inline-flex items-center rounded-md border border-white/10 font-mono text-xs">
+            <a href="/events?technique={{ technique }}" title="Alle Events mit {{ technique }}" class="px-2 py-0.5 text-sky-300 hover:bg-white/5 max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ technique }}</a>
+            <a href="{{ technique | attack_url }}" target="_blank" rel="noopener noreferrer" aria-label="{{ technique }} bei MITRE ATT&amp;CK öffnen (neues Fenster)" title="Bei MITRE ATT&amp;CK öffnen" class="border-l border-white/10 px-1.5 py-0.5 text-slate-400 hover:bg-white/5 hover:text-sky-300 max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">↗</a>
+          </span>
           {% endfor %}
         </dd>
       </div>

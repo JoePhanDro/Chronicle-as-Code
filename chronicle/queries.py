@@ -162,6 +162,7 @@ class EventFilter:
     status: str | None = None
     actor: str | None = None  # part of the actor name, not case-sensitive
     system: str | None = None  # part of the system name, not case-sensitive
+    technique: str | None = None  # an ATT&CK ID: T1059 also finds the events of its sub-techniques (T1059.001)
     since: date | None = None  # t0 on or after this day (UTC)
     until: date | None = None  # t0 on or before this day (UTC)
 
@@ -177,6 +178,14 @@ _TOPIC_CLAUSE = (
     "JOIN topics ON topics.pk = topic_events.topic_pk WHERE topics.key = ?)"
 )
 _QUERY_CLAUSE = "events.pk IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)"
+_TECHNIQUE_EXACT = "EXISTS (SELECT 1 FROM json_each(events.techniques) WHERE json_each.value = ?)"
+_TECHNIQUE_FAMILY = "EXISTS (SELECT 1 FROM json_each(events.techniques) WHERE substr(json_each.value, 1, 5) = ?)"
+
+
+def _technique_condition(technique: str | None) -> tuple[str, str]:
+    """The clause and parameter for an ATT&CK ID: a sub-technique matches exactly, a family ID matches the family."""
+    value = (technique or "").strip().upper()
+    return (_TECHNIQUE_EXACT if "." in value else _TECHNIQUE_FAMILY), value
 
 
 def _filter_sql(flt: EventFilter) -> tuple[str, list]:
@@ -189,6 +198,7 @@ def _filter_sql(flt: EventFilter) -> tuple[str, list]:
         (flt.status, "events.status = ?", flt.status),
         (flt.actor, "instr(lower(events.actor), lower(?)) > 0", flt.actor),
         (flt.system, "instr(lower(events.system), lower(?)) > 0", flt.system),
+        (flt.technique, *_technique_condition(flt.technique)),
         (flt.since is not None, "substr(events.t0, 1, 10) >= ?", flt.since),
         (flt.until is not None, "substr(events.t0, 1, 10) <= ?", flt.until),
     ]

@@ -4,7 +4,7 @@
 <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
   <div>
     <h1 class="text-xl font-semibold text-slate-100">Ereignisse</h1>
-    <p class="text-sm text-slate-400">{{ total | count_events }}{% if filtered %} gefunden{% endif %}{% if topic %} im Topic <span class="text-slate-200">{{ topic.title }}</span>{% endif %}{% if query.system %} im System <span class="text-slate-200">{{ query.system }}</span>{% endif %}, zeitlich sortiert (<span data-zone-label>UTC</span>)</p>
+    <p class="text-sm text-slate-400">{{ total | count_events }}{% if filtered %} gefunden{% endif %}{% if topic %} im Topic <span class="text-slate-200">{{ topic.title }}</span>{% endif %}{% if query.system %} im System <span class="text-slate-200">{{ query.system }}</span>{% endif %}{% if query.technique %} mit Technik <span class="font-mono text-slate-200">{{ query.technique }}</span>{% endif %}, zeitlich sortiert (<span data-zone-label>UTC</span>)</p>
   </div>
   {% if can_write %}
   <a href="/events/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Neues Event</a>
@@ -42,6 +42,11 @@
     <span class="mb-1 block text-xs font-medium text-slate-400">Akteur</span>
     <input type="text" name="actor" value="{{ query.get('actor', '') }}"
            class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">ATT&amp;CK-Technik</span>
+    <input type="text" name="technique" value="{{ query.get('technique', '') }}" placeholder="T1059 oder T1059.001" autocomplete="off" spellcheck="false"
+           class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 font-mono text-sm text-slate-100">
   </label>
   <label class="block">
     <span class="mb-1 block text-xs font-medium text-slate-400">Von (UTC)</span>
