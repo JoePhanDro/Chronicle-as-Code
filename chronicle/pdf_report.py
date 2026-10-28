@@ -156,6 +156,25 @@ def _header(timeline: Timeline, variant: str, made_at: str) -> list:
     return flowables
 
 
+def _techniques(events: list[Event]) -> list:
+    """The techniques of the incident with the number of events each one is on, most used first. Nothing without any."""
+    counts: dict[str, int] = {}
+    for event in events:
+        for technique in event.techniques:
+            counts[technique] = counts.get(technique, 0) + 1
+    if not counts:
+        return []
+    rows = [[Paragraph("Technik", SMALL), Paragraph("Events", SMALL)]]
+    rows += [[Paragraph(f"<font face=\"Courier\">{technique}</font>", BODY), Paragraph(str(count), BODY)]
+             for technique, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
+    table = Table(rows, colWidths=[40 * mm, 20 * mm], hAlign="LEFT", repeatRows=1)
+    table.setStyle(TableStyle([
+        ("LINEBELOW", (0, 0), (-1, -1), 0.4, RULE), ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    return [Spacer(1, 12), Paragraph("ATT&amp;CK-Techniken im Vorfall", H2), table]
+
+
 def _event_dot(phase: Phase) -> str:
     return f'<font color="{PHASE_COLORS[phase]}">&#9679;</font>'
 
@@ -194,6 +213,8 @@ def _event_block(event: Event, events: list[Event], titles: dict[str, str]) -> l
         Paragraph(f"{_event_dot(event.phase)} {_text(event.action)}", EVENT_TITLE),
         Paragraph(" · ".join(_text(fact) for fact in facts) + f" · <font face=\"Courier\">{_text(event.key)}</font>", SMALL),
     ]
+    if event.techniques:
+        block.append(Paragraph("ATT&amp;CK: <font face=\"Courier\">" + ", ".join(event.techniques) + "</font>", SMALL))
     if event.triggered_by:
         causes = ", ".join(f"{_text(titles.get(key, key))}" for key in event.triggered_by)
         block.append(Paragraph(f"Ausgelöst durch: {causes}", SMALL))
@@ -248,7 +269,7 @@ def render_pdf(timeline: Timeline, evidence: dict[str, bytes], variant: str, mad
         canvas.restoreState()
 
     body = _technical(timeline, evidence, width) if variant == "technisch" else _management(timeline)
-    doc.build(_header(timeline, variant, made_at) + body, onFirstPage=footer, onLaterPages=footer)
+    doc.build(_header(timeline, variant, made_at) + _techniques(timeline.events) + body, onFirstPage=footer, onLaterPages=footer)
     return buffer.getvalue()
 
 

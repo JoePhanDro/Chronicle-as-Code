@@ -445,6 +445,16 @@
       return grid;
     }
 
+    // An ATT&CK technique ID, linked to its page at MITRE (opens in a new window). The IDs are checked when a file is read.
+    function techniqueLink(id) {
+      const link = el('a', 'rounded-md px-2 py-0.5 font-mono text-[11px] text-sky-300 ring-1 ring-sky-400/20 hover:underline', id);
+      link.href = `https://attack.mitre.org/techniques/${id.replace('.', '/')}/`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.title = `${id} bei MITRE ATT&CK öffnen`;
+      return link;
+    }
+
     function renderDetails(ev) {
       const hero = el('div', 'space-y-3 rounded-2xl p-5 ring-1 ring-white/10');
       hero.style.background = `linear-gradient(135deg, ${ev.color}2e, transparent 65%)`;
@@ -457,6 +467,7 @@
         el('h2', 'text-2xl font-semibold tracking-tight text-slate-50', ev.action),
         el('div', 'flex flex-wrap items-center gap-2', [chip(ev.actor), ev.system ? chip(ev.system, true) : null].filter(Boolean)),
       );
+      if (ev.techniques.length) hero.append(el('div', 'flex flex-wrap items-center gap-2', ev.techniques.map(techniqueLink)));
 
       const links = [];
       for (const causeId of ev.triggered_by) {
@@ -542,11 +553,13 @@
     // KPI chips in the header
     const systems = new Set(DATA.events.map(ev => ev.system).filter(Boolean));
     const evidenceCount = DATA.events.reduce((sum, ev) => sum + ev.evidence.length, 0);
+    const techniqueCount = new Set(DATA.events.flatMap(ev => ev.techniques)).size;
     document.getElementById('kpis').innerHTML = [
       ['Events', DATA.events.length],
       ['Akteure', lanes.length],
       ['Systeme', systems.size],
       ['Evidence', evidenceCount],
+      ...(techniqueCount ? [['Techniken', techniqueCount]] : []),
     ].map(([label, value]) =>
       `<span class="glass inline-flex items-center gap-2 rounded-lg px-2.5 py-1"><span class="text-slate-400">${label}</span><span class="font-mono font-semibold text-slate-100">${value}</span></span>`
     ).join('');

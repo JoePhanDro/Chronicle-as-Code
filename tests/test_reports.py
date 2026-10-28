@@ -216,3 +216,41 @@ def test_reports_page_offers_html_and_both_pdfs(db_path):
     assert 'href="/reports/inc-2026-042/pdf?art=technisch"' in html and 'href="/reports/inc-2026-042/pdf?art=management"' in html
     page = admin.get("/reports/inc-2026-042/pdf?art=management")
     assert page.status_code == 200 and page.headers["content-type"] == "application/pdf"
+
+
+def tag(db_path, key, techniques):
+    client = api_login(db_path, "anna")
+    current = client.get(f"/api/v1/events/{key}").json()
+    body = {name: current[name] for name in ("key", "t0", "phase", "actor", "system", "action", "status", "triggered_by", "details", "version")}
+    body.update(topic=current["home_topic"], topics=current["topics"], techniques=techniques)
+    assert client.put(f"/api/v1/events/{key}", json=body).status_code == 200
+
+
+def test_pdfs_list_the_techniques_of_the_incident_and_the_technical_one_names_them_per_event(db_path):
+    tag(db_path, "exploit", ["T1190", "T1059.001"])
+    tag(db_path, "analysis", ["T1190"])
+    admin = api_login(db_path, "admin")
+
+    technical = "\n".join(pdf_pages(admin.get("/api/v1/topics/inc-2026-042/report.pdf").content))
+    management = "\n".join(pdf_pages(admin.get("/api/v1/topics/inc-2026-042/report.pdf?art=management").content))
+
+    for text in (technical, management):
+        assert "ATT&CK-Techniken im Vorfall" in text
+        assert text.index("T1190") < text.index("T1059.001")  # the technique on two events comes first
+    assert "ATT&CK: T1059.001, T1190" in technical  # per event, only in the technical report
+    assert "ATT&CK: " not in management
+
+
+def test_pdfs_without_techniques_have_no_such_section(db_path):
+    text = "\n".join(pdf_pages(api_login(db_path, "admin").get("/api/v1/topics/inc-2026-042/report.pdf").content))
+
+    assert "ATT&CK" not in text
+
+
+def test_the_html_report_carries_the_techniques_and_links_them_to_mitre(db_path):
+    tag(db_path, "exploit", ["T1059.001"])
+
+    html = api_login(db_path, "admin").get("/api/v1/topics/inc-2026-042/report").text
+
+    assert '"techniques": ["T1059.001"]' in html or '"techniques":["T1059.001"]' in html
+    assert "https://attack.mitre.org/techniques/" in html and "noopener noreferrer" in html
