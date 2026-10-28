@@ -12,7 +12,9 @@
 <section aria-labelledby="sync-result" class="mb-6 rounded-xl border border-white/10 px-4 py-3 text-sm">
   <h2 id="sync-result" class="mb-2 font-semibold text-slate-100">Ergebnis</h2>
   {% if result.conflicts %}
-    <p class="text-amber-200">Konflikt in {{ result.conflicts|join(", ") }}. Das Zusammenführen ist abgebrochen, nichts wurde hochgeladen. Der Konflikt muss von Hand gelöst werden.</p>
+    <p class="text-amber-200">Konflikt in {{ result.conflicts|join(", ") }}. Das Zusammenführen ist abgebrochen, nichts wurde hochgeladen. Wähle für jede Datei, welcher Stand gelten soll.</p>
+    <form method="post" action="/abgleich">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
     {% for side in result.sides %}
     <div class="mt-4">
       <h3 class="font-mono text-slate-100">{{ side.name }}</h3>
@@ -29,8 +31,16 @@
         </details>
         {% endfor %}
       </div>
+      <fieldset class="mt-3">
+        <legend class="text-slate-300">Welcher Stand soll gelten?</legend>
+        <label class="mr-4 inline-flex items-center gap-2 text-slate-200"><input type="radio" name="wahl:{{ side.name }}" value="ours" required>Diese Kopie behalten</label>
+        <label class="inline-flex items-center gap-2 text-slate-200"><input type="radio" name="wahl:{{ side.name }}" value="theirs" required>Stand des Remotes übernehmen</label>
+      </fieldset>
     </div>
     {% endfor %}
+    <p class="mt-4 text-xs text-slate-500">Die gewählte Datei ersetzt die andere vollständig. Danach wird geprüft und hochgeladen; Git behält den früheren Stand.</p>
+    <button type="submit" class="mt-2 rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Auswahl übernehmen und abgleichen</button>
+    </form>
   {% elif result.problems %}
     <p class="text-amber-200">Der zusammengeführte Stand besteht die Prüfung nicht. Die Zusammenführung ist rückgängig gemacht, nichts wurde hochgeladen.</p>
     <ul class="mt-2 list-disc space-y-1 pl-5 text-rose-200">

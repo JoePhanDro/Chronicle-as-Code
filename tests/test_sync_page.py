@@ -103,6 +103,46 @@ def test_a_conflict_is_shown_and_nothing_is_pushed(tmp_path, git_folder):
     assert git(remote, "log", "-1", "--format=%s", "main").startswith("Anders")
 
 
+def _conflicting(tmp_path, git_folder):
+    remote = remote_of(tmp_path, git_folder)
+    other = clone_of(tmp_path, remote, "anna")
+    edit(other, "timeline.yaml", FEED, 'action: "Von anderswo"')
+    git(other, "commit", "-q", "-am", "Anders")
+    git(other, "push", "-q", "origin", "main")
+    edit(git_folder, "timeline.yaml", FEED, 'action: "Hier"')
+    return remote, client_for(tmp_path, git_folder)
+
+
+def test_the_conflict_form_offers_a_choice_per_file(tmp_path, git_folder):
+    _, client = _conflicting(tmp_path, git_folder)
+
+    page = client.post("/abgleich", data={"csrf_token": client.csrf}).text
+
+    assert 'name="wahl:timeline.yaml" value="ours"' in page and 'name="wahl:timeline.yaml" value="theirs"' in page
+
+
+def test_choosing_a_side_settles_the_conflict_and_is_audited(tmp_path, git_folder):
+    remote, client = _conflicting(tmp_path, git_folder)
+
+    response = client.post("/abgleich", data={"csrf_token": client.csrf, "wahl:timeline.yaml": "theirs"})
+
+    assert response.status_code == 200 and "Abgeglichen" in response.text
+    assert 'action: "Von anderswo"' in (git_folder / "timeline.yaml").read_text(encoding="utf-8")
+    assert git(remote, "rev-parse", "main") == git(git_folder, "rev-parse", "HEAD")
+    conn = connect(tmp_path / "chronicle.db")
+    runs = [row["detail"] for row in conn.execute("SELECT detail FROM audit_log WHERE action = 'sync'")]
+    conn.close()
+    assert runs[-1].endswith("resolved=timeline.yaml:theirs")
+
+
+def test_an_unknown_choice_is_an_error_on_the_page(tmp_path, git_folder):
+    _, client = _conflicting(tmp_path, git_folder)
+
+    response = client.post("/abgleich", data={"csrf_token": client.csrf, "wahl:timeline.yaml": "beide"})
+
+    assert response.status_code == 409 and "Unbekannte Wahl" in response.text
+
+
 def test_the_menu_offers_the_page_to_writers_only(tmp_path, git_folder):
     writer = client_for(tmp_path, git_folder)
     assert 'href="/abgleich"' in writer.get("/events").text

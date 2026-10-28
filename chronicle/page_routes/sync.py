@@ -13,6 +13,9 @@ from ..auth import client_ip
 from .common import WRITER_ROLES, PageContext
 
 
+CHOICE_PREFIX = "wahl:"  # the form field of a conflicting file is "wahl:<file name>", its value "ours" or "theirs"
+
+
 def make_sync_pages(ctx: PageContext) -> APIRouter:
     get_conn, page_user, ok_csrf, render = ctx.get_conn, ctx.page_user, ctx.ok_csrf, ctx.render
     router = APIRouter()
@@ -43,15 +46,16 @@ def make_sync_pages(ctx: PageContext) -> APIRouter:
         if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         data_dir = request.app.state.data_dir
+        choices = {key[len(CHOICE_PREFIX):]: value for key, value in form.items() if key.startswith(CHOICE_PREFIX)}
         try:
             # Git talks to the remote: that must not block the event loop. The index is rebuilt on this thread,
             # because the database connection belongs to it.
-            result = await run_in_threadpool(sync.synchronise, data_dir)
+            result = await run_in_threadpool(sync.synchronise, data_dir, choices)
             if result.merged:
                 repository.reindex(conn, data_dir)
         except sync.SyncError as exc:
             return await run_in_threadpool(render_sync, request, user, status_code=409, error=str(exc))
-        sync.audit_run(conn, user["id"], client_ip(request), result)
+        sync.audit_run(conn, user["id"], client_ip(request), result, choices)
         return await run_in_threadpool(render_sync, request, user, result=result)
 
     return router
