@@ -93,6 +93,57 @@ def test_the_whole_graph_is_in_view_and_fills_it_after_it_settles(new_page, dash
     assert max(xs) - min(xs) > 0.5 * canvas["width"] or max(ys) - min(ys) > 0.5 * canvas["height"]
 
 
+def panel_height(page):
+    return page.locator("#panel-graph").evaluate("panel => panel.getBoundingClientRect().height")
+
+
+def test_the_height_of_the_views_can_be_dragged_and_is_remembered(new_page, dashboard_url):
+    page = new_page(width=800, height=900)
+    page.goto(dashboard_url)
+    page.get_by_role("tab", name="Graph").click()
+    before = panel_height(page)
+    grip = page.locator("#panel-grip")
+    grip.scroll_into_view_if_needed()
+    box = grip.bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x, y + 120, steps=6)
+    page.mouse.up()
+
+    assert abs(panel_height(page) - (before + 120)) <= 2
+    page.reload()
+    page.get_by_role("tab", name="Graph").click()
+    assert abs(panel_height(page) - (before + 120)) <= 2
+
+    page.locator("#panel-grip").dblclick()
+    assert abs(panel_height(page) - before) <= 2
+
+
+def test_the_height_of_the_views_can_be_changed_with_the_keyboard(new_page, dashboard_url):
+    page = new_page(width=800, height=900)
+    page.goto(dashboard_url)
+    page.get_by_role("tab", name="Graph").click()
+    before = panel_height(page)
+
+    page.locator("#panel-grip").focus()
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("ArrowDown")
+    assert abs(panel_height(page) - (before + 80)) <= 2
+    assert page.locator("#panel-grip").get_attribute("aria-valuenow") == str(round(before + 80))
+
+    page.keyboard.press("Home")
+    assert abs(panel_height(page) - before) <= 2
+
+
+def test_there_is_no_grip_where_the_views_fill_the_window(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+
+    expect(page.locator("#panel-grip")).to_be_hidden()
+
+
 def test_tabs_switch_views_and_keep_the_selection(new_page, dashboard_url):
     page = new_page(width=1280, height=900)
     page.goto(f"{dashboard_url}#/timeline/siem-alert")
