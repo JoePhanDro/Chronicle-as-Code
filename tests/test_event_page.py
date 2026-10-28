@@ -54,7 +54,7 @@ def js(text):
 
 def test_analysts_get_a_closed_edit_panel_with_delete_at_its_end(api_client):
     html = api_client("analyst").get("/events/lessons").text
-    assert '<details id="bearbeiten" class="rounded-xl border border-white/10" >' in html  # closed
+    assert '<details id="bearbeiten" class="group rounded-xl border border-white/10" >' in html  # closed
     assert html.index('id="bearbeiten"') < html.index("Event löschen</button>")  # delete is inside the panel, last
     assert 'id="edit-link"' in html
 
@@ -130,7 +130,7 @@ def test_a_failed_edit_opens_the_panel_again(api_client):
     token = client.get("/api/v1/auth/me").json()["csrf_token"]
     response = client.post("/events/exploit/edit", data={"csrf_token": token, "version": "999"})
     assert response.status_code in (409, 422, 200)
-    assert '<details id="bearbeiten" class="rounded-xl border border-white/10" open>' in response.text
+    assert '<details id="bearbeiten" class="group rounded-xl border border-white/10" open>' in response.text
     assert 'role="alert"' in response.text
 
 
@@ -141,19 +141,19 @@ def test_markdown_headings_in_details_stay_below_the_page_title():
 def test_evidence_upload_is_folded_away_and_opens_again_after_a_failed_upload(api_client):
     client = api_client("analyst")
     html = client.get("/events/lessons").text
-    assert '<details id="evidence-add" class="mt-4 rounded-xl border border-white/10" >' in html and "Evidence hinzufügen" in html
+    assert '<details id="evidence-add" class="group mt-4 rounded-xl border border-white/10" >' in html and "Evidence hinzufügen" in html
     token = client.headers["X-CSRF-Token"]
     failed = client.post("/events/lessons/evidence", data={"csrf_token": token, "type": "log"},
                          files={"file": ("a.exe", b"x", "application/octet-stream")})
     assert failed.status_code == 422
-    assert '<details id="evidence-add" class="mt-4 rounded-xl border border-white/10" open>' in failed.text
-    assert '<details id="bearbeiten" class="rounded-xl border border-white/10" >' in failed.text  # the edit panel stays closed
+    assert '<details id="evidence-add" class="group mt-4 rounded-xl border border-white/10" open>' in failed.text
+    assert '<details id="bearbeiten" class="group rounded-xl border border-white/10" >' in failed.text  # the edit panel stays closed
 
 
 def test_chips_say_that_they_can_be_changed_and_the_panel_names_what_it_holds(api_client):
     html = api_client("analyst").get("/events/lessons").text
     assert 'title="Phase ändern"' in html and 'title="Status ändern"' in html
-    assert "Weitere Felder bearbeiten · Event löschen</summary>" in html
+    assert "Weitere Felder bearbeiten · Event löschen</span>" in html
 
 
 def test_time_fields_say_what_the_entry_comes_to_in_utc(api_client):
