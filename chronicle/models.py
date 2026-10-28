@@ -6,6 +6,7 @@ instead of silently dropping data.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -13,6 +14,8 @@ from pathlib import PurePosixPath
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+TECHNIQUE_ID = re.compile(r"T\d{4}(\.\d{3})?")
 
 
 class Phase(StrEnum):
@@ -87,6 +90,11 @@ class Event(BaseModel):
         default_factory=list,
         description="Keys of the events that caused this event. Any number, including none (issue #87)",
     )
+    techniques: list[str] = Field(
+        default_factory=list,
+        max_length=50,
+        description="MITRE ATT&CK technique IDs, e.g. T1190 or T1059.001. Any number, including none (ADR 0026)",
+    )
     details: str = Field(default="", description="Markdown body shown in the detail view")
     evidence: list[Evidence] = Field(default_factory=list)
 
@@ -120,6 +128,25 @@ class Event(BaseModel):
         # The causes form a set: order and repeats carry no meaning, so they are stored sorted and unique.
         if any(not key for key in value):
             raise ValueError("triggered_by enthält einen leeren Key")
+        return sorted(set(value))
+
+    @field_validator("techniques", mode="before")
+    @classmethod
+    def _tidy_techniques(cls, value: object) -> object:
+        # Forms send "" for nothing. IDs are compared in upper case, so t1190 is T1190.
+        if value is None or value == "":
+            return []
+        if isinstance(value, list):
+            return [item.strip().upper() if isinstance(item, str) else item for item in value]
+        return value
+
+    @field_validator("techniques")
+    @classmethod
+    def _technique_ids(cls, value: list[str]) -> list[str]:
+        # A set, like triggered_by: stored sorted and unique. Only the format is checked, there is no catalogue (ADR 0026).
+        wrong = [item for item in value if not TECHNIQUE_ID.fullmatch(item)]
+        if wrong:
+            raise ValueError(f"Keine gültige ATT&CK-Technik-ID (z. B. T1190 oder T1059.001): {', '.join(map(repr, wrong[:3]))}")
         return sorted(set(value))
 
 

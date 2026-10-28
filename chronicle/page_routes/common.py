@@ -66,6 +66,9 @@ TEMPLATES.env.globals["phase_color"] = lambda name: next(
 
 # One German wording for a status wherever it is shown or chosen; a value outside the enum (old data) is shown as stored.
 TEMPLATES.env.globals["status_text"] = {status.value: label for status, label in STATUS_LABELS.items()}
+TEMPLATES.env.filters["attack_url"] = lambda technique: (
+    "https://attack.mitre.org/techniques/" + str(technique).replace(".", "/") + "/"  # T1059.001 -> T1059/001
+)
 TEMPLATES.env.filters["count_events"] = lambda number: f"{number} {'Event' if number == 1 else 'Events'}"
 
 

@@ -132,24 +132,24 @@ def _yaml_bytes(document: dict) -> bytes:
     return (HEADER + text).encode("utf-8")
 
 
-def _event_document(
-    conn, event: dict, files: dict[str, bytes], report: ExportReport, evidence_ids: dict[str, int] | None = None,
-    data_dir: Path | None = None, with_content: bool = True,
-) -> dict:
-    document = {
-        "key": event["key"],
-        "t0": event["t0"],
-        "phase": event["phase"],
-        "actor": event["actor"],
-    }
+def _event_fields(event: dict) -> dict:
+    """The fields of an event as the file holds them: the required ones, then those that are set."""
+    document = {"key": event["key"], "t0": event["t0"], "phase": event["phase"], "actor": event["actor"]}
     if event["system"]:
         document["system"] = event["system"]
     document["action"] = event["action"]
     document["status"] = event["status"]
-    if event["triggered_by"]:
-        document["triggered_by"] = event["triggered_by"]
-    if event["details"]:
-        document["details"] = event["details"]
+    for name in ("triggered_by", "techniques", "details"):
+        if event.get(name):
+            document[name] = event[name]
+    return document
+
+
+def _event_document(
+    conn, event: dict, files: dict[str, bytes], report: ExportReport, evidence_ids: dict[str, int] | None = None,
+    data_dir: Path | None = None, with_content: bool = True,
+) -> dict:
+    document = _event_fields(event)
 
     used: set[str] = set()
     evidence = []

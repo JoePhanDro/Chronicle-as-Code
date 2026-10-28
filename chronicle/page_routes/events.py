@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import UTC, datetime
 from urllib.parse import urlencode
@@ -42,6 +43,7 @@ def _payload_from_form(form, topic_home: str | None = None) -> dict:
         "action": _field(form, "action"),
         "status": _raw(form, "status"),
         "triggered_by": [key for key in map(str.strip, form.getlist("triggered_by")) if key],
+        "techniques": [item for item in re.split(r"[,;\s]+", _raw(form, "techniques")) if item],
         "details": _raw(form, "details"),
         "topic": topic_home or _raw(form, "topic"),
         "topics": form.getlist("topics"),
@@ -61,7 +63,7 @@ def edit_form(event: dict) -> dict:
     return {
         "key": event["key"], "phase": event["phase"], "actor": event["actor"], "system": event["system"] or "",
         "action": event["action"], "status": event["status"], "triggered_by": event["triggered_by"],
-        "details": event["details"] or "", "topics": event["topics"], "topic": event["home_topic"],
+        "techniques": ", ".join(event["techniques"]), "details": event["details"] or "", "topics": event["topics"], "topic": event["home_topic"],
         "version": event["version"], **t0_parts(event["t0"]),
     }
 
@@ -215,7 +217,7 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
             payload = {
                 "key": key, "t0": current["t0"], "phase": phase, "actor": current["actor"], "system": current["system"],
                 "action": current["action"], "status": status, "triggered_by": current["triggered_by"],
-                "details": current["details"] or "", "topic": current["home_topic"], "topics": current["topics"],
+                "techniques": current["techniques"], "details": current["details"] or "", "topic": current["home_topic"], "topics": current["topics"],
             }
             body = EventWrite.model_validate(payload)
             repository.update_event(conn, key, event_of(body), topic_list(body), version,

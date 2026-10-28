@@ -154,7 +154,8 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
                 body = EventWrite.model_validate({
                     "key": current["key"], "t0": current["t0"], "phase": current["phase"], "actor": current["actor"],
                     "system": current["system"], "action": current["action"], "status": "resolved",
-                    "triggered_by": current["triggered_by"], "details": current["details"] or "",
+                    "triggered_by": current["triggered_by"], "techniques": current["techniques"],
+                    "details": current["details"] or "",
                     "topic": current["home_topic"], "topics": current["topics"],
                 })
                 repository.update_event(conn, current["key"], event_of(body), topic_list(body), current["version"],

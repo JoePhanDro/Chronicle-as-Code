@@ -114,6 +114,15 @@
 </section>
 
 <section class="{{ section_class }}">
+  <h2 class="{{ heading_class }}">ATT&amp;CK</h2>
+  <label class="block">
+    <span class="{{ label_class }}">Techniken (optional, mit Komma getrennt)</span>
+    <input name="techniques" value="{{ f.techniques or '' }}" placeholder="T1190, T1059.001" autocomplete="off" spellcheck="false"
+           class="{{ input_class }} font-mono">
+  </label>
+</section>
+
+<section class="{{ section_class }}">
   <h2 class="{{ heading_class }}">Verknüpfungen</h2>
   <div class="space-y-5">
     <fieldset data-cause-picker>

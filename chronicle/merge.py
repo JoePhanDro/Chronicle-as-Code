@@ -7,7 +7,7 @@ per field.
 Decisions:
 - A deletion on one side and a change on the other is a conflict, not a silent deletion.
 - Events keep the order of our side; events only the other side added follow, in its order.
-- A link (refs) removed by either side is removed. Links never conflict.
+- A link (refs) removed by either side is removed. Links never conflict. The same holds for the techniques of an event.
 - Comments of our side stay. Comments that only the other side has are not carried over.
 
 Git setup for a data repository (per clone, git does not share it):
@@ -49,6 +49,7 @@ from .yamlscan import MAX_YAML_BYTES, TOO_LARGE, describe_validation_error
 
 TOPIC_FIELDS = ("title", "kind", "summary")
 EVENT_FIELDS = tuple(name for name in Event.model_fields if name != "key")
+SET_FIELDS = ("techniques",)  # merged like refs: what either side adds is in, what either side removes is out
 
 
 class MergeConflict(Exception):
@@ -94,12 +95,19 @@ def _merge_event(key: str, base: Event | None, ours: Event | None, theirs: Event
     if ours is None or theirs is None:
         problems.append(f"{key}: auf einer Seite gelöscht, auf der anderen geändert")
         return ours or theirs
+    return ours.model_copy(update=_merge_fields(key, base, ours, theirs, problems))
+
+
+def _merge_fields(key: str, base: Event | None, ours: Event, theirs: Event, problems: list[str]) -> dict:
+    """The merged value of each field: three-way, except the set fields, which are merged like refs."""
     values = {
         name: _three_way(getattr(base, name) if base else None, getattr(ours, name), getattr(theirs, name),
                          f"{key}.{name}", problems)
-        for name in EVENT_FIELDS
+        for name in EVENT_FIELDS if name not in SET_FIELDS
     }
-    return ours.model_copy(update=values)
+    for name in SET_FIELDS:
+        values[name] = sorted(_merge_refs(getattr(base, name) if base else [], getattr(ours, name), getattr(theirs, name)))
+    return values
 
 
 def _merge_refs(base: list[str], ours: list[str], theirs: list[str]) -> list[str]:

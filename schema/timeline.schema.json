@@ -51,6 +51,15 @@
           "title": "Triggered By",
           "type": "array"
         },
+        "techniques": {
+          "description": "MITRE ATT&CK technique IDs, e.g. T1190 or T1059.001. Any number, including none (ADR 0026)",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Techniques",
+          "type": "array"
+        },
         "details": {
           "default": "",
           "description": "Markdown body shown in the detail view",
