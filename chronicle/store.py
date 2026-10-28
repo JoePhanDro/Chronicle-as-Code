@@ -488,6 +488,7 @@ def _stored_values(event: Event) -> dict:
         "action": event.action,
         "status": event.status.value,
         "triggered_by": list(event.triggered_by) or None,
+        "techniques": list(event.techniques) or None,
         "details": _text(event.details) or None,
     }
 
@@ -568,6 +569,8 @@ def _event_document(event: Event) -> dict:
     item["status"] = event.status.value
     if event.triggered_by:
         item["triggered_by"] = list(event.triggered_by)
+    if event.techniques:
+        item["techniques"] = list(event.techniques)
     if event.details:
         item["details"] = _text(event.details)
     if event.evidence:

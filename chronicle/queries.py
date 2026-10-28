@@ -18,7 +18,7 @@ from .loader import link_below
 
 EVENT_SELECT = """
 SELECT events.pk, events.key, events.t0, events.phase, events.actor, events.system, events.action,
-       events.status, events.triggered_by, events.details, events.home_topic, events.version
+       events.status, events.triggered_by, events.techniques, events.details, events.home_topic, events.version
 FROM events
 """
 
@@ -26,6 +26,9 @@ FROM events
 def triggers_from_db(stored: str | None) -> list[str]:
     """The stored form of triggered_by is a JSON list of keys, or NULL for none (issue #87)."""
     return json.loads(stored) if stored else []
+
+
+techniques_from_db = triggers_from_db  # techniques are stored the same way: a JSON list, or NULL for none (ADR 0026)
 
 
 def topic_keys_of(conn: sqlite3.Connection, event_pk: int) -> list[str]:
@@ -82,6 +85,7 @@ def with_evidence(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[dic
     for row in rows:
         event = {key: row[key] for key in row.keys() if key != "pk"}
         event["triggered_by"] = triggers_from_db(event["triggered_by"])
+        event["techniques"] = techniques_from_db(event["techniques"])
         event["evidence"] = evidence_of[row["pk"]]
         events.append(event)
     return events

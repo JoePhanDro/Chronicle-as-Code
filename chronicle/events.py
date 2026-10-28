@@ -28,7 +28,7 @@ from .store import (
     update_event_in_file,
 )
 
-EDITABLE_FIELDS = ("t0", "phase", "actor", "system", "action", "status", "triggered_by", "details")
+EDITABLE_FIELDS = ("t0", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "details")
 
 
 def _update_in_folder(
@@ -67,7 +67,7 @@ def _index_field_change(conn: sqlite3.Connection, key: str, event: Event, writte
         conn.execute(
             """
             UPDATE events SET t0 = ?, phase = ?, actor = ?, system = ?, action = ?, status = ?,
-                              triggered_by = ?, details = ?, version = version + 1,
+                              triggered_by = ?, techniques = ?, details = ?, version = version + 1,
                               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE key = ?
             """,
@@ -150,7 +150,7 @@ def update_event(
     old_topics = topic_keys_of(conn, row["pk"])
     new_values = {"t0": event.t0.isoformat(), "phase": event.phase.value, "actor": event.actor,
                   "system": event.system, "action": event.action, "status": event.status.value,
-                  "triggered_by": event.triggered_by, "details": event.details}
+                  "triggered_by": event.triggered_by, "techniques": event.techniques, "details": event.details}
     changed = [name for name in EDITABLE_FIELDS if str(old[name]) != str(new_values[name])]
     if sorted(old_topics) != sorted(topic_keys):
         changed.append("topics")

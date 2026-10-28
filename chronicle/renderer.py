@@ -139,6 +139,7 @@ def _event_payload(event: Event, src_for: Callable[[Evidence], str]) -> dict:
         "action": event.action,
         "status": event.status.value,
         "triggered_by": event.triggered_by,
+        "techniques": event.techniques,
         "details": event.details,
         "details_html": render_markdown(event.details, images),
         "evidence": [

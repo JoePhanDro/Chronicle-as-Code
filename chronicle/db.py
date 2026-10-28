@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS events (
     action        TEXT NOT NULL,
     status        TEXT NOT NULL,
     triggered_by  TEXT,
+    techniques    TEXT,
     details       TEXT NOT NULL DEFAULT '',
     home_topic    TEXT NOT NULL,
     version       INTEGER NOT NULL DEFAULT 1,
@@ -311,6 +312,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
     migrate_incident_schema(conn)
     _create_schema(conn)
     _ensure_column(conn, "events", "version", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(conn, "events", "techniques", "TEXT")
     _ensure_column(conn, "evidence", "mime", "TEXT")
     _ensure_column(conn, "evidence", "size", "INTEGER")
     _ensure_column(conn, "evidence", "sha256", "TEXT")
