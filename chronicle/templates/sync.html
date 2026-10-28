@@ -13,6 +13,24 @@
   <h2 id="sync-result" class="mb-2 font-semibold text-slate-100">Ergebnis</h2>
   {% if result.conflicts %}
     <p class="text-amber-200">Konflikt in {{ result.conflicts|join(", ") }}. Das Zusammenführen ist abgebrochen, nichts wurde hochgeladen. Der Konflikt muss von Hand gelöst werden.</p>
+    {% for side in result.sides %}
+    <div class="mt-4">
+      <h3 class="font-mono text-slate-100">{{ side.name }}</h3>
+      {% if side.diff %}
+      <pre aria-label="Unterschiede in {{ side.name }}" class="mt-2 overflow-x-auto rounded-lg border border-white/10 p-3 font-mono text-xs leading-relaxed">{% for line in side.diff %}<span class="block {% if line.startswith('+') %}text-emerald-300{% elif line.startswith('-') %}text-rose-300{% else %}text-slate-500{% endif %}">{{ line }}</span>{% endfor %}</pre>
+      <p class="mt-1 text-xs text-slate-500">&minus; dieser Stand, + Stand des Remotes.</p>
+      {% endif %}
+      <div class="mt-2 grid gap-3 md:grid-cols-2">
+        {% for title, text in (("Dieser Stand", side.ours), ("Stand des Remotes", side.theirs)) %}
+        <details class="rounded-lg border border-white/10 px-3 py-2">
+          <summary class="cursor-pointer text-slate-300">{{ title }}</summary>
+          {% if text is none %}<p class="mt-2 text-slate-500">Die Datei gibt es auf dieser Seite nicht.</p>
+          {% else %}<pre class="mt-2 overflow-x-auto font-mono text-xs text-slate-300">{{ text }}</pre>{% endif %}
+        </details>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
   {% elif result.problems %}
     <p class="text-amber-200">Der zusammengeführte Stand besteht die Prüfung nicht. Die Zusammenführung ist rückgängig gemacht, nichts wurde hochgeladen.</p>
     <ul class="mt-2 list-disc space-y-1 pl-5 text-rose-200">
