@@ -8,7 +8,7 @@ from collections.abc import Callable
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from .. import repository, sync
-from ..auth import Auth
+from ..auth import Auth, client_ip
 
 
 def make_sync_routes(get_conn: Callable, auth: Auth) -> APIRouter:
@@ -27,7 +27,7 @@ def make_sync_routes(get_conn: Callable, auth: Auth) -> APIRouter:
         }
 
     @router.post("/api/v1/sync")
-    def sync_now(request: Request, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(writer)) -> dict:
+    def sync_now(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> dict:
         """Commit the topic files, take in the remote's state, push. After a merge the index is rebuilt (issue #90)."""
         data_dir = request.app.state.data_dir
         try:
@@ -36,6 +36,7 @@ def make_sync_routes(get_conn: Callable, auth: Auth) -> APIRouter:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         if result.merged:
             repository.reindex(conn, data_dir)
+        sync.audit_run(conn, user["id"], client_ip(request), result)
         return {"committed": result.committed, "merged": result.merged, "conflicts": result.conflicts,
                 "problems": result.problems}
 

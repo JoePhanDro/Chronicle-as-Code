@@ -60,6 +60,23 @@ def folder_with_b(tmp_path):
 
 
 @pytest.fixture
+def git_folder(tmp_path, monkeypatch):
+    """The example data plus b.yaml as a Git repository with one commit on main."""
+    from tests.gitutil import git
+
+    for name, value in {"GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+                        "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.invalid"}.items():
+        monkeypatch.setenv(name, value)
+    data = tmp_path / "data"
+    shutil.copytree(DATA_DIR, data)
+    (data / "b.yaml").write_text(B_TOPIC, encoding="utf-8")
+    git(data, "init", "-q", "-b", "main")
+    git(data, "add", ".")
+    git(data, "commit", "-q", "-m", "Stand")
+    return data
+
+
+@pytest.fixture
 def conn(folder):
     connection = connect(folder.parent / "chronicle.db")
     yield connection

@@ -9,6 +9,7 @@ import yaml
 
 from tests.conftest import app_for
 from chronicle import sync
+from tests.gitutil import clone_of, edit, git, remote_of
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 B_TOPIC = (
@@ -25,29 +26,9 @@ def plain_http(monkeypatch):
     monkeypatch.setenv("CHRONICLE_COOKIE_SECURE", "0")
 
 
-def git(folder: Path, *args: str) -> str:
-    return subprocess.run(["git", "-C", str(folder), *args], capture_output=True, text=True, check=True).stdout
-
-
 @pytest.fixture
-def folder(tmp_path, monkeypatch):
-    for name, value in {"GIT_AUTHOR_NAME": "T", "GIT_AUTHOR_EMAIL": "t@example.invalid",
-                        "GIT_COMMITTER_NAME": "T", "GIT_COMMITTER_EMAIL": "t@example.invalid"}.items():
-        monkeypatch.setenv(name, value)
-    data = tmp_path / "data"
-    shutil.copytree(DATA_DIR, data)
-    (data / "b.yaml").write_text(B_TOPIC, encoding="utf-8")
-    git(data, "init", "-q", "-b", "main")
-    git(data, "add", ".")
-    git(data, "commit", "-q", "-m", "Stand")
-    return data
-
-
-def edit(folder: Path, name: str, old: str, new: str) -> None:
-    path = folder / name
-    text = path.read_text(encoding="utf-8")
-    assert text.count(old) == 1, old
-    path.write_text(text.replace(old, new), encoding="utf-8")
+def folder(git_folder):
+    return git_folder
 
 
 def test_nothing_changed_gives_an_empty_plan(folder):
@@ -210,21 +191,6 @@ def test_an_upstream_without_local_changes_gives_an_empty_plan(tmp_path, folder)
 
 
 ROOT = Path(__file__).resolve().parent.parent
-
-
-def remote_of(tmp_path, folder):
-    """A bare remote that holds the folder's history, with the folder set up to push to it."""
-    remote = tmp_path / "remote.git"
-    git(tmp_path, "init", "-q", "--bare", "-b", "main", str(remote))
-    git(folder, "remote", "add", "origin", str(remote))
-    git(folder, "push", "-q", "-u", "origin", "main")
-    return remote
-
-
-def clone_of(tmp_path, remote, name):
-    path = tmp_path / name
-    subprocess.run(["git", "clone", "-q", str(remote), str(path)], capture_output=True, text=True, check=True)
-    return path
 
 
 def subjects(folder: Path) -> list[str]:

@@ -12,6 +12,7 @@ from .page_routes.common import TEMPLATES, PageContext, not_found_page
 from .page_routes.events import make_event_pages
 from .page_routes.general import make_general_pages
 from .page_routes.reports import make_report_pages
+from .page_routes.sync import make_sync_pages
 from .page_routes.topics import make_topic_pages
 
 __all__ = ["TEMPLATES", "make_pages", "not_found_page"]
@@ -25,5 +26,6 @@ def make_pages(get_conn: Callable[..., Iterator[sqlite3.Connection]], auth: Auth
     router.include_router(make_event_pages(ctx))
     router.include_router(make_general_pages(ctx))
     router.include_router(make_report_pages(ctx))
+    router.include_router(make_sync_pages(ctx))
     router.include_router(make_topic_pages(ctx))
     return router
