@@ -275,9 +275,10 @@
         <p id="hint-graph" class="sr-only">Grafischer Graph der Zusammenhänge. Alle Ereignisse stehen auch als Tabelle im Tab Ereignisse und lassen sich dort mit der Tastatur auswählen.</p>
         <div id="graph" role="group" aria-label="Graph der Zusammenhänge" class="absolute inset-0"></div>
 
-        <div class="absolute right-4 top-4 z-10 flex gap-2">
+        <div class="absolute right-4 top-4 z-10 flex max-w-[calc(100%-2rem)] flex-wrap justify-end gap-2">
           <button id="btn-fit" class="btn">Zentrieren</button>
           <button id="btn-physics" class="btn">Physik an/aus</button>
+          <button id="btn-layout" class="btn" title="Von Hand verschobene Knoten wieder von der Physik anordnen lassen">Anordnung zurücksetzen</button>
           <button id="btn-reset" class="btn">Auswahl lösen</button>
         </div>
 
@@ -641,6 +642,22 @@
       ]);
     }
 
+    // Nodes placed by hand stay where they are put: they are pinned against the physics and remembered per page in this
+    // browser. A saved report has no app storage and keeps the arrangement for the session only.
+    const POSITIONS_KEY = `chronicle.graph.positions:${location.pathname}`;
+    const pinned = (() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(POSITIONS_KEY)) || {};
+        return Object.fromEntries(Object.entries(saved).filter(([, at]) => Number.isFinite(at?.x) && Number.isFinite(at?.y)));
+      } catch (error) { return {}; }
+    })();
+    function savePinned() {
+      try {
+        if (Object.keys(pinned).length) localStorage.setItem(POSITIONS_KEY, JSON.stringify(pinned));
+        else localStorage.removeItem(POSITIONS_KEY);
+      } catch (error) { /* no storage: the arrangement lasts until the page is closed */ }
+    }
+
     // Graph: icon nodes, curved edges, neighborhood highlight on selection.
     const graphNodes = new vis.DataSet(DATA.nodes.map(node => {
       const kind = node.id.split(':')[0];
@@ -654,6 +671,7 @@
         image: iconUri(color, KIND[kind].glyph),
         size: kind === 'event' ? 30 : 24,
         font: nodeFont(),
+        ...(pinned[node.id] && { fixed: true }),
       };
     }));
 
@@ -692,6 +710,8 @@
       },
     });
 
+    // vis lays out all nodes at the start, pinned ones too, so they are moved back to where they were put.
+    for (const [id, at] of Object.entries(pinned)) if (graphNodes.get(id)) network.moveNode(id, at.x, at.y);
     network.once('stabilized', () => network.fit({ animation: motion({ duration: 500, easingFunction: 'easeInOutQuad' }) }));
     // vis-network resizes its canvas with the container but keeps the old view, so the graph can end up outside it.
     let refitTimer = null;
@@ -704,6 +724,17 @@
       if (!params.nodes.length) return clearSelection();
       const node = graphNodes.get(params.nodes[0]);
       if (node.event_id) selectEvent(node.event_id, { reveal: true });
+    });
+    // A click also reports a drag, so a node is pinned only if it moved.
+    let dragFrom = {};
+    network.on('dragStart', params => { dragFrom = network.getPositions(params.nodes); });
+    network.on('dragEnd', params => {
+      const now = network.getPositions(params.nodes);
+      const moved = params.nodes.filter(id => dragFrom[id] && Math.hypot(now[id].x - dragFrom[id].x, now[id].y - dragFrom[id].y) > 2);
+      if (!moved.length) return;
+      for (const id of moved) pinned[id] = { x: now[id].x, y: now[id].y };
+      graphNodes.update(moved.map(id => ({ id, fixed: true })));
+      savePinned();
     });
     network.on('hoverNode', () => { graphEl.style.cursor = 'pointer'; });
     network.on('blurNode', () => { graphEl.style.cursor = 'default'; });
@@ -864,6 +895,15 @@
     // Toolbar
     document.getElementById('btn-fit').addEventListener('click', () => network.fit({ animation: motion({ duration: 500 }) }));
     document.getElementById('btn-reset').addEventListener('click', clearSelection);
+    document.getElementById('btn-layout').addEventListener('click', () => {
+      for (const id of Object.keys(pinned)) delete pinned[id];
+      savePinned();
+      graphNodes.update(graphNodes.getIds().map(id => ({ id, fixed: false })));
+      physicsOn = true;
+      network.setOptions({ physics: { enabled: true } });
+      network.once('stabilized', () => network.fit({ animation: motion({ duration: 500 }) }));
+      network.stabilize();
+    });
     let physicsOn = physicsStart;
     document.getElementById('btn-physics').addEventListener('click', () => {
       physicsOn = !physicsOn;

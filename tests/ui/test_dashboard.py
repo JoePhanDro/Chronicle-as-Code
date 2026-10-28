@@ -144,6 +144,70 @@ def test_there_is_no_grip_where_the_views_fill_the_window(new_page, dashboard_ur
     expect(page.locator("#panel-grip")).to_be_hidden()
 
 
+def node_in_page(page, node_id):
+    """Where a graph node is on the page, in pixels."""
+    canvas = page.locator("#graph canvas").first.bounding_box()
+    point = page.evaluate("(id) => network.canvasToDOM(network.getPositions([id])[id])", node_id)
+    return canvas["x"] + point["x"], canvas["y"] + point["y"]
+
+
+def drag_node(page, node_id, dx, dy):
+    x, y = node_in_page(page, node_id)
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + dx / 2, y + dy / 2, steps=5)
+    page.mouse.move(x + dx, y + dy, steps=5)
+    page.mouse.up()
+
+
+def test_a_dragged_graph_node_stays_where_it_is_put_also_after_a_reload(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+    page.get_by_role("tab", name="Graph").click()
+    wait_for_graph_layout(page)
+    node = "event:siem-alert"
+
+    drag_node(page, node, 120, 60)
+    placed = page.evaluate("(id) => network.getPositions([id])[id]", node)
+    page.wait_for_timeout(800)  # the physics would pull it back, were it not pinned
+
+    assert page.evaluate("(id) => network.getPositions([id])[id]", node) == placed
+    page.reload()
+    page.get_by_role("tab", name="Graph").click()
+    wait_for_graph_layout(page)
+    assert page.evaluate("(id) => network.getPositions([id])[id]", node) == placed
+
+
+def test_a_click_on_a_graph_node_does_not_pin_it(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+    page.get_by_role("tab", name="Graph").click()
+    wait_for_graph_layout(page)
+
+    x, y = node_in_page(page, "event:siem-alert")
+    page.mouse.click(x, y)
+
+    assert page.evaluate("graphNodes.get('event:siem-alert').fixed") in (None, False)
+    assert page.evaluate("Object.keys(pinned).length") == 0
+
+
+def test_resetting_the_arrangement_frees_the_nodes_again(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+    page.get_by_role("tab", name="Graph").click()
+    wait_for_graph_layout(page)
+    drag_node(page, "event:siem-alert", 120, 60)
+    assert page.evaluate("Object.keys(pinned).length") == 1
+
+    page.get_by_role("button", name="Anordnung zurücksetzen").click()
+
+    assert page.evaluate("Object.keys(pinned).length") == 0
+    assert page.evaluate("graphNodes.get().every(node => !node.fixed)")
+    page.reload()
+    page.get_by_role("tab", name="Graph").click()
+    assert page.evaluate("Object.keys(pinned).length") == 0
+
+
 def test_tabs_switch_views_and_keep_the_selection(new_page, dashboard_url):
     page = new_page(width=1280, height=900)
     page.goto(f"{dashboard_url}#/timeline/siem-alert")
