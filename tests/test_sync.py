@@ -263,6 +263,66 @@ def test_a_conflict_carries_both_sides_of_the_file(tmp_path, folder):
     assert '-    action: "Bernd"' in side.diff and '+    action: "Anna"' in side.diff
 
 
+def _conflict(tmp_path, folder):
+    """A folder and a remote that changed the same field; returns the remote and the other clone."""
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    edit(other, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Anna"')
+    sync.synchronise(other)
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Bernd"')
+    return remote, other
+
+
+def test_choosing_ours_keeps_this_copy_and_pushes_it(tmp_path, folder):
+    remote, _ = _conflict(tmp_path, folder)
+
+    result = sync.synchronise(folder, {"timeline.yaml": "ours"})
+
+    assert result.conflicts == [] and result.merged
+    assert 'action: "Bernd"' in (folder / "timeline.yaml").read_text(encoding="utf-8")
+    assert git(remote, "rev-parse", "main") == git(folder, "rev-parse", "HEAD")
+    assert not (folder / ".git" / "MERGE_HEAD").exists()
+
+
+def test_choosing_theirs_takes_the_remotes_file(tmp_path, folder):
+    remote, _ = _conflict(tmp_path, folder)
+
+    result = sync.synchronise(folder, {"timeline.yaml": "theirs"})
+
+    assert result.conflicts == [] and result.merged
+    assert 'action: "Anna"' in (folder / "timeline.yaml").read_text(encoding="utf-8")
+    assert git(remote, "rev-parse", "main") == git(folder, "rev-parse", "HEAD")
+
+
+def test_a_conflict_without_a_choice_is_still_aborted(tmp_path, folder):
+    remote, _ = _conflict(tmp_path, folder)
+    before = git(remote, "rev-parse", "main")
+
+    result = sync.synchronise(folder, {"andere.yaml": "ours"})
+
+    assert result.conflicts == ["timeline.yaml"]
+    assert git(remote, "rev-parse", "main") == before
+    assert not (folder / ".git" / "MERGE_HEAD").exists()
+
+
+def test_choosing_theirs_where_the_remote_deleted_the_file_removes_it(tmp_path, folder):
+    remote = remote_of(tmp_path, folder)
+    other = clone_of(tmp_path, remote, "anna")
+    git(other, "rm", "-q", "timeline.yaml")
+    git(other, "commit", "-q", "-m", "Weg")
+    git(other, "push", "-q", "origin", "main")
+    edit(folder, "timeline.yaml", 'action: "CVE-2026-XXXX veröffentlicht"', 'action: "Bernd"')
+
+    sync.synchronise(folder, {"timeline.yaml": "theirs"})
+
+    assert not (folder / "timeline.yaml").exists()
+
+
+def test_an_unknown_choice_is_refused(tmp_path, folder):
+    with pytest.raises(sync.SyncError, match="Unbekannte Wahl"):
+        sync.synchronise(folder, {"timeline.yaml": "beide"})
+
+
 def test_a_side_without_the_file_is_none(tmp_path, folder):
     remote = remote_of(tmp_path, folder)
     other = clone_of(tmp_path, remote, "anna")
