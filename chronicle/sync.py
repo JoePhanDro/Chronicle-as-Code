@@ -267,10 +267,12 @@ def synchronise(data_dir: Path, choices: Mapping[str, str] | None = None) -> Syn
         raise SyncError(str(exc)) from exc
 
 
-def audit_run(conn, user_id: int, ip: str, result: SyncResult) -> None:
-    """Record a run in the audit log, whoever started it (page or API)."""
-    accounts.audit(conn, "sync", user_id=user_id, target="remote", ip=ip,
-                   detail=f"committed={result.committed},merged={result.merged},conflicts={len(result.conflicts)}")
+def audit_run(conn, user_id: int, ip: str, result: SyncResult, choices: Mapping[str, str] | None = None) -> None:
+    """Record a run in the audit log, whoever started it (page or API). Choices that settled conflicts are listed."""
+    detail = f"committed={result.committed},merged={result.merged},conflicts={len(result.conflicts)}"
+    if choices and not result.conflicts:
+        detail += ",resolved=" + ";".join(f"{name}:{side}" for name, side in sorted(choices.items()))
+    accounts.audit(conn, "sync", user_id=user_id, target="remote", ip=ip, detail=detail)
 
 
 def _current_branch(data_dir: Path) -> str:
