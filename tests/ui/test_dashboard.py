@@ -208,6 +208,30 @@ def test_resetting_the_arrangement_frees_the_nodes_again(new_page, dashboard_url
     assert page.evaluate("Object.keys(pinned).length") == 0
 
 
+def test_the_details_link_the_techniques_to_mitre_and_the_header_counts_them(new_page, tmp_path):
+    timeline = load_timeline(DATA_DIR / "timeline.yaml")
+    events = [event.model_copy(update={"techniques": ["T1190", "T1059.001"]}) if event.key == "siem-alert" else event
+              for event in timeline.events]
+    timeline = timeline.model_copy(update={"events": events})
+    (tmp_path / "dashboard.html").write_text(render_dashboard(timeline), encoding="utf-8")
+    shutil.copy(ROOT / "chronicle" / "static" / "app.css", tmp_path / "app.css")
+    page = new_page(width=1280, height=900)
+
+    page.goto(f"{(tmp_path / 'dashboard.html').as_uri()}#siem-alert")
+
+    link = page.locator("#details").get_by_role("link", name="T1059.001")
+    expect(link).to_have_attribute("href", "https://attack.mitre.org/techniques/T1059/001/")
+    expect(link).to_have_attribute("rel", "noopener noreferrer")
+    expect(page.locator("#kpis")).to_contain_text("Techniken2")
+
+
+def test_the_header_has_no_technique_count_without_techniques(new_page, dashboard_url):
+    page = new_page(width=1280, height=900)
+    page.goto(dashboard_url)
+
+    expect(page.locator("#kpis")).not_to_contain_text("Techniken")
+
+
 def test_tabs_switch_views_and_keep_the_selection(new_page, dashboard_url):
     page = new_page(width=1280, height=900)
     page.goto(f"{dashboard_url}#/timeline/siem-alert")
