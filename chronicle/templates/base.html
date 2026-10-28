@@ -313,6 +313,22 @@
         trigger.setAttribute('aria-expanded', String(open));
         document.getElementById(trigger.getAttribute('aria-controls')).hidden = !open;
       };
+      // Arrow keys move through the entries: Down and Up on the button open the menu, then Down, Up, Home and End
+      // move the focus, and the ends wrap around. Tab and Escape work as before.
+      const entriesOf = trigger => [...document.getElementById(trigger.getAttribute('aria-controls')).querySelectorAll('a, button')];
+      const isMoveKey = (key, onTrigger, open) => (open && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(key))
+        || (onTrigger && !open && (key === 'ArrowDown' || key === 'ArrowUp'));
+      const moveInMenu = (trigger, key) => {
+        const entries = entriesOf(trigger);
+        const at = entries.indexOf(document.activeElement);
+        const target = {
+          ArrowDown: at < 0 ? 0 : (at + 1) % entries.length,
+          ArrowUp: at < 0 ? entries.length - 1 : (at - 1 + entries.length) % entries.length,
+          Home: 0,
+          End: entries.length - 1,
+        }[key];
+        entries[target].focus();
+      };
       triggers.forEach(trigger => {
         trigger.addEventListener('click', () => {
           const wasOpen = trigger.getAttribute('aria-expanded') === 'true';
@@ -323,9 +339,17 @@
           if (event.target.closest('a, button:not([type=submit])')) setOpen(trigger, false);
         });
         trigger.parentElement.addEventListener('keydown', event => {
-          if (event.key === 'Escape' && trigger.getAttribute('aria-expanded') === 'true') {
+          const open = trigger.getAttribute('aria-expanded') === 'true';
+          if (event.key === 'Escape' && open) {
             setOpen(trigger, false);
             trigger.focus();
+          } else if (isMoveKey(event.key, event.target === trigger, open)) {
+            if (!open) {
+              triggers.forEach(other => setOpen(other, false));
+              setOpen(trigger, true);
+            }
+            moveInMenu(trigger, event.key);
+            event.preventDefault();
           }
         });
       });

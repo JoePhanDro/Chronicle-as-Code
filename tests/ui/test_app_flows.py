@@ -77,6 +77,45 @@ def test_header_menu_closes_with_escape_and_returns_focus(login):
     expect(trigger).to_be_focused()
 
 
+def test_header_menu_is_walked_with_the_arrow_keys(login):
+    page = login("chef")  # the admin menu has two entries: Benutzer, Audit-Log
+    trigger = page.locator("button[aria-controls=menu-admin]")
+    users, audit = page.get_by_role("link", name="Benutzer"), page.get_by_role("link", name="Audit-Log")
+
+    trigger.focus()
+    page.keyboard.press("ArrowDown")  # opens the menu and lands on the first entry
+    expect(page.locator("#menu-admin")).to_be_visible()
+    expect(users).to_be_focused()
+    page.keyboard.press("ArrowDown")
+    expect(audit).to_be_focused()
+    page.keyboard.press("ArrowDown")  # wraps around
+    expect(users).to_be_focused()
+    page.keyboard.press("ArrowUp")
+    expect(audit).to_be_focused()
+    page.keyboard.press("Home")
+    expect(users).to_be_focused()
+    page.keyboard.press("End")
+    expect(audit).to_be_focused()
+
+    page.keyboard.press("Escape")
+    expect(page.locator("#menu-admin")).to_be_hidden()
+    expect(trigger).to_be_focused()
+
+    page.keyboard.press("ArrowUp")  # from the button, Up opens the menu on the last entry
+    expect(audit).to_be_focused()
+
+
+def test_arrow_keys_on_a_closed_menu_button_leave_other_keys_alone(login):
+    page = login("chef")
+    trigger = page.locator("button[aria-controls=menu-admin]")
+
+    trigger.focus()
+    page.keyboard.press("Home")
+
+    expect(page.locator("#menu-admin")).to_be_hidden()
+    expect(trigger).to_be_focused()
+
+
 def test_event_page_draws_its_mermaid_diagram(login, app_url):
     page = login("anna")
     page.goto(f"{app_url}/events/exploit")
