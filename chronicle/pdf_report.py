@@ -215,6 +215,16 @@ def _event_block(event: Event, events: list[Event], titles: dict[str, str]) -> l
     ]
     if event.techniques:
         block.append(Paragraph("ATT&amp;CK: <font face=\"Courier\">" + ", ".join(event.techniques) + "</font>", SMALL))
+    if event.tags:
+        block.append(Paragraph("Tags: " + ", ".join(_text(tag) for tag in event.tags), SMALL))
+    if event.comments:
+        block.append(Spacer(1, 3))
+        block.append(Paragraph("Notizen", H3))
+        for comment in event.comments:
+            block.append(Paragraph(
+                f"{_text(comment.author)} · {_text(_when(comment.created_at))}", SMALL
+            ))
+            block.append(Paragraph(_text(comment.text), BODY))
     if event.triggered_by:
         causes = ", ".join(f"{_text(titles.get(key, key))}" for key in event.triggered_by)
         block.append(Paragraph(f"Ausgelöst durch: {causes}", SMALL))

@@ -139,7 +139,7 @@ def _event_fields(event: dict) -> dict:
         document["system"] = event["system"]
     document["action"] = event["action"]
     document["status"] = event["status"]
-    for name in ("triggered_by", "techniques", "details"):
+    for name in ("triggered_by", "techniques", "tags", "comments", "details"):
         if event.get(name):
             document[name] = event[name]
     return document

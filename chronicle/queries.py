@@ -18,7 +18,8 @@ from .loader import link_below
 
 EVENT_SELECT = """
 SELECT events.pk, events.key, events.t0, events.phase, events.actor, events.system, events.action,
-       events.status, events.triggered_by, events.techniques, events.details, events.home_topic, events.version
+       events.status, events.triggered_by, events.techniques, events.tags, events.comments,
+       events.details, events.home_topic, events.version
 FROM events
 """
 
@@ -29,6 +30,7 @@ def triggers_from_db(stored: str | None) -> list[str]:
 
 
 techniques_from_db = triggers_from_db  # techniques are stored the same way: a JSON list, or NULL for none (ADR 0026)
+tags_from_db = triggers_from_db
 
 
 def topic_keys_of(conn: sqlite3.Connection, event_pk: int) -> list[str]:
@@ -86,6 +88,8 @@ def with_evidence(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[dic
         event = {key: row[key] for key in row.keys() if key != "pk"}
         event["triggered_by"] = triggers_from_db(event["triggered_by"])
         event["techniques"] = techniques_from_db(event["techniques"])
+        event["tags"] = tags_from_db(event["tags"])
+        event["comments"] = json.loads(event["comments"]) if event["comments"] else []
         event["evidence"] = evidence_of[row["pk"]]
         events.append(event)
     return events
@@ -157,7 +161,8 @@ class EventFilter:
     """Conditions for the event list. None or an empty value means no condition."""
 
     topic: str | None = None  # events linked to this topic, home and referenced events alike
-    query: str | None = None  # words to find in action, details and actor; each word matches as a prefix
+    query: str | None = None  # words to find in action, details, actor, tags and comments
+    tag: str | None = None
     phase: str | None = None
     status: str | None = None
     actor: str | None = None  # part of the actor name, not case-sensitive
@@ -194,6 +199,7 @@ def _filter_sql(flt: EventFilter) -> tuple[str, list]:
     conditions = [
         (flt.topic is not None, _TOPIC_CLAUSE, flt.topic),
         (expression is not None, _QUERY_CLAUSE, expression),
+        (flt.tag, "EXISTS (SELECT 1 FROM json_each(events.tags) WHERE lower(json_each.value) = lower(?))", flt.tag),
         (flt.phase, "events.phase = ?", flt.phase),
         (flt.status, "events.status = ?", flt.status),
         (flt.actor, "instr(lower(events.actor), lower(?)) > 0", flt.actor),

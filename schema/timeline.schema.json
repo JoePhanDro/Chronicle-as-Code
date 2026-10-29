@@ -60,6 +60,22 @@
           "title": "Techniques",
           "type": "array"
         },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Tags",
+          "type": "array"
+        },
+        "comments": {
+          "items": {
+            "$ref": "#/$defs/EventComment"
+          },
+          "maxItems": 200,
+          "title": "Comments",
+          "type": "array"
+        },
         "details": {
           "default": "",
           "description": "Markdown body shown in the detail view",
@@ -83,6 +99,35 @@
         "status"
       ],
       "title": "Event",
+      "type": "object"
+    },
+    "EventComment": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "author": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Author",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 5000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_at",
+        "author",
+        "text"
+      ],
+      "title": "EventComment",
       "type": "object"
     },
     "Evidence": {

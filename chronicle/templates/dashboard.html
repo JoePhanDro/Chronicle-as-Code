@@ -468,6 +468,7 @@
         el('div', 'flex flex-wrap items-center gap-2', [chip(ev.actor), ev.system ? chip(ev.system, true) : null].filter(Boolean)),
       );
       if (ev.techniques.length) hero.append(el('div', 'flex flex-wrap items-center gap-2', ev.techniques.map(techniqueLink)));
+      if (ev.tags.length) hero.append(el('div', 'flex flex-wrap items-center gap-2', ev.tags.map(tag => chip(`#${tag}`))));
 
       const links = [];
       for (const causeId of ev.triggered_by) {
@@ -487,6 +488,15 @@
         window.renderDiagrams(body);
         body.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
         sections.push(body);
+      }
+      if (ev.comments.length) {
+        sections.push(el('div', 'mt-5 rounded-2xl bg-slate-950/40 p-5 ring-1 ring-white/5', [
+          el('h3', 'mb-3 text-[11px] font-semibold uppercase tracking-[.2em] text-slate-500', 'Notizen'),
+          ...ev.comments.map(comment => el('div', 'mb-3 border-l-2 border-sky-400/40 pl-3 last:mb-0', [
+            el('div', 'text-xs text-slate-400', `${comment.author} · ${formatTime(comment.created_at)}`),
+            el('div', 'mt-1 whitespace-pre-wrap text-sm text-slate-200', comment.text),
+          ])),
+        ]));
       }
       if (ev.evidence.length) {
         sections.push(el('div', 'mt-5', [
