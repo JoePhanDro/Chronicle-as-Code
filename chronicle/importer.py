@@ -9,7 +9,7 @@ from pathlib import Path
 from .check import load_named_folder
 from .db import connect
 from .loader import CheckFailed, TimelineError
-from .repository import ImportReport, build_index
+from .repository import ImportReport, build_index, reindex
 
 
 def import_folder(db_path: str | Path, data_dir: str | Path) -> list[ImportReport]:
@@ -18,6 +18,12 @@ def import_folder(db_path: str | Path, data_dir: str | Path) -> list[ImportRepor
     The checks run before the database is opened, so a failed check leaves no database file behind.
     """
     data = Path(data_dir)
+    if Path(db_path).exists():
+        conn = connect(db_path)
+        try:
+            return reindex(conn, data)
+        finally:
+            conn.close()
     named = load_named_folder(data, known_keys=_known_event_keys(db_path))
     conn = connect(db_path)
     try:

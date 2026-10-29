@@ -10,9 +10,10 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .check import load_named_folder
+from .check import load_named_folder, root_problems
 from .errors import Invalid, NotFound
 from .evidence import Blob
+from .loader import TimelineError, find_topic_files
 from .models import Event, Timeline
 from .queries import triggers_from_db
 from .store import (
@@ -161,9 +162,56 @@ def reindex(conn: sqlite3.Connection, data_dir: Path, known_keys: Collection[str
     The files are the truth, so events are taken from them. Also records the version of each file and the file each
     event is defined in, which the next edit checks against. Nothing is written if any file fails the checks.
     """
+    if _folder_is_unchanged(conn, data_dir):
+        return _unchanged_reports(conn)
     if known_keys is None:
         known_keys = {row["key"] for row in conn.execute("SELECT key FROM events")}
     return build_index(conn, data_dir, load_named_folder(data_dir, known_keys=known_keys))
+
+
+def _folder_is_unchanged(conn: sqlite3.Connection, data_dir: Path) -> bool:
+    """True if the topic files and their checksums still match `source_files` and no root warning exists."""
+    if root_problems(data_dir):
+        return False
+    recorded = {row["path"]: row["sha256"] for row in conn.execute("SELECT path, sha256 FROM source_files")}
+    if not recorded:
+        return False
+    try:
+        current = {
+            path.relative_to(data_dir).as_posix(): file_version(path)
+            for path in find_topic_files(data_dir)
+        }
+    except TimelineError:
+        return False
+    return current == recorded and _evidence_is_unchanged(conn, data_dir)
+
+
+def _evidence_is_unchanged(conn: sqlite3.Connection, data_dir: Path) -> bool:
+    checksums: dict[str, str] = {}
+    rows = conn.execute("SELECT file, sha256 FROM evidence").fetchall()
+    for row in rows:
+        expected = row["sha256"]
+        if not expected:
+            return False
+        path = row["file"]
+        actual = checksums.get(path)
+        if actual is None:
+            try:
+                actual = file_version(data_dir / path)
+            except OSError:
+                return False
+            checksums[path] = actual
+        if actual != expected:
+            return False
+    return True
+
+
+def _unchanged_reports(conn: sqlite3.Connection) -> list[ImportReport]:
+    rows = conn.execute("SELECT topic_key FROM topic_files ORDER BY path").fetchall()
+    topics = [row["topic_key"] for row in rows]
+    if not topics:
+        topics = [row["key"] for row in conn.execute("SELECT key FROM topics ORDER BY key")]
+    return [ImportReport(topic=key) for key in topics]
 
 
 def build_index(conn: sqlite3.Connection, data_dir: Path, named: list) -> list[ImportReport]:
