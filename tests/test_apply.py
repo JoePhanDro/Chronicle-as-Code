@@ -70,6 +70,30 @@ def test_unchanged_reimport_keeps_versions_and_only_a_real_change_bumps(tmp_path
     assert report.updated == ["a1"]
 
 
+def test_unchanged_reimport_skips_full_folder_loading(tmp_path, monkeypatch):
+    from chronicle.importer import import_folder
+
+    folder = tmp_path / "data"
+    folder.mkdir()
+    (folder / "a.yaml").write_text(
+        "topic:\n  key: a\n  title: A\nevents:\n"
+        "  - key: a1\n    t0: 2026-10-14T08:00:00+02:00\n    phase: Exploit\n    actor: X\n    action: eins\n    status: open\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "chronicle.db"
+    import_folder(db, folder)
+
+    def fail(*_args, **_kwargs):
+        raise AssertionError("load_named_folder should not run for an unchanged folder")
+
+    monkeypatch.setattr("chronicle.index.load_named_folder", fail)
+    reports = import_folder(db, folder)
+    assert len(reports) == 1
+    assert reports[0].topic == "a"
+    assert reports[0].created == []
+    assert reports[0].updated == []
+
+
 def test_changed_evidence_bumps_the_version_of_its_event(tmp_path):
     import sqlite3
     from chronicle.importer import import_folder
