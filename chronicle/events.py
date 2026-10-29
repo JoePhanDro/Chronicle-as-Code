@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import accounts
@@ -23,12 +24,13 @@ from .queries import get_event, topic_keys_of
 from .store import (
     EventNotInFile,
     add_event_to_file,
+    add_comment_to_file,
     file_version,
     remove_event_from_file,
     update_event_in_file,
 )
 
-EDITABLE_FIELDS = ("t0", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "details")
+EDITABLE_FIELDS = ("t0", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "tags", "comments", "details")
 
 
 def _update_in_folder(
@@ -67,7 +69,7 @@ def _index_field_change(conn: sqlite3.Connection, key: str, event: Event, writte
         conn.execute(
             """
             UPDATE events SET t0 = ?, phase = ?, actor = ?, system = ?, action = ?, status = ?,
-                              triggered_by = ?, techniques = ?, details = ?, version = version + 1,
+                              triggered_by = ?, techniques = ?, tags = ?, comments = ?, details = ?, version = version + 1,
                               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE key = ?
             """,
@@ -150,13 +152,39 @@ def update_event(
     old_topics = topic_keys_of(conn, row["pk"])
     new_values = {"t0": event.t0.isoformat(), "phase": event.phase.value, "actor": event.actor,
                   "system": event.system, "action": event.action, "status": event.status.value,
-                  "triggered_by": event.triggered_by, "techniques": event.techniques, "details": event.details}
+                  "triggered_by": event.triggered_by, "techniques": event.techniques, "tags": event.tags,
+                  "comments": event.comments, "details": event.details}
     changed = [name for name in EDITABLE_FIELDS if str(old[name]) != str(new_values[name])]
     if sorted(old_topics) != sorted(topic_keys):
         changed.append("topics")
     if not changed:
         return old  # saving without changes creates no new revision
     return _update_in_folder(conn, key, event, topic_keys, data_dir, actor_id, ip, changed)
+
+
+def add_comment(
+    conn: sqlite3.Connection, key: str, author: str, text: str, actor_id: int, ip: str, data_dir: Path,
+) -> dict:
+    row = conn.execute("SELECT version FROM events WHERE key = ?", (key,)).fetchone()
+    if row is None:
+        raise NotFound(f"Event {key!r} nicht gefunden")
+    current = get_event(conn, key)
+    comment = {"created_at": datetime.now(UTC).isoformat(), "author": author, "text": text}
+    path = file_of_event(conn, key)
+    with all_or_nothing(data_dir):
+        with store_change(path, "Der Kommentar wurde nicht gespeichert", also_invalid=(EventNotInFile,)):
+            add_comment_to_file(data_dir / path, key, comment, expected_version=recorded_version(conn, path))
+        if not _folder_as_indexed(conn, data_dir, changed=path):
+            reindex(conn, data_dir)
+        else:
+            updated = {
+                name: current[name] for name in
+                ("key", "t0", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "tags", "details")
+            }
+            updated["comments"] = [*current["comments"], comment]
+            _index_field_change(conn, key, Event.model_validate(updated), path, data_dir)
+    accounts.audit(conn, "event_comment_added", user_id=actor_id, target=key, ip=ip)
+    return get_event(conn, key)
 
 
 def delete_event(conn: sqlite3.Connection, key: str, actor_id: int, ip: str, data_dir: Path) -> None:

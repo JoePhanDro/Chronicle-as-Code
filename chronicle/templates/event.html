@@ -105,6 +105,14 @@
         </dd>
       </div>
       {% endif %}
+      {% if event.tags %}
+      <div class="col-span-2 sm:col-span-3">
+        <dt class="text-xs text-slate-400">Tags</dt>
+        <dd class="mt-1 flex flex-wrap gap-2">
+          {% for tag in event.tags %}<a href="/events?tag={{ tag | urlencode }}" class="rounded-md border border-white/10 px-2 py-0.5 text-xs text-sky-300 hover:bg-white/5">{{ tag }}</a>{% endfor %}
+        </dd>
+      </div>
+      {% endif %}
     </dl>
   </header>
 
@@ -114,6 +122,30 @@
     <div class="prose prose-chronicle max-w-none text-sm prose-a:text-sky-300">{{ event | event_details }}</div>
   </section>
   {% endif %}
+
+  <section class="mb-8 rounded-xl border border-white/10 bg-white/[.02] p-5">
+    <h2 class="mb-3 text-base font-semibold text-slate-100">Notizen und Kommentare</h2>
+    {% if event.comments %}
+    <ol class="space-y-4">
+      {% for comment in event.comments %}
+      <li class="border-l-2 border-sky-400/40 pl-3">
+        <p class="text-xs text-slate-400"><span class="font-medium text-slate-200">{{ comment.author }}</span> · <time data-utc="{{ comment.created_at }}">{{ comment.created_at[:16].replace('T', ' ') }}</time></p>
+        <div class="prose prose-chronicle mt-1 max-w-none text-sm prose-a:text-sky-300">{{ comment.text | markdown }}</div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}<p class="text-sm text-slate-400">Noch keine Notizen.</p>{% endif %}
+    {% if can_write %}
+    <form method="post" action="/events/{{ event.key }}/comments" class="mt-5">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">Neue Notiz (Markdown)</span>
+        <textarea name="text" rows="4" required maxlength="5000"
+                  class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20"></textarea>
+      </label>
+      <button type="submit" class="mt-3 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">Notiz hinzufügen</button>
+    </form>
+    {% endif %}
+  </section>
 
   {% if causes or effects %}
   <div class="mb-8 grid gap-6 sm:grid-cols-2">

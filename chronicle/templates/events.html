@@ -13,7 +13,7 @@
 
 <form method="get" action="/events" class="mb-6 grid gap-3 rounded-xl border border-white/10 p-4 sm:grid-cols-2 lg:grid-cols-4">
   <label class="block sm:col-span-2">
-    <span class="mb-1 block text-xs font-medium text-slate-400">Suche in Aktion, Details und Akteur</span>
+    <span class="mb-1 block text-xs font-medium text-slate-400">Suche in Aktion, Details, Tags und Kommentaren</span>
     <input type="search" name="q" value="{{ query.get('q', '') }}" placeholder="z. B. Webshell"
            class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
   </label>
@@ -47,6 +47,11 @@
     <span class="mb-1 block text-xs font-medium text-slate-400">ATT&amp;CK-Technik</span>
     <input type="text" name="technique" value="{{ query.get('technique', '') }}" placeholder="T1059 oder T1059.001" autocomplete="off" spellcheck="false"
            class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 font-mono text-sm text-slate-100">
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Tag</span>
+    <input type="text" name="tag" value="{{ query.get('tag', '') }}" placeholder="zu-prüfen"
+           class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100">
   </label>
   <label class="block">
     <span class="mb-1 block text-xs font-medium text-slate-400">Von (UTC)</span>

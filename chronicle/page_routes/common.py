@@ -29,6 +29,7 @@ def _event_details(event: dict) -> Markup:
 
 
 TEMPLATES.env.filters["event_details"] = _event_details
+TEMPLATES.env.filters["markdown"] = markdown_filter
 
 
 TEMPLATES.env.filters["event_details"] = _event_details

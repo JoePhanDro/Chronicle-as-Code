@@ -29,7 +29,7 @@ from ruamel.yaml.error import YAMLError as RuamelError
 from ruamel.yaml.scalarstring import LiteralScalarString
 
 from .loader import TimelineError, link_below, read_topic_text
-from .models import Event, Evidence, Timeline, Topic
+from .models import Event, EventComment, Evidence, Timeline, Topic
 from .schema import SCHEMA_URL
 from .yamlscan import (
     MAX_YAML_BYTES,
@@ -319,6 +319,29 @@ def add_evidence_to_file(path: Path, event_key: str, item: dict, *, expected_ver
     return file_version(path)
 
 
+def add_comment_to_file(path: Path, event_key: str, comment: dict, *, expected_version: str) -> str:
+    """Append one validated comment to an event in its topic file."""
+    with folder_lock(path.parent):
+        _check_version(path, expected_version)
+        text = _read_text(path)
+        current = _read_model(text)
+        event = next((known for known in current.events if known.key == event_key), None)
+        if event is None:
+            raise EventNotInFile(f"Event {event_key!r} steht nicht in {path.name}.")
+        document = _load_document(text)
+        entry = next(entry for entry in document["events"] if entry["key"] == event_key)
+        entry.setdefault("comments", []).append(comment)
+        stream = io.StringIO()
+        _yaml().dump(document, stream)
+        added = EventComment.model_validate(comment)
+        _verify_read_back(stream.getvalue(), current.model_copy(update={"events": [
+            known.model_copy(update={"comments": [*known.comments, added]}) if known.key == event_key else known
+            for known in current.events
+        ]}))
+        _atomic_write(path, stream.getvalue().encode("utf-8"))
+    return file_version(path)
+
+
 def _without_evidence(model, event_key: str, file: str):
     """The model with the evidence entry for `file` taken off the event."""
     def stripped(known):
@@ -489,6 +512,8 @@ def _stored_values(event: Event) -> dict:
         "status": event.status.value,
         "triggered_by": list(event.triggered_by) or None,
         "techniques": list(event.techniques) or None,
+        "tags": list(event.tags) or None,
+        "comments": [_comment_document(comment) for comment in event.comments] or None,
         "details": _text(event.details) or None,
     }
 
@@ -571,11 +596,19 @@ def _event_document(event: Event) -> dict:
         item["triggered_by"] = list(event.triggered_by)
     if event.techniques:
         item["techniques"] = list(event.techniques)
+    if event.tags:
+        item["tags"] = list(event.tags)
+    if event.comments:
+        item["comments"] = [_comment_document(comment) for comment in event.comments]
     if event.details:
         item["details"] = _text(event.details)
     if event.evidence:
         item["evidence"] = [_evidence_document(evidence) for evidence in event.evidence]
     return item
+
+
+def _comment_document(comment) -> dict:
+    return {"created_at": comment.created_at.isoformat(), "author": comment.author, "text": _text(comment.text)}
 
 
 def _evidence_document(evidence) -> dict:

@@ -15,7 +15,7 @@ from __future__ import annotations
 # ruff: noqa: F401
 from .errors import Conflict, Invalid, NotFound, RepositoryError
 from .evidence_store import add_evidence, delete_evidence
-from .events import create_event, delete_event, update_event
+from .events import add_comment, create_event, delete_event, update_event
 from .index import ImportReport, build_index, import_timeline, import_timelines, reindex
 from .queries import (
     EventFilter,

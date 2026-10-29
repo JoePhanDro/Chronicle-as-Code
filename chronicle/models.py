@@ -73,6 +73,26 @@ class Evidence(BaseModel):
         return path.as_posix()
 
 
+class EventComment(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    created_at: datetime
+    author: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1, max_length=5000)
+
+    @field_validator("created_at")
+    @classmethod
+    def _require_comment_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("comment created_at needs a timezone offset")
+        return value.astimezone(UTC)
+
+    @field_validator("text")
+    @classmethod
+    def _comment_line_ends(cls, value: str) -> str:
+        return value.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
 class Event(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
@@ -95,6 +115,8 @@ class Event(BaseModel):
         max_length=50,
         description="MITRE ATT&CK technique IDs, e.g. T1190 or T1059.001. Any number, including none (ADR 0026)",
     )
+    tags: list[str] = Field(default_factory=list, max_length=50)
+    comments: list[EventComment] = Field(default_factory=list, max_length=200)
     details: str = Field(default="", description="Markdown body shown in the detail view")
     evidence: list[Evidence] = Field(default_factory=list)
 
@@ -148,6 +170,24 @@ class Event(BaseModel):
         if wrong:
             raise ValueError(f"Keine gültige ATT&CK-Technik-ID (z. B. T1190 oder T1059.001): {', '.join(map(repr, wrong[:3]))}")
         return sorted(set(value))
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _tidy_tags(cls, value: object) -> object:
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        if isinstance(value, list):
+            return [item.strip() if isinstance(item, str) else item for item in value]
+        return value
+
+    @field_validator("tags")
+    @classmethod
+    def _tag_set(cls, value: list[str]) -> list[str]:
+        if any(not item or len(item) > 100 for item in value):
+            raise ValueError("Tags dürfen nicht leer sein und höchstens 100 Zeichen enthalten")
+        return sorted(set(value), key=str.casefold)
 
 
 TopicKind = Literal["incident", "vulnerability", "project", "special", "other"]

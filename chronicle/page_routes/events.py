@@ -50,9 +50,11 @@ def _payload_from_form(form, topic_home: str | None = None) -> dict:
         "status": _raw(form, "status"),
         "triggered_by": [key for key in map(str.strip, form.getlist("triggered_by")) if key],
         "techniques": [item for item in re.split(r"[,;\s]+", _raw(form, "techniques")) if item],
+        "tags": [item.strip() for item in re.split(r"[,;]+", _raw(form, "tags")) if item.strip()],
         "details": _raw(form, "details"),
         "topic": topic_home or _raw(form, "topic"),
         "topics": form.getlist("topics"),
+        "comments": [],
     }
 
 
@@ -69,7 +71,8 @@ def edit_form(event: dict) -> dict:
     return {
         "key": event["key"], "phase": event["phase"], "actor": event["actor"], "system": event["system"] or "",
         "action": event["action"], "status": event["status"], "triggered_by": event["triggered_by"],
-        "techniques": ", ".join(event["techniques"]), "details": event["details"] or "", "topics": event["topics"], "topic": event["home_topic"],
+        "techniques": ", ".join(event["techniques"]), "tags": ", ".join(event.get("tags", [])),
+        "details": event["details"] or "", "topics": event["topics"], "topic": event["home_topic"],
         "version": event["version"], **t0_parts(event["t0"]),
     }
 
@@ -117,12 +120,14 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
             topic=topic_key, query=_text_param(params, "q"), phase=_choice_param(params, "phase", Phase),
             status=_choice_param(params, "status", Status), actor=_text_param(params, "actor"),
             system=_text_param(params, "system"), technique=_technique_param(params),
+            tag=_text_param(params, "tag"),
             since=_day_param(params, "since"), until=_day_param(params, "until"),
         )
         # Filters go into every page link; empty ones are left out of the URL.
         query = {
             "topic": topic_key, "q": flt.query, "phase": flt.phase, "status": flt.status, "actor": flt.actor,
             "system": flt.system, "technique": flt.technique,
+            "tag": flt.tag,
             "since": flt.since.isoformat() if flt.since else None,
             "until": flt.until.isoformat() if flt.until else None,
         }
@@ -196,6 +201,7 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
         try:
             version = int(form.get("version") or 0)
             payload = _payload_from_form(form, topic_home=current["home_topic"])
+            payload["comments"] = current["comments"]
             payload["key"] = key
             body = EventWrite.model_validate(payload)
             repository.update_event(conn, key, event_of(body), topic_list(body), version,
@@ -224,7 +230,8 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
             payload = {
                 "key": key, "t0": current["t0"], "phase": phase, "actor": current["actor"], "system": current["system"],
                 "action": current["action"], "status": status, "triggered_by": current["triggered_by"],
-                "techniques": current["techniques"], "details": current["details"] or "", "topic": current["home_topic"], "topics": current["topics"],
+                "techniques": current["techniques"], "tags": current["tags"], "comments": current["comments"],
+                "details": current["details"] or "", "topic": current["home_topic"], "topics": current["topics"],
             }
             body = EventWrite.model_validate(payload)
             repository.update_event(conn, key, event_of(body), topic_list(body), version,
@@ -236,6 +243,22 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
                           links=repository.get_event_links(conn, key), **form_context(conn, form=None))
         changed = "phase" if phase != current["phase"] else "status"
         return RedirectResponse(f"/events/{key}?gespeichert={changed}", status_code=303)
+
+    @router.post("/events/{key}/comments", response_class=HTMLResponse)
+    async def add_comment_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            repository.add_comment(conn, key, user["username"], _raw(form, "text").strip(),
+                                   user["id"], client_ip(request), request.app.state.data_dir)
+        except (ValidationError, ValueError, repository.RepositoryError) as exc:
+            return render(request, "event.html", user, status_code=422, mode="view",
+                          event=repository.get_event(conn, key), errors=_error_text(exc),
+                          **form_context(conn, form=None))
+        return RedirectResponse(f"/events/{key}", status_code=303)
 
     @router.post("/events/{key}/delete", response_class=HTMLResponse)
     async def delete_event_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

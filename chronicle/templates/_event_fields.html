@@ -123,6 +123,14 @@
 </section>
 
 <section class="{{ section_class }}">
+  <h2 class="{{ heading_class }}">Tags</h2>
+  <label class="block">
+    <span class="{{ label_class }}">Freie Tags (mit Komma getrennt)</span>
+    <input name="tags" value="{{ f.tags or '' }}" placeholder="zu-prüfen, lateral-movement" class="{{ input_class }}">
+  </label>
+</section>
+
+<section class="{{ section_class }}">
   <h2 class="{{ heading_class }}">Verknüpfungen</h2>
   <div class="space-y-5">
     <fieldset data-cause-picker>
