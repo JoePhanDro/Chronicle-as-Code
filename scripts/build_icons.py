@@ -186,6 +186,18 @@ def build():
     return files
 
 
+def pixel_diff_stats(path, rendered):
+    """Diagnostic: how far the committed file is from a fresh render, pixel by pixel."""
+    import PIL.ImageChops
+
+    old = Image.open(path).convert("RGBA")
+    diff = PIL.ImageChops.difference(old, rendered)
+    pixels = list(diff.getdata())
+    differing = sum(1 for p in pixels if p[:3] != (0, 0, 0))
+    worst = max(max(p[:3]) for p in pixels)
+    return f"size old={old.size} new={rendered.size}, differing pixels: {differing}, max channel delta: {worst}, bbox: {diff.getbbox()}"
+
+
 def main():
     check = "--check" in sys.argv[1:]
     stale = []
@@ -194,6 +206,8 @@ def main():
             if check:
                 if not path.exists() or Image.open(path).convert("RGBA").tobytes() != content.tobytes():
                     stale.append(path)
+                    if path.exists():
+                        print(f"diff {path.relative_to(ROOT)}: {pixel_diff_stats(path, content)}", file=sys.stderr)
             else:
                 content.save(path, optimize=True)
         elif check:
