@@ -1,3 +1,4 @@
+{% from "_logo.html" import logo %}
 <!doctype html>
 <html lang="de">
 <head>
@@ -5,8 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Erster Start · Chronicle</title>
   <link rel="stylesheet" href="/static/app.css">
-  <link rel="icon" type="image/png" href="/static/icon.png">
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="/static/favicon-48.png">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="manifest" href="/static/site.webmanifest">
   <script>
     // The theme chosen in the app (or the system setting) applies before sign-in too.
     try {
@@ -19,9 +23,7 @@
   <main class="grid min-h-screen place-items-center px-4">
     <div class="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900/60 p-8 shadow-2xl shadow-sky-500/10 backdrop-blur">
       <div class="mb-6 flex items-center gap-3">
-        <div class="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-sky-400 to-violet-500">
-          <svg viewBox="0 0 24 24" class="h-5 w-5 text-ink" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
-        </div>
+        {{ logo('h-10 w-10') }}
         <div>
           <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300">Chronicle</div>
           <h1 class="text-lg font-semibold text-slate-100">Erster Start</h1>
