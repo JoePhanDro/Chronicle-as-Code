@@ -42,3 +42,7 @@ def test_png_icons_have_transparent_corners_except_apple_touch():
         assert image.getpixel((0, 0))[3] == 0, f"{name} has an opaque corner, it would show a light frame on dark pages"
     apple = Image.open(STATIC / "apple-touch-icon.png")
     assert apple.size == (180, 180) and apple.getpixel((0, 0))[3] == 255  # iOS rounds the corners itself
+
+
+def test_social_preview_has_the_size_github_expects():
+    assert Image.open(ROOT / "docs" / "social-preview.png").size == (1280, 640)

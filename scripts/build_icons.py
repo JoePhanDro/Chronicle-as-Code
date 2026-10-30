@@ -14,11 +14,13 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "chronicle" / "static"
 SOURCE = STATIC / "logo.svg"
+FONT = STATIC / "vendor" / "fonts" / "inter-latin-wght-normal.woff2"
+SOCIAL_PREVIEW = ROOT / "docs" / "social-preview.png"
 LOGO_PARTIAL = ROOT / "chronicle" / "templates" / "_logo.html"
 SVG_NS = "{http://www.w3.org/2000/svg}"
 SUPERSAMPLE = 8
@@ -123,6 +125,22 @@ def render_png(root, edge, square_corners):
     return image.resize((edge, edge), Image.LANCZOS)
 
 
+def social_preview(root):
+    """1280x640 card for the repository's social preview: mark, name and one line on the app's slate background."""
+    card = Image.new("RGBA", (1280, 640), hex_color("#0f172a"))
+    mark = render_png(root, 256, False)
+    card.alpha_composite(mark, (150, 192))
+    draw = ImageDraw.Draw(card)
+    name = ImageFont.truetype(str(FONT), 120)
+    name.set_variation_by_axes([650])
+    line = ImageFont.truetype(str(FONT), 36)
+    line.set_variation_by_axes([400])
+    draw.text((470, 215), "Chronicle", font=name, fill=hex_color("#f1f5f9"))
+    for row, text in enumerate(("Timeline und Entitäten-Graph", "für Sicherheitswissen")):
+        draw.text((474, 355 + row * 52), text, font=line, fill=hex_color("#94a3b8"))
+    return card
+
+
 def favicon_svg(source):
     """The mark without its tile, recoloured through classes so it reads on light and dark tab strips."""
     body = re.sub(r"\s*<rect [^>]*/>", "", source)
@@ -164,6 +182,7 @@ def build():
         out = STATIC / name
         # PNG bytes depend on the Pillow version, so the check compares pixels, see main()
         files[out] = render_png(root, edge, square)
+    files[SOCIAL_PREVIEW] = social_preview(root)
     return files
 
 
