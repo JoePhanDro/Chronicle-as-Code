@@ -131,9 +131,11 @@ def social_preview(root):
     mark = render_png(root, 256, False)
     card.alpha_composite(mark, (150, 192))
     draw = ImageDraw.Draw(card)
-    name = ImageFont.truetype(str(FONT), 120)
+    # Raqm's layout path ignores the variation axes, so the weight only sticks when Pillow renders
+    # without Raqm. Forcing the basic layout engine keeps the pixels identical on every machine.
+    name = ImageFont.truetype(str(FONT), 120, layout_engine=ImageFont.Layout.BASIC)
     name.set_variation_by_axes([650])
-    line = ImageFont.truetype(str(FONT), 36)
+    line = ImageFont.truetype(str(FONT), 36, layout_engine=ImageFont.Layout.BASIC)
     line.set_variation_by_axes([400])
     draw.text((470, 215), "Chronicle", font=name, fill=hex_color("#f1f5f9"))
     for row, text in enumerate(("Timeline und Entitäten-Graph", "für Sicherheitswissen")):
@@ -186,26 +188,6 @@ def build():
     return files
 
 
-def pixel_diff_stats(path, rendered):
-    """Diagnostic: how far the committed file is from a fresh render, pixel by pixel."""
-    import PIL.ImageChops
-    import PIL.features
-
-    old = Image.open(path).convert("RGBA")
-    diff = PIL.ImageChops.difference(old, rendered)
-    pixels = list(diff.getdata())
-    differing = sum(1 for p in pixels if p[:3] != (0, 0, 0))
-    worst = max(max(p[:3]) for p in pixels)
-    font = ImageFont.truetype(str(FONT), 120)
-    print(
-        f"pillow env: freetype={PIL.features.version_module('freetype2')} "
-        f"raqm={PIL.features.check('raqm')} layout_engine={font.layout_engine} "
-        f"font_variation_axes={font.get_variation_axes()!r}",
-        file=sys.stderr,
-    )
-    return f"size old={old.size} new={rendered.size}, differing pixels: {differing}, max channel delta: {worst}, bbox: {diff.getbbox()}"
-
-
 def main():
     check = "--check" in sys.argv[1:]
     stale = []
@@ -214,8 +196,6 @@ def main():
             if check:
                 if not path.exists() or Image.open(path).convert("RGBA").tobytes() != content.tobytes():
                     stale.append(path)
-                    if path.exists():
-                        print(f"diff {path.relative_to(ROOT)}: {pixel_diff_stats(path, content)}", file=sys.stderr)
             else:
                 content.save(path, optimize=True)
         elif check:
