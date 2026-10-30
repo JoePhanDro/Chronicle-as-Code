@@ -126,7 +126,7 @@ Slate neutrals do the structural work; sky is the only accent; the rainbow belon
 
 ### Primary
 - **Signal Sky** (#38bdf8): focus borders, selected rows (at 10 %), links, the actor entity, checkbox/radio accents. Its text variant **Signal Sky Light** (#7dd3fc) is used for small links and chips. Rare by design: on any screen it marks what is interactive or selected.
-- **Dusk Violet** (#8b5cf6): end stop of the primary gradient button (sky to violet, left to right) and the logo tile. Never used alone as UI colour.
+- **Dusk Violet** (#8b5cf6): end stop of the primary gradient button (sky to violet, left to right) and the middle node of the logo. Never used alone as UI colour.
 
 ### Neutral
 - **Ledger Black** (#020617): page background and input fill (at 70 %).

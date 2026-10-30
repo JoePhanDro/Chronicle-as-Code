@@ -34,7 +34,7 @@ Server-rendered web UI (Python backend, Jinja templates, Tailwind CSS built with
 
 ## Evidence on Hand
 
-Fictional demo data in `data/`, dashboard screenshot in `docs/screenshots/dashboard.png`, logo at `chronicle/static/icon.png`, ADRs in `docs/adr/`. No real customers, testimonials or benchmarks exist; do not invent any.
+Fictional demo data in `data/`, dashboard screenshot in `docs/screenshots/dashboard.png`, logo at `chronicle/static/logo.svg` (all icon sizes are built from it by `scripts/build_icons.py`), ADRs in `docs/adr/`. No real customers, testimonials or benchmarks exist; do not invent any.
 
 ## Product Principles
 

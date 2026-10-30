@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>.f-sky{fill:#38bdf8}.s-sky{stroke:#38bdf8}.f-violet{fill:#8b5cf6}.s-violet{stroke:#8b5cf6}.f-soft{fill:#e2e8f0}.s-soft{stroke:#e2e8f0}@media (prefers-color-scheme: light){.f-sky{fill:#0284c7}.s-sky{stroke:#0284c7}.f-violet{fill:#7c3aed}.s-violet{stroke:#7c3aed}.f-soft{fill:#334155}.s-soft{stroke:#334155}}</style>
+  <path d="M22 14V50" fill="none" class="s-sky" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="22" cy="16" r="6" class="f-sky"/>
+  <circle cx="22" cy="32" r="6" class="f-violet"/>
+  <circle cx="22" cy="48" r="6" class="f-sky"/>
+  <path d="M33 16H48M33 32H53M33 48H45" fill="none" class="s-soft" stroke-width="5" stroke-linecap="round"/>
+</svg>

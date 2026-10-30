@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="chronicle/static/icon.png" width="128" alt="Chronicle-Logo">
+  <img src="chronicle/static/logo.svg" width="128" alt="Chronicle-Logo">
 </p>
 
 # Chronicle
