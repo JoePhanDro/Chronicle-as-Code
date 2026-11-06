@@ -43,7 +43,10 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, *, data_
         _announce_setup(path, setup_state)  # at server start, not at import
         yield
 
-    app = FastAPI(title="Chronicle", version=__version__, lifespan=lifespan)
+    # No default documentation routes: the app is confidential by default, and /openapi.json would otherwise
+    # disclose the complete route map including the admin account-management API to anonymous visitors.
+    app = FastAPI(title="Chronicle", version=__version__, lifespan=lifespan,
+                  docs_url=None, redoc_url=None, openapi_url=None)
     app.state.data_dir = Path(data_dir)
     app.state.trusted_proxies = parse_trusted_proxies(
         os.environ.get("CHRONICLE_TRUSTED_PROXIES") if trusted_proxies is None else trusted_proxies
