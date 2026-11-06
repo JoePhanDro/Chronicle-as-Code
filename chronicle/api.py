@@ -14,6 +14,8 @@ from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+
+from . import body_limit
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import __version__, accounts, security
@@ -43,11 +45,17 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, *, data_
         _announce_setup(path, setup_state)  # at server start, not at import
         yield
 
-    app = FastAPI(title="Chronicle", version=__version__, lifespan=lifespan)
+    # No default documentation routes: the app is confidential by default, and /openapi.json would otherwise
+    # disclose the complete route map including the admin account-management API to anonymous visitors.
+    app = FastAPI(title="Chronicle", version=__version__, lifespan=lifespan,
+                  docs_url=None, redoc_url=None, openapi_url=None)
     app.state.data_dir = Path(data_dir)
     app.state.trusted_proxies = parse_trusted_proxies(
         os.environ.get("CHRONICLE_TRUSTED_PROXIES") if trusted_proxies is None else trusted_proxies
     )
+    # Reject oversized bodies before any framework parsing or authorization gate can consume them.
+    app.add_middleware(body_limit.max_body_middleware(body_limit.max_body_bytes_from_environment()))
+    app.add_exception_handler(body_limit.RequestBodyTooLarge, body_limit._too_large_handler)
 
     def get_conn() -> Iterator[sqlite3.Connection]:
         conn = connect(path)

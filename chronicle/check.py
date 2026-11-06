@@ -167,17 +167,19 @@ def cycle_problems(triggers: dict[str, list[str]]) -> list[str]:
     problems: list[str] = []
     finished: set[str] = set()
 
-    def visit(node: str, path: list[str]) -> None:
-        if node in path:
-            cycle = path[path.index(node) :] + [node]
-            problems.append("Auslösungen bilden einen Kreis: " + " → ".join(cycle))
-            return
-        if node in finished:
-            return
-        for target in triggers.get(node, []):
-            visit(target, [*path, node])
-        finished.add(node)
-
+    # Iterative, one frame for every edge: a long incident may chain thousands of events (issue #87),
+    # and a recursive walk would exhaust the interpreter stack before reporting a problem.
     for start in triggers:
-        visit(start, [])
+        stack: list[tuple[str, list[str]]] = [(start, [])]
+        while stack:
+            node, path = stack.pop()
+            if node in path:
+                cycle = path[path.index(node) :] + [node]
+                problems.append("Auslösungen bilden einen Kreis: " + " → ".join(cycle))
+                continue
+            if node in finished:
+                continue
+            for target in triggers.get(node, []):
+                stack.append((target, [*path, node]))
+            finished.add(node)
     return problems

@@ -104,8 +104,11 @@ def _delete_evidence_in_folder(conn: sqlite3.Connection, evidence_id: int, data_
             remove_evidence_from_file(data_dir / path, row["key"], row["file"],
                                       expected_version=recorded_version(conn, path))
         reindex(conn, data_dir)
-    # The file goes last: until the index has accepted the removal, the topic file still names it.
-    (data_dir / row["file"]).unlink(missing_ok=True)
+        # The file is removed inside the transaction: until the index has accepted the removal the topic
+        # file still names it, and afterwards that name no longer refers to a shared file. With the unlink
+        # outside the folder lock, a concurrent byte-identical upload could commit a new row for the very
+        # file this delete then removed, leaving the folder invalid ("Datei fehlt") for every later write.
+        (data_dir / row["file"]).unlink(missing_ok=True)
     accounts.audit(conn, "evidence_deleted", user_id=actor_id, target=row["key"], detail=row["file"], ip=ip)
 
 

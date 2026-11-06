@@ -14,7 +14,7 @@ from starlette.datastructures import UploadFile  # form uploads are Starlette ob
 
 from .. import repository
 from ..auth import client_ip
-from ..evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, Blob, check_file
+from ..evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, MAX_FORM_FILES, Blob, check_file
 from ..models import TECHNIQUE_ID, Phase, Status
 from ..event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
 from .common import TEMPLATES, WRITER_ROLES, PageContext, _text_param, _choice_param, _day_param, _page_param, _error_text
@@ -85,6 +85,9 @@ async def _attachments_from_form(form) -> list[Blob]:
     uploads = [item for item in form.getlist("files") if isinstance(item, UploadFile) and item.filename]
     if uploads and (form.get("evidence_type") or "") not in EVIDENCE_TYPES:
         raise ValueError("Bitte einen Typ für die Anhänge wählen")
+    # One request carries a bounded number of files; the request-body limit bounds the rest.
+    if len(uploads) > MAX_FORM_FILES:
+        raise ValueError(f"Höchstens {MAX_FORM_FILES} Dateien pro Anfrage")
     blobs = []
     for upload in uploads:
         data = await upload.read(MAX_EVIDENCE_BYTES + 1)  # one byte over the limit is enough to reject

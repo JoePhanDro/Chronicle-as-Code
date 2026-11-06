@@ -17,7 +17,16 @@
 {$CHRONICLE_HOSTNAME:localhost} {
 	import tls-{$CHRONICLE_TLS:internal}
 	encode zstd gzip
-	reverse_proxy api:8000
+
+	# Defense in depth behind the app's own limit (CHRONICLE_MAX_BODY_BYTES, default 112 MiB):
+	# a request that declares a Content-Length of ten or more digits (>= 1 GB) is answered 413
+	# before it reaches the API at all.
+	@oversized header_regexp Content-Length ^[0-9]{10,}$
+	route {
+		error @oversized 413
+		reverse_proxy api:8000
+	}
+
 	header {
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "same-origin"
