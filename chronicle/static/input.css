@@ -38,7 +38,7 @@
 :root:root .prose-chronicle code {
   background: rgb(var(--slate-800) / .6);
   padding: 1px 5px;
-  border-radius: 5px;
+  border-radius: 6px;
 }
 :root:root .prose-chronicle code::before,
 :root:root .prose-chronicle code::after {

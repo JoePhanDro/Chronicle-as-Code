@@ -12,7 +12,7 @@
 <section aria-labelledby="sync-result" class="mb-6 rounded-xl border border-white/10 px-4 py-3 text-sm">
   <h2 id="sync-result" class="mb-2 font-semibold text-slate-100">Ergebnis</h2>
   {% if result.conflicts %}
-    <p class="text-amber-200">Konflikt in {{ result.conflicts|join(", ") }}. Das Zusammenführen ist abgebrochen, nichts wurde hochgeladen. Wähle für jede Datei, welcher Stand gelten soll.</p>
+    <p class="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">Konflikt in {{ result.conflicts|join(", ") }}. Das Zusammenführen ist abgebrochen, nichts wurde hochgeladen. Wähle für jede Datei, welcher Stand gelten soll.</p>
     <form method="post" action="/abgleich">
     <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
     {% for side in result.sides %}
@@ -42,12 +42,12 @@
     <button type="submit" class="mt-2 rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Auswahl übernehmen und abgleichen</button>
     </form>
   {% elif result.problems %}
-    <p class="text-amber-200">Der zusammengeführte Stand besteht die Prüfung nicht. Die Zusammenführung ist rückgängig gemacht, nichts wurde hochgeladen.</p>
+    <p class="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">Der zusammengeführte Stand besteht die Prüfung nicht. Die Zusammenführung ist rückgängig gemacht, nichts wurde hochgeladen.</p>
     <ul class="mt-2 list-disc space-y-1 pl-5 text-rose-200">
       {% for problem in result.problems %}<li class="whitespace-pre-line">{{ problem }}</li>{% endfor %}
     </ul>
   {% else %}
-    <p class="text-emerald-200">Abgeglichen.
+    <p class="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">Abgeglichen.
       {% if result.committed %}Lokale Änderungen sind committet.{% else %}Keine lokalen Änderungen.{% endif %}
       {% if result.merged %}Der Stand des Remotes ist übernommen.{% endif %}
     </p>
@@ -59,7 +59,7 @@
   {% if preview.problems %}
   <section aria-labelledby="sync-checks" class="mb-6 rounded-xl border border-white/10 px-4 py-3 text-sm">
     <h2 id="sync-checks" class="mb-2 font-semibold text-slate-100">Prüfung</h2>
-    <p class="text-slate-400">Die Dateien bestehen die Prüfung nicht. Bitte zuerst beheben, dann ist die Vorschau verfügbar.</p>
+    <p class="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">Die Dateien bestehen die Prüfung nicht. Bitte zuerst beheben, dann ist die Vorschau verfügbar.</p>
     <ul class="mt-2 list-disc space-y-1 pl-5 text-rose-200">
       {% for problem in preview.problems %}<li class="whitespace-pre-line">{{ problem }}</li>{% endfor %}
     </ul>
