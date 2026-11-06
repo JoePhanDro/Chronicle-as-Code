@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-25T12:00:00Z",
+  "generatedAt": "2026-11-06T22:08:41Z",
   "title": "Design System: Chronicle",
   "extensions": {
     "colorMeta": {
@@ -48,6 +48,21 @@
           "#a78bfa",
           "#ede9fe"
         ]
+      },
+      "error-rose": {
+        "role": "tertiary",
+        "displayName": "Error Rose",
+        "canonical": "#fda4af",
+        "tonalRamp": [
+          "#ffe4e6",
+          "#fecdd3",
+          "#fda4af",
+          "#fb7185",
+          "#f43f5e",
+          "#e11d48",
+          "#be123c",
+          "#881337"
+        ]
       }
     },
     "typographyMeta": {
@@ -83,6 +98,10 @@
       {
         "name": "sm",
         "value": "640px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
       }
     ]
   },
@@ -107,17 +126,25 @@
       "name": "Text Input",
       "kind": "input",
       "refersTo": "input",
-      "description": "Dark field with sky focus border.",
+      "description": "Dark field with sky focus border and 20 % ring.",
       "html": "<input class=\"ds-input\" placeholder=\"Suchen (/)\">",
       "css": ".ds-input{width:176px;background:rgba(2,6,23,.7);color:#f1f5f9;padding:6px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;font:400 14px Inter,system-ui,sans-serif;outline:none}.ds-input::placeholder{color:#7183a0}.ds-input:focus{border-color:rgba(56,189,248,.6);box-shadow:0 0 0 2px rgba(56,189,248,.2)}.ds-input:focus-visible{outline:2px solid #38bdf8;outline-offset:0}"
+    },
+    {
+      "name": "Notice",
+      "kind": "custom",
+      "refersTo": "notice",
+      "description": "Error/warning/success alert: tinted text on a 10 % fill with a 30 % border; hue carries the meaning.",
+      "html": "<p class=\"ds-notice\">Die Topic-Dateien sind neu eingelesen.</p>",
+      "css": ".ds-notice{color:#fda4af;background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.3);border-radius:8px;padding:12px 16px;font:400 14px Inter,system-ui,sans-serif;margin:0}"
     },
     {
       "name": "List Row",
       "kind": "card",
       "refersTo": "card",
-      "description": "Hairline list entry with title, mono meta and count.",
-      "html": "<div class=\"ds-list\"><a class=\"ds-row\" href=\"#\"><span><span class=\"ds-t\">INC-2026-042</span><br><span class=\"ds-m\">inc-2026-042 · incident</span></span><span class=\"ds-c\">12 Events</span></a></div>",
-      "css": ".ds-list{border:1px solid rgba(255,255,255,.1);border-radius:12px;font-family:Inter,system-ui,sans-serif}.ds-row{display:flex;justify-content:space-between;gap:16px;padding:12px 16px;text-decoration:none}.ds-row:hover{background:rgba(255,255,255,.03)}.ds-t{color:#f1f5f9;font-size:14px;font-weight:500}.ds-m{color:#7183a0;font:12px JetBrains Mono,ui-monospace,monospace}.ds-c{color:#94a3b8;font-size:12px}"
+      "description": "Hairline list entry with title, mono meta and count; phase colour is the 3px left edge.",
+      "html": "<div class=\"ds-list\"><a class=\"ds-row\" href=\"#\"><i class=\"ds-edge\" aria-hidden=\"true\"></i><span><span class=\"ds-t\">INC-2026-042</span><br><span class=\"ds-m\">inc-2026-042 · incident</span></span><span class=\"ds-c\">12 Events</span></a></div>",
+      "css": ".ds-list{position:relative;border:1px solid rgba(255,255,255,.1);border-radius:12px;font-family:Inter,system-ui,sans-serif}.ds-row{display:flex;justify-content:space-between;gap:16px;padding:12px 20px 12px 16px;text-decoration:none}.ds-row:hover{background:rgba(255,255,255,.03)}.ds-t{color:#f1f5f9;font-size:14px;font-weight:500}.ds-m{color:#7183a0;font:12px JetBrains Mono,ui-monospace,monospace}.ds-c{color:#94a3b8;font-size:12px}.ds-edge{position:absolute;left:6px;top:8px;bottom:8px;width:3px;border-radius:9999px;background:#ef4444}"
     },
     {
       "name": "Menu Trigger",
@@ -146,38 +173,38 @@
   ],
   "narrative": {
     "northStar": "The Incident Ledger",
-    "overview": "Chronicle looks like a well-kept log: near-black slate surfaces, one-pixel hairlines, small sober type, and colour that appears only when it means something. Dark is the default; light is a scale inversion of the same palette.",
+    "overview": "Chronicle looks like a well-kept log: near-black slate surfaces, one-pixel hairlines, small sober type, and colour that appears only when it means something (a phase, a status, an entity kind). The interface stays out of the way of the timeline and graph, which are the content. Density is a feature; a compact table mode exists and is honoured everywhere.\n\nDark is the default; the values in the front matter are the dark theme, the light values sit under \"Light theme\" in Colors. Light is a full inversion of the same scale (every Tailwind shade swaps to its mirror), not a second palette, so hierarchy and contrast relationships survive the switch. The theme follows the operating system unless the user picks one.",
     "keyCharacteristics": [
       "Dark-first, light by scale inversion; both are first-class.",
       "Hairline borders (white at 10 %) instead of fills or shadows to separate regions.",
-      "Sky is the single interface accent; violet only in the primary gradient and for system entities.",
+      "Sky is the single interface accent; violet appears only as the far end of the primary-action gradient and for system entities.",
       "Phase and status colours carry data meaning and are never reused as decoration.",
       "German copy, short labels, monospaced keys and timestamps."
     ],
     "rules": [
       {
         "name": "The Colour Is Data Rule",
-        "body": "Red, yellow, orange, green, blue and rose are reserved for phases, statuses and errors.",
+        "body": "Red, yellow, orange, green, blue and rose are reserved for phases, statuses and errors. Decorative surfaces stay slate or sky.",
         "section": "colors"
       },
       {
         "name": "The One Voice Rule",
-        "body": "Sky is the only interface accent.",
+        "body": "Sky is the only interface accent. A screen with two competing accents is wrong.",
         "section": "colors"
       },
       {
         "name": "The Mirror Rule",
-        "body": "Colours go through themed variables so the light theme inverts automatically.",
+        "body": "Colours are written as theme variables (`--slate-900` etc.), never hard-coded dark values, so the light theme inverts automatically. Text on bright accent buttons stays `ink` (#020617) in both themes.",
         "section": "colors"
       },
       {
         "name": "The Identifier Rule",
-        "body": "Keys, roles and times are monospace; prose never is.",
+        "body": "Keys, roles and times are monospace; prose is never monospace.",
         "section": "typography"
       },
       {
         "name": "The Flat-By-Default Rule",
-        "body": "If it doesn't float, it doesn't cast.",
+        "body": "Lists, tables and forms carry no shadow. If it doesn't float, it doesn't cast. On the dashboard a timeline card is flat: its phase colour is the 3px left edge, and selection is a 2px ring in that colour, not a glow.",
         "section": "elevation"
       }
     ],
@@ -186,6 +213,7 @@
       "Do write every colour through the themed variables so light and dark both work.",
       "Do use the gradient primary button once per view; everything else is secondary or ghost.",
       "Do set keys, roles and timestamps in JetBrains Mono at 12px.",
+      "Do keep every control and button-like link at least 44px high on narrow screens and touch devices; `input.css` does this for `button`, `select`, `summary`, inputs, `a.rounded-lg` and checkbox labels, and isolated text links add `max-sm:min-h-11` themselves.",
       "Do keep German labels short and let the table density setting apply to any new table.",
       "Do keep phase and status colours identical across list, timeline, graph and report."
     ],
@@ -194,8 +222,8 @@
       "Don't add a second interface accent next to sky.",
       "Don't put shadows on lists, tables or in-page cards.",
       "Don't add colour halos or glows to cards, buttons, dots or logos. Phase colour is an edge or a ring, never a glow.",
-      "Don't hard-code dark-theme hex values in templates.",
-      "Don't add new external font or script requests.",
+      "Don't hard-code dark-theme hex values in templates; the dashboard stylesheet still does in places and should be migrated.",
+      "Don't add new external font or script requests; reports must keep opening without the network (ADR 0006). The dashboard uses Inter while the other pages fall back to the system sans; decide deliberately before extending either.",
       "Don't remove or replace the focus outline; a colour change alone is not a focus indicator."
     ]
   }
