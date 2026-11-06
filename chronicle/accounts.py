@@ -99,6 +99,8 @@ def setup_blocked(conn: sqlite3.Connection) -> bool:
 
 def record_setup_failure(conn: sqlite3.Connection, ip: str) -> None:
     with conn:
+        # Same retention rule as record_login_failure: the table stays bounded by live traffic.
+        conn.execute("DELETE FROM login_failures WHERE ts <= ?", (now() - FAILURE_WINDOW_SECONDS,))
         conn.execute("INSERT INTO login_failures (key, ts) VALUES (?, ?)", (SETUP_FAILURE_KEY, now()))
     audit(conn, "setup_failed", ip=ip)
 
@@ -242,6 +244,9 @@ def login_blocked(conn: sqlite3.Connection, username: str, ip: str) -> bool:
 
 def record_login_failure(conn: sqlite3.Connection, username: str, ip: str) -> None:
     with conn:
+        # Counter rows only matter inside the window (see _count_since); expired rows are dead weight.
+        # Removing them on every write keeps the table bounded, as create_session does for sessions.
+        conn.execute("DELETE FROM login_failures WHERE ts <= ?", (now() - FAILURE_WINDOW_SECONDS,))
         conn.executemany(
             "INSERT INTO login_failures (key, ts) VALUES (?, ?)",
             [(_pair_key(username, ip), now()), (_ip_key(ip), now())],
@@ -262,6 +267,12 @@ def clear_login_failures(conn: sqlite3.Connection, username: str, ip: str) -> No
 
 
 # Audit log: records who did what, never passwords or tokens.
+# Pre-auth surfaces (login, unlock, setup) let anonymous visitors write entries, so the persisted
+# attacker-influenced text is capped and the table keeps an opportunistic row bound: unauthenticated
+# traffic can grow it to the bound at most, never without end (audits of real account actions share the bound).
+MAX_AUDIT_TEXT = 100
+AUDIT_RETENTION_ROWS = 100_000
+
 
 def audit(
     conn: sqlite3.Connection,
@@ -271,10 +282,18 @@ def audit(
     detail: str | None = None,
     ip: str | None = None,
 ) -> None:
+    if target is not None:
+        target = target[:MAX_AUDIT_TEXT]
+    if detail is not None:
+        detail = detail[:MAX_AUDIT_TEXT]
     with conn:
         conn.execute(
             "INSERT INTO audit_log (ts, user_id, action, target, detail, ip) VALUES (?, ?, ?, ?, ?, ?)",
             (now(), user_id, action, target, detail, ip),
+        )
+        conn.execute(
+            "DELETE FROM audit_log WHERE pk <= (SELECT MAX(pk) FROM audit_log) - ?",
+            (AUDIT_RETENTION_ROWS,),
         )
 
 
