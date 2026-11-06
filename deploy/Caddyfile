@@ -17,7 +17,11 @@
 {$CHRONICLE_HOSTNAME:localhost} {
 	import tls-{$CHRONICLE_TLS:internal}
 	encode zstd gzip
-	reverse_proxy api:8000
+	reverse_proxy {
+		to api:8000
+		# Defense in depth behind the app's own limit (CHRONICLE_MAX_BODY_BYTES, default 112 MiB).
+		request_body max_size 128MB
+	}
 	header {
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "same-origin"

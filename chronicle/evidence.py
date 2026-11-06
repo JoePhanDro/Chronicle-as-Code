@@ -16,6 +16,9 @@ from urllib.parse import quote
 from .models import EvidenceType
 
 MAX_EVIDENCE_BYTES = 10 * 1024 * 1024
+# A single request carries at most this many files; the request-body limit (CHRONICLE_MAX_BODY_BYTES)
+# gives one such upload headroom (10 x 10 MiB plus the rest of the form).
+MAX_FORM_FILES = 10
 MAX_NAME_LENGTH = 120
 MAX_DESCRIPTION_LENGTH = 500
 EVIDENCE_TYPES: tuple[str, ...] = get_args(EvidenceType)

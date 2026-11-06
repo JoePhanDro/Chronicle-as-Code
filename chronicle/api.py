@@ -14,6 +14,8 @@ from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+
+from . import body_limit
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import __version__, accounts, security
@@ -51,6 +53,9 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, *, data_
     app.state.trusted_proxies = parse_trusted_proxies(
         os.environ.get("CHRONICLE_TRUSTED_PROXIES") if trusted_proxies is None else trusted_proxies
     )
+    # Reject oversized bodies before any framework parsing or authorization gate can consume them.
+    app.add_middleware(body_limit.max_body_middleware(body_limit.max_body_bytes_from_environment()))
+    app.add_exception_handler(body_limit.RequestBodyTooLarge, body_limit._too_large_handler)
 
     def get_conn() -> Iterator[sqlite3.Connection]:
         conn = connect(path)

@@ -109,6 +109,8 @@ Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie 
 | `CHRONICLE_ADMIN_PASSWORD` | Passwort zu `CHRONICLE_ADMIN_USER`. Der Admin muss es beim ersten Login ändern | leer |
 | `CHRONICLE_COOKIE_SECURE` | `0` schaltet das `Secure`-Flag am Sitzungscookie ab (nur lokal über HTTP) | `1` |
 | `CHRONICLE_TRUSTED_PROXIES` | Adressen oder Netze von Reverse Proxies, z. B. `172.18.0.2, 10.0.0.0/8`. Nur von dort wird `X-Forwarded-For` gelesen | leer |
+| `CHRONICLE_MAX_BODY_BYTES` | Maximale Größe des Anfragekörpers in Bytes. Größere Anfragen bekommen 413, bevor irgendein Teil sie verarbeitet; 0 schaltet die Begrenzung ab | 112 MiB (10 Evidence-Dateien plus Spielraum) |
+| `CHRONICLE_SYNC_MAX_GIT_MB` | Maximale Größe des `.git`-Objektspeichers in MiB, bevor der Abgleich vor dem Zusammenführen abbricht (Schutz vor Remotes, die den Datenordner füllen) | 512 |
 | `CHRONICLE_DATA` | Datenordner mit den Topic-Dateien, die Quelle der Wahrheit (siehe unten). Pflicht: Ohne ihn startet der Server nicht. `python -m chronicle.serve --data <ordner>` setzt es | – |
 
 Die Werte im Compose-Stack kommen aus `.env` (Vorlage: `.env.example`). `.env` wird nicht versioniert.

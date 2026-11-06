@@ -251,6 +251,9 @@ REMOTE = "origin"
 NETWORK_TIMEOUT_SECONDS = 120
 DRIVER_FAILED = "CHRONICLE-TREIBERFEHLER"
 MAX_FAILURE_TEXT = 300
+# A fetch is bounded by wall-clock time only; this guard keeps the remote-controlled object volume
+# from filling the data disk (security audit run-1, fingerprint sync.py:_fetch_unbounded_remote_object_volume).
+DEFAULT_MAX_GIT_MB = 512
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent  # the folder that holds the chronicle package
 MERGE_DRIVER = "chronicle"  # the name in .gitattributes and in the git config, see chronicle/merge.py
 
@@ -305,6 +308,7 @@ def synchronise(data_dir: Path, choices: Mapping[str, str] | None = None) -> Syn
             marker = _use_merge_driver(data_dir)
             committed = _commit_topic_files(data_dir)
         _fetch(data_dir)
+        _refuse_oversized_git(data_dir)  # before the merge: nothing push-relevant has changed yet
         with folder_lock(data_dir):
             result, upload = _take_in_remote(data_dir, branch, marker, committed, choices or {})
         if upload:
@@ -516,6 +520,35 @@ def _fetch(data_dir: Path) -> None:
     if result.returncode != 0:
         raise SyncError("Der Remote ist nicht erreichbar. Lokal bleibt alles erhalten, der Abgleich lässt sich später "
                         f"wiederholen.\n{result.stderr.strip()}")
+
+
+def _max_git_mb() -> float:
+    try:
+        return max(0.0, float(os.environ.get("CHRONICLE_SYNC_MAX_GIT_MB", DEFAULT_MAX_GIT_MB)))
+    except ValueError:
+        return DEFAULT_MAX_GIT_MB
+
+
+def _refuse_oversized_git(data_dir: Path) -> None:
+    """Stop after the fetch when the remote-controlled object store is larger than configured.
+
+    The fetched objects stay; this aborts the merge and the push with a clear message instead of a
+    later disk-full for every user. Operators adjust CHRONICLE_SYNC_MAX_GIT_MB or clean .git themselves."""
+    limit = _max_git_mb()
+    if limit <= 0:
+        return
+    counts = _run(data_dir, "count-objects", "-v")
+    if counts.returncode != 0:
+        return  # nothing is known about the size; the merge's own gates still apply
+    sizes = dict(line.split(":", 1) for line in counts.stdout.splitlines() if ":" in line)
+    loose_kib = int(sizes.get("size", "0").strip() or 0)
+    packed_kib = int(sizes.get("size-pack", "0").strip() or 0)
+    total_mib = (loose_kib + packed_kib) / 1024
+    if total_mib > limit:
+        raise SyncError(f"Der Objektspeicher von .git ist mit {total_mib:.1f} MiB größer als das konfigurierte Maximum "
+                        f"von {limit:g} MiB (CHRONICLE_SYNC_MAX_GIT_MB). Der Abgleich bricht vor dem Zusammenführen ab; "
+                        "der lokale Stand bleibt erhalten. Bitte prüfen, was der Remote enthält (git count-objects -v "
+                        "und git gc --prune=now im Datenordner gehören der Betreuung).")
 
 
 def _ref_exists(data_dir: Path, ref: str) -> bool:
