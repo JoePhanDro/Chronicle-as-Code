@@ -310,6 +310,7 @@ Die Antworten sind JSON. Eine interaktive Beschreibung der API gibt es noch nich
 - Beim Wechsel bleibt die aktuelle Sitzung bestehen, alle anderen Sitzungen des Kontos enden.
 - Der letzte aktive Admin lässt sich nicht herabstufen oder deaktivieren.
 - Jeder Login, jeder Fehlversuch und jede Änderung an Konten oder Events landet im Audit-Log, ohne Inhalte. Angreifbar beeinflusste Texte (etwa der Anmeldung) werden gekappt und die Tabelle behält nur die letzten 100.000 Einträge; die Aktion selbst bleibt vollständig sichtbar.
+- Beide SQLite-Dateien (Index und Betriebsdaten) werden mit Eigentümer-Rechten (0600) angelegt. Der Standard-Stack stellt keine API-Dokumentation bereit (kein `/docs`, `/redoc`, `/openapi.json`).
 
 Der Standard-Stack hat kein TLS und bindet nur auf `127.0.0.1`. Für einen Betrieb im Netzwerk gibt es einen Caddy-Proxy mit HTTPS, beschrieben in [docs/betrieb-tls.md](docs/betrieb-tls.md) ([Issue #35](https://github.com/JoePhanDro/Chronicle-as-Code/issues/35)).
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -310,10 +311,25 @@ def _drop_tombstones(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS deleted_events")
 
 
+def _create_owner_only(path: Path) -> None:
+    """Create a not-yet-existing database file with owner-only permissions, as the backup does.
+
+    Both files hold security-relevant data (Argon2id hashes, session hashes, audit rows, incident data),
+    so a plain sqlite3.open would give them the process umask, typically 0644 on a host-local run."""
+    try:
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+    except FileExistsError:
+        pass
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
     """Open the index and its operations file, migrate old data and make sure both schemas exist."""
+    new_file = Path(path)
+    ops_file = Path(ops_path(new_file))
+    _create_owner_only(new_file)
+    _create_owner_only(ops_file)
     # One connection per request, never shared between threads; async form handlers may hop threads.
-    conn = sqlite3.connect(path, check_same_thread=False)
+    conn = sqlite3.connect(new_file, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("ATTACH DATABASE ? AS ops", (str(ops_path(path)),))
     for statement in OPS_SCHEMA.split(";"):
