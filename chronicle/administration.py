@@ -32,6 +32,11 @@ def _account_changes(role: str | None, active: bool | None, password: str | None
     """The columns to change for the values that were given."""
     changes: dict = {}
     if role is not None:
+        # The HTML form sends the role as a plain string; validate it like the API's Literal (audit run-1, §5).
+        try:
+            accounts.validate_role(role)
+        except ValueError as exc:
+            raise repository.Invalid(str(exc)) from exc
         changes["role"] = role
     if active is not None:
         changes["active"] = int(active)
@@ -76,8 +81,16 @@ def update_account(
         raise repository.NotFound("Benutzer nicht gefunden")
 
     changes = _account_changes(role, active, password)
-    _keep_an_admin(conn, target, role, active)
-    accounts.update_user(conn, user_id, **changes)
+    # The last-admin check and the update share one immediate transaction, so two concurrent demotions
+    # cannot both pass the count and strand the system without an admin (pattern of create_first_admin).
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        _keep_an_admin(conn, target, role, active)
+        accounts.apply_user_changes(conn, user_id, changes)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
 
     # Changing role, deactivating or resetting the password ends the user's sessions.
     if changes:

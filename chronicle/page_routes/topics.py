@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from html import escape
 from typing import get_args
 
 from fastapi import APIRouter, Depends, Request
@@ -103,8 +104,8 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
             return HTMLResponse(make_dashboard(conn, key, embedded=request.query_params.get("embed") == "1"))
         except repository.NotFound:
             return render(request, "not_found.html", user, status_code=404)
-        except ExportError as exc:  # shown inside the frame on the topic page
-            return HTMLResponse(str(exc), status_code=409)
+        except ExportError as exc:  # shown inside the frame on the topic page; the text is escaped (it may hold file names)
+            return HTMLResponse(escape(str(exc)), status_code=409)
 
     @router.post("/topics/{key}/edit", response_class=HTMLResponse)
     async def edit_topic_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
