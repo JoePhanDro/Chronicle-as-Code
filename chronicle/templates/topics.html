@@ -37,8 +37,8 @@
         <span class="min-w-0">
           <span class="line-clamp-2 text-sm font-medium text-slate-100">{{ topic.title }}</span>
           {% if topic.status %}<span class="mt-1 flex items-center gap-2 text-xs font-medium text-slate-200"><span class="h-2 w-2 flex-none rounded-full {{ status_dot[topic.status] }}" aria-hidden="true"></span>{{ status_text[topic.status] }}</span>{% endif %}
-          {% if topic.melde == 'overdue' %}<span class="mt-1 rounded-md bg-rose-500/20 px-1.5 py-0.5 text-xs font-medium text-rose-300">Meldepflicht überfällig</span>
-          {% elif topic.melde == 'due' %}<span class="mt-1 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-xs font-medium text-amber-300">Frist läuft ab</span>{% endif %}
+          {% if topic.melde == 'overdue' %}<span class="mt-1 rounded-md bg-rose-500/20 px-1.5 py-0.5 text-xs font-medium text-rose-200">Meldepflicht überfällig</span>
+          {% elif topic.melde == 'due' %}<span class="mt-1 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-xs font-medium text-amber-200">Frist läuft ab</span>{% endif %}
           <span class="mt-1 block font-mono text-xs text-slate-400">
             {{ topic.key }} · {{ topic.kind }}{% if topic.phase %} · {{ topic.phase }}{% endif %}
             {%- if topic.last_event_at %} · <time class="whitespace-nowrap" data-utc="{{ topic.last_event_at }}">{{ topic.last_event_at[:16].replace('T', ' ') }}</time>{% endif %}
