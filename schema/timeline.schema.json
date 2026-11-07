@@ -256,6 +256,43 @@
       "title": "Phase",
       "type": "string"
     },
+    "Reporting": {
+      "additionalProperties": false,
+      "description": "The reporting obligation of a topic (issue #229): legal basis and the moment the incident became known.\nThe stage deadlines (Frühwarnung, Meldung, Abschlussbericht) follow from the regulation and can be\noverridden per topic in hours. Chronicle only shows the deadlines and builds the reports, it never sends.",
+      "properties": {
+        "regulation": {
+          "enum": [
+            "nis2",
+            "bsig",
+            "dora",
+            "dsgvo",
+            "other"
+          ],
+          "title": "Regulation",
+          "type": "string"
+        },
+        "known_at": {
+          "description": "Zeitpunkt der Kenntnisnahme, ISO 8601 mit Zeitzone",
+          "format": "date-time",
+          "title": "Known At",
+          "type": "string"
+        },
+        "deadlines": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "Eigene Fristen pro Stufe in Stunden ab Kenntnisnahme, z. B. {'notification': 48}",
+          "title": "Deadlines",
+          "type": "object"
+        }
+      },
+      "required": [
+        "regulation",
+        "known_at"
+      ],
+      "title": "Reporting",
+      "type": "object"
+    },
     "Status": {
       "enum": [
         "open",
@@ -294,6 +331,18 @@
           "default": "",
           "title": "Summary",
           "type": "string"
+        },
+        "reporting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reporting"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Meldepflicht des Topics (issue #229)"
         }
       },
       "required": [

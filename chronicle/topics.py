@@ -27,7 +27,7 @@ from .store import (
     update_topic_in_file,
 )
 
-TOPIC_FIELDS = ("title", "kind", "summary")
+TOPIC_FIELDS = ("title", "kind", "summary", "reporting")
 
 
 def _create_topic_in_folder(conn: sqlite3.Connection, topic: Topic, data_dir: Path, actor_id: int, ip: str) -> dict:
@@ -70,7 +70,13 @@ def update_topic(
     current = get_topic(conn, key)
     if current is None:
         raise NotFound(f"Topic {key!r} nicht gefunden")
-    changed = [name for name in TOPIC_FIELDS if current[name] != getattr(topic, name)]
+    def differs(name: str) -> bool:
+        value = getattr(topic, name)
+        if name == "reporting":  # the index holds the parsed JSON dict, the model the Reporting object
+            return current.get("reporting") != (value.model_dump(mode="json", exclude_none=True) if value else None)
+        return current[name] != value
+
+    changed = [name for name in TOPIC_FIELDS if differs(name)]
     return _update_topic_in_folder(conn, key, topic, data_dir, actor_id, ip, changed)
 
 
