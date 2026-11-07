@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import io
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from xml.sax.saxutils import escape
 
 from markdown_it import MarkdownIt
@@ -23,12 +23,17 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from . import accounts, repository
+from . import accounts, reporting, repository
 from .evidence import check_file
 from .exporter import topic_document
 from .models import PHASE_COLORS, STATUS_LABELS, Event, Phase, Timeline
 
 VARIANTS = {"technisch": "technischer Bericht", "management": "Management Summary"}
+# The staged reporting-obligation reports (issue #229): which stage each variant covers.
+MELDE_VARIANTS = {"fruehwarnung": "Frühwarnung (Meldepflicht)", "meldung": "Meldung (Meldepflicht)",
+                  "abschlussbericht": "Abschlussbericht (Meldepflicht)"}
+STAGE_OF_VARIANT = {"fruehwarnung": "early_warning", "meldung": "notification", "abschlussbericht": "final_report"}
+VARIANTS = {**VARIANTS, **MELDE_VARIANTS}
 IMAGE_MIMES = {"image/png", "image/jpeg"}
 
 _markdown = MarkdownIt("commonmark", {"html": False, "breaks": True}).enable(["strikethrough"])
@@ -266,6 +271,51 @@ def _evidence(item, content: bytes | None, content_width: float) -> list:
     return [KeepTogether(parts)]
 
 
+def _meldebericht(timeline: Timeline, variant: str, now: datetime) -> list:
+    """One stage of the reporting obligation (issue #229): the deadline overview and the events up to the
+    stage's horizon (Frühwarnung/Meldung) or all of them (Abschlussbericht), plus detections and what is missing."""
+    topic = timeline.topic
+    rep = topic.reporting.model_dump(mode="json")
+    stage = STAGE_OF_VARIANT[variant]
+    hours = reporting.stage_hours(rep).get(stage)
+    known_at = topic.reporting.known_at
+    entries = reporting.stage_deadlines(rep, now)
+
+    rows = [[Paragraph("Stufe", SMALL), Paragraph("Frist", SMALL), Paragraph("Stand", SMALL)]]
+    for entry in entries:
+        deadline = f"{_when(entry['deadline'])}" if entry["deadline"] else "—"
+        state = "—" if entry["deadline"] is None else ("überfällig" if entry["overdue"] else reporting.human_remaining(entry["remaining"]))
+        rows.append([Paragraph(_text(entry["label"]), BODY), Paragraph(_text(deadline), BODY), Paragraph(_text(state), BODY)])
+    table = Table(rows, colWidths=[45 * mm, 60 * mm, None], hAlign="LEFT", repeatRows=1)
+    table.setStyle(TableStyle([
+        ("LINEBELOW", (0, 0), (-1, -1), 0.4, RULE), ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    flowables: list = [
+        Paragraph("Meldepflicht", H2),
+        Paragraph(f"Rechtsgrundlage: {_text(reporting.REGULATION_LABELS.get(rep['regulation'], rep['regulation']))} · "
+                  f"Kenntnisnahme: {_text(_when(known_at))}", BODY),
+        Spacer(1, 6), table, Spacer(1, 10),
+    ]
+    events = timeline.events
+    if hours:
+        events = [event for event in events if event.t0 <= known_at + timedelta(hours=hours)]
+    detections = [event.detection for event in timeline.events if event.detection]
+    if detections:
+        lines = []
+        for det in detections:
+            parts = [part for part in (det.rule_id, det.rule_name, det.source, det.alert_id) if part]
+            lines.append(" · ".join(parts) + (f" (Stand {det.rule_version})" if det.rule_version else ""))
+        flowables.append(Paragraph("Erkannt durch", H3))
+        flowables += [Paragraph(_text(line), SMALL) for line in lines]
+        flowables.append(Spacer(1, 6))
+    missing = reporting.missing_fields(rep, [event.model_dump(mode="json") for event in timeline.events], stage)
+    if missing:
+        flowables.append(Paragraph("Fehlende Angaben: " + _text("; ".join(missing)), SMALL))
+        flowables.append(Spacer(1, 6))
+    return flowables + _management(timeline.model_copy(update={"events": events}))
+
+
 def render_pdf(timeline: Timeline, evidence: dict[str, bytes], variant: str, made_at: str) -> bytes:
     buffer = io.BytesIO()
     margin = 20 * mm
@@ -282,7 +332,10 @@ def render_pdf(timeline: Timeline, evidence: dict[str, bytes], variant: str, mad
         canvas.drawRightString(A4[0] - margin, 10 * mm, f"Seite {document.page}")
         canvas.restoreState()
 
-    body = _technical(timeline, evidence, width) if variant == "technisch" else _management(timeline)
+    if variant in MELDE_VARIANTS:
+        body = _meldebericht(timeline, variant, datetime.now(UTC))
+    else:
+        body = _technical(timeline, evidence, width) if variant == "technisch" else _management(timeline)
     doc.build(_header(timeline, variant, made_at) + _techniques(timeline.events) + body, onFirstPage=footer, onLaterPages=footer)
     return buffer.getvalue()
 
@@ -298,6 +351,8 @@ def make_pdf_report(
         raise repository.NotFound(f"Topic {topic_key!r} nicht gefunden")
     document, evidence = found
     timeline = Timeline.model_validate(document)
+    if variant in MELDE_VARIANTS and timeline.topic.reporting is None:
+        raise repository.NotFound(f"Topic {topic_key!r} hat keine Meldepflicht (reporting) konfiguriert")
     body = render_pdf(timeline, evidence, variant, datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"))
     accounts.audit(conn, "report_created", user_id=actor_id, target=topic_key, detail=f"pdf={variant} evidence={len(evidence)}", ip=ip)
     return f"{variant}-{topic_key}.pdf", body

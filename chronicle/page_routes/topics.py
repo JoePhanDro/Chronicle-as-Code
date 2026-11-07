@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime
 from html import escape
 from typing import get_args
 
@@ -10,7 +11,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
-from .. import repository
+from .. import repository, reporting
 from ..auth import client_ip
 from ..exporter import ExportError
 from ..report import make_dashboard
@@ -20,14 +21,34 @@ from .common import WRITER_ROLES, PageContext, _error_text
 
 
 TOPIC_KINDS = list(get_args(TopicKind))
+REGULATION_OPTIONS = [{"value": value, "label": label} for value, label in reporting.REGULATION_LABELS.items()]
+
+
+def _rep_form(topic: dict | None) -> dict | None:
+    """The reporting block of the topic edit form: regulation and known_at as datetime-local (UTC)."""
+    if not topic or not topic.get("reporting"):
+        return {"regulation": "none", "known_at": ""}
+    known = datetime.fromisoformat(topic["reporting"]["known_at"])
+    return {"regulation": topic["reporting"]["regulation"],
+            "known_at": known.astimezone(UTC).strftime("%Y-%m-%dT%H:%M")}
 
 
 def _topic_values(form) -> dict:
-    return {
+    values = {
         "title": (form.get("title") or "").strip(),
         "kind": form.get("kind") or "other",
         "summary": form.get("summary") or "",
     }
+    # Meldepflicht (issue #229): datetime-local kommt ohne Zeitzone, die UI meint UTC.
+    regulation = (form.get("rep_regulation") or "").strip()
+    known_at = (form.get("rep_known_at") or "").strip()
+    if regulation and regulation != "none":
+        if len(known_at) == 16:
+            known_at += ":00+00:00"
+        values["reporting"] = {"regulation": regulation, "known_at": known_at}
+    else:
+        values["reporting"] = None
+    return values
 
 
 def make_topic_pages(ctx: PageContext) -> APIRouter:
@@ -44,17 +65,34 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
         delete_plan = repository.topic_delete_plan(conn, key)
         unresolved = [event for event in events if event["status"] != "resolved"]
         closable = [event for event in unresolved if event["home_topic"] == key]
+        meldepflicht = None
+        if topic["reporting"]:
+            now = datetime.now(UTC)
+            stages = reporting.stage_deadlines(topic["reporting"], now)
+            meldepflicht = {
+                "regulation_label": reporting.REGULATION_LABELS.get(topic["reporting"]["regulation"], topic["reporting"]["regulation"]),
+                "known_at": topic["reporting"]["known_at"],
+                "stages": [{**entry, "remaining_text": reporting.human_remaining(entry["remaining"])} for entry in stages],
+                "status": reporting.worst_status(stages, now),
+                "missing": {entry["stage"]: reporting.missing_fields(topic["reporting"], events, entry["stage"]) for entry in stages},
+            }
         return render(request, "topic.html", user, status_code=status_code, mode="view", topic=topic,
                       events=events, addable=addable, errors=errors, kinds=TOPIC_KINDS, form=None,
                       closable=len(closable), foreign_open=len(unresolved) - len(closable), closed=closed,
                       status=repository.most_pressing_status(event["status"] for event in events),
-                      delete_plan=delete_plan)
+                      delete_plan=delete_plan, meldepflicht=meldepflicht, regulations=REGULATION_OPTIONS,
+                      rep_form=_rep_form(topic))
 
     @router.get("/topics", response_class=HTMLResponse)
     def topics_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
         if user is None:
             return RedirectResponse("/login", status_code=303)
-        return render(request, "topics.html", user, topics=repository.list_topics(conn, by_attention=True))
+        topics = repository.list_topics(conn, by_attention=True)
+        now = datetime.now(UTC)
+        for topic in topics:  # the reporting badge (issue #229): overdue first, then due soon
+            topic["melde"] = (reporting.worst_status(reporting.stage_deadlines(topic["reporting"], now))
+                              if topic["reporting"] else "none")
+        return render(request, "topics.html", user, topics=topics)
 
     @router.get("/topics/new", response_class=HTMLResponse)
     def new_topic_page(request: Request, user: dict | None = Depends(page_user)):
@@ -63,7 +101,8 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
         if user["role"] not in WRITER_ROLES:
             return render(request, "forbidden.html", user, status_code=403)
         return render(request, "topic.html", user, mode="new", topic=None, events=[], addable=[], errors=None,
-                      kinds=TOPIC_KINDS, form={"kind": "incident"})
+                      kinds=TOPIC_KINDS, form={"kind": "incident"}, regulations=REGULATION_OPTIONS,
+                      rep_form={"regulation": "none", "known_at": ""})
 
     @router.post("/topics/new", response_class=HTMLResponse)
     async def create_topic_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

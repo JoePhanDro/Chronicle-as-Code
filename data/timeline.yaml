@@ -6,6 +6,9 @@ topic:
   title: "INC-2026-042: Ausnutzung von CVE-2026-XXXX"
   kind: incident
   summary: "Demo-Vorfall zur Vorschau des Dashboards. Alle Namen und Daten sind fiktiv."
+  reporting:
+    regulation: nis2
+    known_at: 2026-10-14T06:00:00Z
 
 events:
   - key: feed-cve

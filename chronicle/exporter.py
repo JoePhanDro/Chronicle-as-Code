@@ -118,7 +118,8 @@ def _topic_document(
             refs.append(event["key"])
 
     document = {
-        "topic": {"key": topic["key"], "title": topic["title"], "kind": topic["kind"], "summary": topic["summary"]},
+        "topic": {"key": topic["key"], "title": topic["title"], "kind": topic["kind"], "summary": topic["summary"],
+                  **({"reporting": topic["reporting"]} if topic.get("reporting") else {})},
     }
     if events:
         document["events"] = sorted(events, key=lambda item: (item["t0"], item["key"]))

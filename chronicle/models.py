@@ -226,6 +226,40 @@ class Event(BaseModel):
 TopicKind = Literal["incident", "vulnerability", "project", "special", "other"]
 
 
+class Reporting(BaseModel):
+    """The reporting obligation of a topic (issue #229): legal basis and the moment the incident became known.
+    The stage deadlines (Frühwarnung, Meldung, Abschlussbericht) follow from the regulation and can be
+    overridden per topic in hours. Chronicle only shows the deadlines and builds the reports, it never sends."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    regulation: Literal["nis2", "bsig", "dora", "dsgvo", "other"]
+    known_at: datetime = Field(description="Zeitpunkt der Kenntnisnahme, ISO 8601 mit Zeitzone")
+    deadlines: dict[str, float] = Field(
+        default_factory=dict,
+        description="Eigene Fristen pro Stufe in Stunden ab Kenntnisnahme, z. B. {'notification': 48}",
+    )
+
+    @field_validator("known_at")
+    @classmethod
+    def _require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("known_at braucht eine Zeitzone, z. B. 2026-10-14T08:00:00+02:00")
+        return value.astimezone(UTC)
+
+    @field_validator("deadlines")
+    @classmethod
+    def _check_deadlines(cls, value: dict[str, float]) -> dict[str, float]:
+        from .reporting import MAX_DEADLINE_HOURS, STAGES
+
+        wrong = sorted(set(value) - set(STAGES))
+        if wrong:
+            raise ValueError(f"Unbekannte Stufen: {', '.join(wrong)} (erlaubt: {', '.join(STAGES)})")
+        if any(not 0 < hours <= MAX_DEADLINE_HOURS for hours in value.values()):
+            raise ValueError("Fristen müssen größer als 0 und höchstens 10 Jahre sein")
+        return value
+
+
 class Topic(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
@@ -233,6 +267,7 @@ class Topic(BaseModel):
     title: str = Field(min_length=1)
     kind: TopicKind = "other"
     summary: str = ""
+    reporting: Reporting | None = Field(default=None, description="Meldepflicht des Topics (issue #229)")
 
 
 class TopicCreate(Topic):
