@@ -63,11 +63,40 @@
     <input type="date" name="until" value="{{ query.get('until', '') }}"
            class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
   </label>
-  <div class="flex items-center gap-3 sm:col-span-2 lg:col-span-4">
+  <label class="block sm:col-span-2 lg:col-span-2">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Gespeicherter Filter (Preset aus presets/)</span>
+    <select name="preset" class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+      <option value="">— ohne Preset —</option>
+      {% for preset in presets %}<option value="{{ preset.name }}" {{ 'selected' if active_preset == preset.name }}>{{ preset.label }}</option>{% endfor %}
+    </select>
+  </label>
+  <div class="flex items-center gap-3 sm:col-span-2 lg:col-span-2">
     <button type="submit" class="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Filtern</button>
     {% if filtered %}<a href="/events" class="text-sm text-slate-400 hover:text-slate-200 hover:underline">Filter zurücksetzen</a>{% endif %}
   </div>
 </form>
+
+{% if preset_problems %}
+<ul class="mb-4 list-disc pl-5 text-sm text-amber-400">{% for problem in preset_problems %}<li>{{ problem }}</li>{% endfor %}</ul>
+{% endif %}
+{% if can_write %}
+{% if preset_error %}<p class="mb-4 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-300">{{ preset_error }}</p>{% endif %}
+<form method="post" action="/events/presets" class="mb-6 flex flex-wrap items-end gap-3 rounded-xl border border-white/10 p-4">
+  <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+  {% for name, value in query.items() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Preset-Name (Datei presets/&lt;name&gt;.yaml)</span>
+    <input type="text" name="name" required pattern="[a-z0-9][a-z0-9._-]{1,63}" placeholder="z. b. t1059-offen"
+           class="w-56 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Anzeigename (optional)</span>
+    <input type="text" name="label" placeholder="T1059 in offenen Incidents"
+           class="w-64 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+  </label>
+  <button type="submit" class="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-200 hover:bg-white/5">Aktuellen Filter als Preset speichern</button>
+</form>
+{% endif %}
 
 {% if events %}
 <div class="overflow-x-auto rounded-xl border border-white/10">
