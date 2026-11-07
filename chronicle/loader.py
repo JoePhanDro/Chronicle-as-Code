@@ -31,6 +31,9 @@ class CheckFailed(TimelineError):
 
 TOPIC_FILE_PATTERNS = ("*.yaml", "*.yml")  # every file the loader reads as one topic
 TOPIC_SUFFIXES = tuple(pattern[1:] for pattern in TOPIC_FILE_PATTERNS)
+# Saved search presets live in their own folder in the root of the data folder (issue #260). Like .git it is
+# no topic folder: the loader skips it, the files there are read by presets.py only.
+PRESET_DIR = "presets"
 
 
 MAX_LISTED_LINKS = 10
@@ -40,8 +43,8 @@ def find_topic_files(data_dir: Path) -> list[Path]:
     """Every YAML file below the folder. Each file is one topic (ADR 0005).
 
     The folder is walked once. A link anywhere below it (to a file or a folder) is refused, because the app would read
-    or write outside the folder through it. Only regular files count as topic files. The Git folder in the root is
-    not looked at.
+    or write outside the folder through it. Only regular files count as topic files. The Git folder and the presets
+    folder in the root are not looked at.
     """
     if not data_dir.is_dir():
         raise TimelineError(f"Datenordner existiert nicht: {data_dir}")
@@ -79,7 +82,7 @@ def _sort_entry(
     if entry.is_symlink():
         links.append(Path(entry.path).relative_to(data_dir).as_posix())
     elif entry.is_dir(follow_symlinks=False):
-        if not (in_root and entry.name == ".git"):
+        if not (in_root and entry.name in (".git", PRESET_DIR)):
             pending.append(Path(entry.path))
     elif entry.name.endswith(TOPIC_SUFFIXES) and entry.is_file(follow_symlinks=False):
         files.append(Path(entry.path))

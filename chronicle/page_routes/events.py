@@ -12,11 +12,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile  # form uploads are Starlette objects
 
-from .. import repository
+from .. import accounts, presets, repository
 from ..auth import client_ip
 from ..evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, MAX_FORM_FILES, Blob, check_file
 from ..models import TECHNIQUE_ID, Phase, Status
 from ..event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
+from ..store import StoreError
 from .common import TEMPLATES, WRITER_ROLES, PageContext, _text_param, _choice_param, _day_param, _page_param, _error_text
 
 
@@ -108,17 +109,8 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
                 "event_choices": repository.list_events(conn), "timezones": EVENT_TIMEZONES,
                 "hours": HOURS, "minutes": MINUTES, **extra}
 
-    @router.get("/events", response_class=HTMLResponse)
-    def events_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
-        if user is None:
-            return RedirectResponse("/login", status_code=303)
-        params = request.query_params
+    def _filter_from(params) -> tuple[repository.EventFilter, str | None]:
         topic_key = _text_param(params, "topic")
-        topic = None
-        if topic_key is not None:
-            topic = repository.get_topic(conn, topic_key)
-            if topic is None:
-                return render(request, "not_found.html", user, status_code=404)
         flt = repository.EventFilter(
             topic=topic_key, query=_text_param(params, "q"), phase=_choice_param(params, "phase", Phase),
             status=_choice_param(params, "status", Status), actor=_text_param(params, "actor"),
@@ -126,9 +118,26 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
             tag=_text_param(params, "tag"),
             since=_day_param(params, "since"), until=_day_param(params, "until"),
         )
+        return flt, topic_key
+
+    def _render_events(request: Request, conn: sqlite3.Connection, user: dict, params, preset_error: str | None = None):
+        flt, topic_key = _filter_from(params)
+        topic = None
+        if topic_key is not None:
+            topic = repository.get_topic(conn, topic_key)
+            if topic is None:
+                return render(request, "not_found.html", user, status_code=404)
+        # A preset fills every filter field the URL does not set (issue #260).
+        preset_name = _text_param(params, "preset")
+        all_presets, preset_problems = presets.list_presets(request.app.state.data_dir)
+        active = next((p for p in all_presets if p.name == preset_name), None) if preset_name else None
+        if active is not None:
+            merged = {field: getattr(flt, field) if getattr(flt, field) is not None else getattr(active.filter, field)
+                      for field in presets.FILTER_FIELDS}
+            flt = repository.EventFilter(**merged)
         # Filters go into every page link; empty ones are left out of the URL.
         query = {
-            "topic": topic_key, "q": flt.query, "phase": flt.phase, "status": flt.status, "actor": flt.actor,
+            "topic": flt.topic, "q": flt.query, "phase": flt.phase, "status": flt.status, "actor": flt.actor,
             "system": flt.system, "technique": flt.technique,
             "tag": flt.tag,
             "since": flt.since.isoformat() if flt.since else None,
@@ -142,7 +151,34 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
         return render(request, "events.html", user, events=events, total=total, page=page, pages=pages,
                       page_url=lambda number: "/events?" + urlencode({**query, "page": number}),
                       query=query, filtered=bool(query), phases=list(Phase), statuses=list(Status),
-                      topic=topic, topics=repository.list_topics(conn))
+                      topic=topic, topics=repository.list_topics(conn),
+                      presets=[{"name": p.name, "label": p.label} for p in all_presets],
+                      active_preset=active.name if active else None,
+                      preset_problems=preset_problems, preset_error=preset_error)
+
+    @router.get("/events", response_class=HTMLResponse)
+    def events_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        return _render_events(request, conn, user, request.query_params)
+
+    @router.post("/events/presets")
+    async def save_preset_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        """Save the filter of the event list as a preset file in the data folder (as code, synced with Git)."""
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        name = (form.get("name") or "").strip().lower()
+        label = (form.get("label") or "").strip() or None
+        flt, _ = _filter_from(form)
+        try:
+            presets.save_preset(request.app.state.data_dir, name, label, flt)
+        except (presets.PresetRejected, StoreError, ValueError) as exc:
+            return _render_events(request, conn, user, form, preset_error=str(exc))
+        accounts.audit(conn, "preset_saved", user_id=user["id"], target=name, detail=label, ip=client_ip(request))
+        return RedirectResponse(f"/events?preset={name}", status_code=303)
 
     @router.get("/events/new", response_class=HTMLResponse)
     def new_event_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
