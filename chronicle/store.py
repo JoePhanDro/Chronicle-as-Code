@@ -513,6 +513,7 @@ def _stored_values(event: Event) -> dict:
         "triggered_by": list(event.triggered_by) or None,
         "techniques": list(event.techniques) or None,
         "tags": list(event.tags) or None,
+        "detection": event.detection.model_dump(mode="json", exclude_none=True) if event.detection else None,
         "comments": [_comment_document(comment) for comment in event.comments] or None,
         "details": _text(event.details) or None,
     }
@@ -598,6 +599,8 @@ def _event_document(event: Event) -> dict:
         item["techniques"] = list(event.techniques)
     if event.tags:
         item["tags"] = list(event.tags)
+    if event.detection:
+        item["detection"] = event.detection.model_dump(mode="json", exclude_none=True)
     if event.comments:
         item["comments"] = [_comment_document(comment) for comment in event.comments]
     if event.details:

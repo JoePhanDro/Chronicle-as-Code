@@ -18,7 +18,7 @@ from .loader import link_below
 
 EVENT_SELECT = """
 SELECT events.pk, events.key, events.t0, events.phase, events.actor, events.system, events.action,
-       events.status, events.triggered_by, events.techniques, events.tags, events.comments,
+       events.status, events.triggered_by, events.techniques, events.tags, events.detection, events.comments,
        events.details, events.home_topic, events.version
 FROM events
 """
@@ -89,6 +89,7 @@ def with_evidence(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[dic
         event["triggered_by"] = triggers_from_db(event["triggered_by"])
         event["techniques"] = techniques_from_db(event["techniques"])
         event["tags"] = tags_from_db(event["tags"])
+        event["detection"] = json.loads(event["detection"]) if event["detection"] else None
         event["comments"] = json.loads(event["comments"]) if event["comments"] else []
         event["evidence"] = evidence_of[row["pk"]]
         events.append(event)
@@ -168,6 +169,7 @@ class EventFilter:
     actor: str | None = None  # part of the actor name, not case-sensitive
     system: str | None = None  # part of the system name, not case-sensitive
     technique: str | None = None  # an ATT&CK ID: T1059 also finds the events of its sub-techniques (T1059.001)
+    rule: str | None = None  # rule_id of the detection that led to the event (issue #257), not case-sensitive
     since: date | None = None  # t0 on or after this day (UTC)
     until: date | None = None  # t0 on or before this day (UTC)
 
@@ -208,6 +210,7 @@ def _filter_sql(flt: EventFilter) -> tuple[str, list]:
         (flt.actor, "instr(lower(events.actor), lower(?)) > 0", flt.actor),
         (flt.system, "instr(lower(events.system), lower(?)) > 0", flt.system),
         (flt.technique, *_technique_condition(flt.technique)),
+        (flt.rule, "lower(json_extract(events.detection, '$.rule_id')) = lower(?)", flt.rule),
         (flt.since is not None, "substr(events.t0, 1, 10) >= ?", flt.since),
         (flt.until is not None, "substr(events.t0, 1, 10) <= ?", flt.until),
     ]

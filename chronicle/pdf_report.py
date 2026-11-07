@@ -208,6 +208,10 @@ def _event_block(event: Event, events: list[Event], titles: dict[str, str]) -> l
     facts = [_when(event.t0), event.phase.value, STATUS_LABELS[event.status], event.actor]
     if event.system:
         facts.append(event.system)
+    if event.detection and (event.detection.rule_id or event.detection.alert_id):
+        det = event.detection
+        parts = [p for p in (det.rule_id, det.rule_name, det.source, det.alert_id) if p]
+        facts.append("Erkannt durch: " + " · ".join(parts) + (f" (Stand {det.rule_version})" if det.rule_version else ""))
     block: list = [
         HRFlowable(width="100%", color=RULE, spaceBefore=6, spaceAfter=6),
         Paragraph(f"{_event_dot(event.phase)} {_text(event.action)}", EVENT_TITLE),

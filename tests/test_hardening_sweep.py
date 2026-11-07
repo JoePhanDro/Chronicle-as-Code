@@ -139,7 +139,7 @@ def hostile_event():
     return SimpleNamespace(
         key="e1", t0=datetime(2026, 10, 14, 8, tzinfo=UTC), phase=Phase.ANALYSIS,
         status=Status.OPEN, actor="SIEM", action="Schritt", system=None,
-        techniques=["<script>alert(1)</script>"], tags=[], comments=[], triggered_by=[],
+        techniques=["<script>alert(1)</script>"], tags=[], detection=None, comments=[], triggered_by=[],
     )
 
 

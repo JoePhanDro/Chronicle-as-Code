@@ -43,6 +43,7 @@ def event_values(event: Event) -> tuple:
         _triggers_to_db(event.triggered_by),
         _triggers_to_db(event.techniques),
         _triggers_to_db(event.tags),
+        event.detection.model_dump_json() if event.detection else None,
         json.dumps([comment.model_dump(mode="json") for comment in event.comments]) if event.comments else None,
         event.details,
     )
@@ -297,9 +298,9 @@ def _write_event(
     cursor = conn.execute(
         """
         INSERT INTO events
-            (key, t0, phase, actor, system, action, status, triggered_by, techniques, tags, comments, details,
-             home_topic, version, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (key, t0, phase, actor, system, action, status, triggered_by, techniques, tags, detection, comments,
+             details, home_topic, version, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         ON CONFLICT (key) DO UPDATE SET
             t0 = excluded.t0,
             phase = excluded.phase,
@@ -310,6 +311,7 @@ def _write_event(
             triggered_by = excluded.triggered_by,
             techniques = excluded.techniques,
             tags = excluded.tags,
+            detection = excluded.detection,
             comments = excluded.comments,
             details = excluded.details,
             version = events.version + 1,
@@ -323,6 +325,7 @@ def _write_event(
            OR events.triggered_by IS NOT excluded.triggered_by
            OR events.techniques IS NOT excluded.techniques
            OR events.tags IS NOT excluded.tags
+           OR events.detection IS NOT excluded.detection
            OR events.comments IS NOT excluded.comments
            OR events.details IS NOT excluded.details
         """,

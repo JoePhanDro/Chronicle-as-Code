@@ -1,5 +1,73 @@
 {
   "$defs": {
+    "Detection": {
+      "additionalProperties": false,
+      "description": "The detection that led to this event (issue #257): which rule or alert in the SIEM/EDR, at which rule\nversion. Chronicle does not detect anything itself; it only records what the detecting system reported.\nAt least rule_id or alert_id must be set.",
+      "properties": {
+        "rule_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule Id"
+        },
+        "rule_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule Name"
+        },
+        "rule_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule Version"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "alert_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Alert Id"
+        }
+      },
+      "title": "Detection",
+      "type": "object"
+    },
     "Event": {
       "additionalProperties": false,
       "properties": {
@@ -67,6 +135,18 @@
           "maxItems": 50,
           "title": "Tags",
           "type": "array"
+        },
+        "detection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Detection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The rule/alert that led to this event (issue #257), if any"
         },
         "comments": {
           "items": {

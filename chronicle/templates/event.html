@@ -113,6 +113,19 @@
         </dd>
       </div>
       {% endif %}
+      {% if event.detection %}
+      <div class="col-span-2 sm:col-span-3">
+        <dt class="text-xs text-slate-400">Erkannt durch</dt>
+        <dd class="mt-1 text-sm text-slate-200">
+          {% set det = event.detection %}
+          {% if det.rule_id %}<a href="/events?rule={{ det.rule_id | urlencode }}" class="font-mono text-sky-300 hover:underline" title="Alle Events dieser Regel">{{ det.rule_id }}</a>{% endif %}
+          {% if det.rule_name %}{{ det.rule_name }}{% endif %}
+          {% if det.rule_version %}<span class="font-mono text-xs text-slate-400">(Stand {{ det.rule_version }})</span>{% endif %}
+          {% if det.source %}<span class="text-slate-400">· {{ det.source }}</span>{% endif %}
+          {% if det.alert_id %}<span class="font-mono text-xs text-slate-400">{{ det.alert_id }}</span>{% endif %}
+        </dd>
+      </div>
+      {% endif %}
     </dl>
   </header>
 

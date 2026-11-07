@@ -49,7 +49,12 @@
            class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 font-mono text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
   </label>
   <label class="block">
-    <span class="mb-1 block text-xs font-medium text-slate-400">Tag</span>
+    <span class="mb-1 block text-xs font-medium text-slate-400">Erkennung (Regel-ID)</span>
+    <input type="text" name="rule" value="{{ query.get('rule', '') }}" placeholder="Regel-ID der Erkennung"
+           class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20 font-mono">
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">Tag (exakt)</span>
     <input type="text" name="tag" value="{{ query.get('tag', '') }}" placeholder="zu-prüfen"
            class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
   </label>
