@@ -40,7 +40,38 @@ def client(db_path):
 def test_health(client):
     response = client.get("/api/v1/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    assert response.json() == {"status": "ok"}  # no version: the endpoint is public (issue #261)
+
+
+def test_health_discloses_no_version_even_when_logged_in(client):
+    assert "version" not in client.get("/api/v1/health").json()
+
+
+def test_swagger_redoc_and_openapi_are_not_served(db_path):
+    # The docs pages pull their scripts from a CDN, against the vendor policy; they stay off (issue #261).
+    client = TestClient(app_for(db_path))
+    for path in ("/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"):
+        assert client.get(path).status_code == 404, path
+
+
+def test_version_is_available_to_admins_only(db_path):
+    from chronicle import __version__
+
+    conn = connect(db_path)
+    accounts.create_user(conn, "chef", security.hash_password(PASSWORD), "admin")
+    accounts.create_user(conn, "anna", security.hash_password(PASSWORD), "analyst")
+    conn.close()
+
+    def login(username):
+        client = TestClient(app_for(db_path))
+        response = client.post("/api/v1/auth/login", json={"username": username, "password": PASSWORD})
+        assert response.status_code == 200
+        client.headers["X-CSRF-Token"] = response.json()["csrf_token"]
+        return client
+
+    assert login("chef").get("/api/v1/admin/version").json() == {"version": __version__}
+    assert login("anna").get("/api/v1/admin/version").status_code in (401, 403)
+    assert TestClient(app_for(db_path)).get("/api/v1/admin/version").status_code in (401, 403)
 
 
 def test_empty_database_has_no_topics(client):

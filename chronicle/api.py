@@ -98,7 +98,9 @@ def create_app(db_path: str | Path, trusted_proxies: str | None = None, *, data_
 
     @app.get("/api/v1/health")
     def health() -> dict:
-        return {"status": "ok", "version": __version__}
+        # Public endpoint: no version here, it would name a possibly vulnerable build (issue #261).
+        # Admins get the version at /api/v1/admin/version.
+        return {"status": "ok"}
 
     app.include_router(make_topic_routes(get_conn, auth))
     app.include_router(make_event_routes(get_conn, auth))
