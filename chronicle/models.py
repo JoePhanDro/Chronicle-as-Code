@@ -93,6 +93,36 @@ class EventComment(BaseModel):
         return value.replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
+class Detection(BaseModel):
+    """The detection that led to this event (issue #257): which rule or alert in the SIEM/EDR, at which rule
+    version. Chronicle does not detect anything itself; it only records what the detecting system reported.
+    At least rule_id or alert_id must be set."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    rule_id: str | None = None  # Sigma-ID or rule number in the SIEM
+    rule_name: str | None = None  # free text
+    rule_version: str | None = None  # version or commit of the rule at the time of the hit
+    source: str | None = None  # the system that detected, e.g. Defender, Elastic
+    alert_id: str | None = None  # alert ID or link to the alert
+
+    @field_validator("rule_id", "rule_name", "rule_version", "source", "alert_id")
+    @classmethod
+    def _bounded_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value or len(value) > 200:
+            raise ValueError("Erkennungs-Felder: 1 bis 200 Zeichen")
+        return value
+
+    @model_validator(mode="after")
+    def _at_least_one_id(self) -> Detection:
+        if not (self.rule_id or self.alert_id):
+            raise ValueError("detection braucht mindestens rule_id oder alert_id")
+        return self
+
+
 class Event(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
@@ -116,6 +146,9 @@ class Event(BaseModel):
         description="MITRE ATT&CK technique IDs, e.g. T1190 or T1059.001. Any number, including none (ADR 0026)",
     )
     tags: list[str] = Field(default_factory=list, max_length=50)
+    detection: Detection | None = Field(
+        default=None, description="The rule/alert that led to this event (issue #257), if any"
+    )
     comments: list[EventComment] = Field(default_factory=list, max_length=200)
     details: str = Field(default="", description="Markdown body shown in the detail view")
     evidence: list[Evidence] = Field(default_factory=list)

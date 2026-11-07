@@ -131,6 +131,33 @@
 </section>
 
 <section class="{{ section_class }}">
+  <h2 class="{{ heading_class }}">Erkennung</h2>
+  <p class="mb-3 text-xs text-slate-500">Welche Regel bzw. welcher Alert im SIEM/EDR zu diesem Event geführt hat (leer lassen, wenn unbekannt). Mindestens Regel-ID oder Alert-ID.</p>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <label class="block">
+      <span class="{{ label_class }}">Regel-ID</span>
+      <input name="det_rule_id" value="{{ f.det_rule_id or '' }}" maxlength="200" placeholder="z. B. Sigma-UUID oder SIEM-Regelnummer" class="{{ input_class }} font-mono">
+    </label>
+    <label class="block">
+      <span class="{{ label_class }}">Regelname</span>
+      <input name="det_rule_name" value="{{ f.det_rule_name or '' }}" maxlength="200" placeholder="z. B. Webshell Upload" class="{{ input_class }}">
+    </label>
+    <label class="block">
+      <span class="{{ label_class }}">Regelstand</span>
+      <input name="det_rule_version" value="{{ f.det_rule_version or '' }}" maxlength="200" placeholder="Version oder Commit der Regel" class="{{ input_class }} font-mono">
+    </label>
+    <label class="block">
+      <span class="{{ label_class }}">Quelle (detektierendes System)</span>
+      <input name="det_source" value="{{ f.det_source or '' }}" maxlength="200" placeholder="z. B. Defender, Elastic" class="{{ input_class }}">
+    </label>
+    <label class="block sm:col-span-2">
+      <span class="{{ label_class }}">Alert-ID / Link</span>
+      <input name="det_alert_id" value="{{ f.det_alert_id or '' }}" maxlength="200" placeholder="z. B. alert-12345 oder URL" class="{{ input_class }} font-mono">
+    </label>
+  </div>
+</section>
+
+<section class="{{ section_class }}">
   <h2 class="{{ heading_class }}">Verknüpfungen</h2>
   <div class="space-y-5">
     <fieldset data-cause-picker>

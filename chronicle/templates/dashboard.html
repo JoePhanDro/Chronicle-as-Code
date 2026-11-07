@@ -468,6 +468,15 @@
       );
       if (ev.techniques.length) hero.append(el('div', 'flex flex-wrap items-center gap-2', ev.techniques.map(techniqueLink)));
       if (ev.tags.length) hero.append(el('div', 'flex flex-wrap items-center gap-2', ev.tags.map(tag => chip(`#${tag}`))));
+      if (ev.detection && (ev.detection.rule_id || ev.detection.alert_id)) {
+        const parts = [];
+        if (ev.detection.rule_id) parts.push(`Regel ${ev.detection.rule_id}`);
+        if (ev.detection.rule_name) parts.push(ev.detection.rule_name);
+        if (ev.detection.rule_version) parts.push(`Stand ${ev.detection.rule_version}`);
+        if (ev.detection.source) parts.push(ev.detection.source);
+        if (ev.detection.alert_id) parts.push(ev.detection.alert_id);
+        hero.append(el('div', 'text-xs text-slate-400', `Erkannt durch: ${parts.join(' · ')}`));
+      }
 
       const links = [];
       for (const causeId of ev.triggered_by) {

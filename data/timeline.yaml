@@ -64,6 +64,12 @@ events:
     status: in_progress
     triggered_by:
       - exploit
+    detection:
+      rule_id: sigma-webshell-upload-7f3a
+      rule_name: Webshell Upload (Sigma)
+      rule_version: "2026.10"
+      source: Defender for Endpoint
+      alert_id: alert-2026-10-14-0042
     details: |
       Dateiname `img_resize.php` im Verzeichnis `/uploads/cache/`.
 

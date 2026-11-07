@@ -69,7 +69,8 @@ def _index_field_change(conn: sqlite3.Connection, key: str, event: Event, writte
         conn.execute(
             """
             UPDATE events SET t0 = ?, phase = ?, actor = ?, system = ?, action = ?, status = ?,
-                              triggered_by = ?, techniques = ?, tags = ?, comments = ?, details = ?, version = version + 1,
+                              triggered_by = ?, techniques = ?, tags = ?, detection = ?, comments = ?, details = ?,
+                              version = version + 1,
                               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE key = ?
             """,

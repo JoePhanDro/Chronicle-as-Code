@@ -127,6 +127,11 @@ def _relative_src(item: Evidence) -> str:
     return quote(item.file)
 
 
+def null_detection() -> dict:
+    """The empty detection of an event without one, so the template needs no null check."""
+    return {"rule_id": None, "rule_name": None, "rule_version": None, "source": None, "alert_id": None}
+
+
 def _event_payload(event: Event, src_for: Callable[[Evidence], str]) -> dict:
     images = {PurePosixPath(item.file).name: src_for(item) for item in event.evidence}
     return {
@@ -141,6 +146,7 @@ def _event_payload(event: Event, src_for: Callable[[Evidence], str]) -> dict:
         "triggered_by": event.triggered_by,
         "techniques": event.techniques,
         "tags": event.tags,
+        "detection": event.detection.model_dump(mode="json") if event.detection else null_detection(),
         "comments": [comment.model_dump(mode="json") for comment in event.comments],
         "details": event.details,
         "details_html": render_markdown(event.details, images),

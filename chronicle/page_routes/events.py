@@ -40,6 +40,16 @@ def _technique_param(params) -> str | None:
     return value if TECHNIQUE_ID.fullmatch(value) else None
 
 
+DETECTION_FIELDS = ("rule_id", "rule_name", "rule_version", "source", "alert_id")
+
+
+def _detection_from_form(form) -> dict | None:
+    """The detection block of the form (issue #257); None when every field is empty, so the event has none."""
+    values = {name: _field(form, f"det_{name}") for name in DETECTION_FIELDS}
+    values = {name: value for name, value in values.items() if value}
+    return values or None
+
+
 def _payload_from_form(form, topic_home: str | None = None) -> dict:
     return {
         "key": _field(form, "key"),
@@ -52,6 +62,7 @@ def _payload_from_form(form, topic_home: str | None = None) -> dict:
         "triggered_by": [key for key in map(str.strip, form.getlist("triggered_by")) if key],
         "techniques": [item for item in re.split(r"[,;\s]+", _raw(form, "techniques")) if item],
         "tags": [item.strip() for item in re.split(r"[,;]+", _raw(form, "tags")) if item.strip()],
+        "detection": _detection_from_form(form),
         "details": _raw(form, "details"),
         "topic": topic_home or _raw(form, "topic"),
         "topics": form.getlist("topics"),
@@ -69,10 +80,12 @@ def _form_dict(form) -> dict:
 
 def edit_form(event: dict) -> dict:
     """A stored event as the edit form shows it. The timestamp is shown in the default zone."""
+    detection = event.get("detection") or {}
     return {
         "key": event["key"], "phase": event["phase"], "actor": event["actor"], "system": event["system"] or "",
         "action": event["action"], "status": event["status"], "triggered_by": event["triggered_by"],
         "techniques": ", ".join(event["techniques"]), "tags": ", ".join(event.get("tags", [])),
+        **{f"det_{name}": detection.get(name) or "" for name in DETECTION_FIELDS},
         "details": event["details"] or "", "topics": event["topics"], "topic": event["home_topic"],
         "version": event["version"], **t0_parts(event["t0"]),
     }
@@ -115,7 +128,7 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
             topic=topic_key, query=_text_param(params, "q"), phase=_choice_param(params, "phase", Phase),
             status=_choice_param(params, "status", Status), actor=_text_param(params, "actor"),
             system=_text_param(params, "system"), technique=_technique_param(params),
-            tag=_text_param(params, "tag"),
+            tag=_text_param(params, "tag"), rule=_text_param(params, "rule"),
             since=_day_param(params, "since"), until=_day_param(params, "until"),
         )
         return flt, topic_key
@@ -139,7 +152,7 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
         query = {
             "topic": flt.topic, "q": flt.query, "phase": flt.phase, "status": flt.status, "actor": flt.actor,
             "system": flt.system, "technique": flt.technique,
-            "tag": flt.tag,
+            "tag": flt.tag, "rule": flt.rule,
             "since": flt.since.isoformat() if flt.since else None,
             "until": flt.until.isoformat() if flt.until else None,
         }
