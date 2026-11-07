@@ -4,9 +4,9 @@ Diese Dateien sind unverändert aus den npm-Paketen übernommen und werden von d
 
 | Datei | Paket | Version | SHA-384 |
 |---|---|---|---|
-| `vis-timeline-graph2d.min.js` | vis-timeline (`standalone/umd/`) | 7.7.3 | `MLX+7yEEPNEznaIWwQi2pBMODSBP6Qo6BOVpzjFWB0UkfEzEYsvHOo7ISLfcQeiI` |
-| `vis-timeline-graph2d.min.css` | vis-timeline (`styles/`) | 7.7.3 | `N/4l0y8PNlO5uZuzP9PK3bAgJQ8ZChybZFXB2mpkZRUil/bui++mvYXPzPAHpbr6` |
-| `vis-network.min.js` | vis-network (`standalone/umd/`) | 9.1.9 | `yxKDWWf0wwdUj/gPeuL11czrnKFQROnLgY8ll7En9NYoXibgg3C6NK/UDHNtUgWJ` |
+| `vis-timeline-graph2d.min.js` | vis-timeline (`standalone/umd/`) | 8.5.6 | `W7CRyLqO9UAfs0x83hF28ArdMGmDgi27bWd46NjTxvuMMnu6X/d/wlFFluVcQ82z` |
+| `vis-timeline-graph2d.min.css` | vis-timeline (`styles/`) | 8.5.6 | `rqOvtv7HP0SS6x5gQkKkYTZIE/PBx1yjW61YRVdsq1lYJzXBhR/aEqp5iM9sn8P5` |
+| `vis-network.min.js` | vis-network (`standalone/umd/`) | 10.1.4 | `s5qRgSwXYyGRFMyysTjQ6HHeKJIuO9uEi4yIC8DaDDLggONJZWE/CydMFXSh/04I` |
 
 Lizenz beider Pakete: Apache-2.0 oder MIT, die Texte liegen daneben.
 
