@@ -20,6 +20,7 @@
     </select></label>
   <label class="block"><span class="{{ label_class }}">Zusammenfassung</span>
     <textarea name="summary" rows="4" class="{{ input_class }}">{{ form.summary or '' }}</textarea></label>
+  {% include "_reporting_fields.html" %}
   <p class="text-xs text-slate-400">Der Key wird beim Speichern automatisch vergeben und danach auf der Seite des Topics angezeigt.</p>
   <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Anlegen</button>
 </form>
@@ -123,6 +124,36 @@
           class="h-[60vh] min-h-[400px] w-full rounded-xl border border-white/10 bg-slate-950"></iframe>
 </section>
 {% endif %}
+{% if meldepflicht %}
+<section class="mb-8 rounded-xl border border-white/10 bg-white/[.02] p-5" aria-labelledby="meldepflicht-heading">
+  <h2 id="meldepflicht-heading" class="mb-1 text-base font-semibold text-slate-100">Meldepflicht · {{ meldepflicht.regulation_label }}</h2>
+  <p class="mb-4 text-sm text-slate-400">Kenntnisnahme: <time data-utc="{{ meldepflicht.known_at }}">{{ meldepflicht.known_at[:16].replace('T', ' ') }}</time> UTC — Fristen als Anzeige, es wird nichts automatisch versendet.</p>
+  <ul class="space-y-2">
+    {% for stage in meldepflicht.stages %}
+    <li class="rounded-lg border border-white/10 px-3 py-2">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <span class="text-sm text-slate-200">{{ stage.label }}{% if stage.hours %} · {{ stage.hours }} h{% endif %}</span>
+        {% if stage.deadline %}
+        <span class="text-sm">
+          {% if stage.overdue %}<span class="rounded-md bg-rose-500/20 px-2 py-0.5 text-xs font-medium text-rose-300">überfällig</span>
+          {% elif stage.remaining is not none and stage.remaining <= 86400 %}<span class="rounded-md bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-300">läuft ab</span>
+          {% else %}<span class="text-xs text-slate-400">läuft</span>{% endif %}
+          <span class="ml-2 font-mono text-xs text-slate-400"><time data-utc="{{ stage.deadline.isoformat() }}">{{ stage.deadline.strftime('%Y-%m-%d %H:%M') }}</time> UTC · {{ stage.remaining_text }}</span>
+        </span>
+        {% else %}<span class="text-xs text-slate-500">keine Frist konfiguriert</span>{% endif %}
+        {% if can_write and stage.hours %}
+        <a href="/reports/{{ topic.key }}/pdf?art={{ {'early_warning': 'fruehwarnung', 'notification': 'meldung', 'final_report': 'abschlussbericht'}[stage.stage] }}" class="text-xs text-sky-300 hover:underline">PDF erzeugen</a>
+        {% endif %}
+      </div>
+      {% if meldepflicht.missing[stage.stage] %}
+      <p class="mt-1 text-xs text-amber-400/90">Fehlt für {{ stage.label }}: {{ meldepflicht.missing[stage.stage] | join(', ') }}</p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <div id="nach-zeitleiste"></div>
 
 {% if can_write %}
@@ -141,6 +172,7 @@
       </select></label>
     <label class="block"><span class="{{ label_class }}">Zusammenfassung</span>
       <textarea name="summary" rows="4" class="{{ input_class }}">{{ topic.summary }}</textarea></label>
+    {% include "_reporting_fields.html" %}
     <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Speichern</button>
   </form>
 
