@@ -2,6 +2,9 @@ node_modules/
 chronicle/static/app.css
 *.db
 .env
+
+# Local agent worktrees are machine-specific (audit run-1, REPORT.md §5)
+.claude/worktrees/
 __pycache__/
 .pytest_cache/
 .coverage

@@ -69,10 +69,16 @@ def _run_network(data_dir: Path, *args: str) -> subprocess.CompletedProcess:
                         "Lokal bleibt alles erhalten, der Abgleich lässt sich später wiederholen.") from exc
 
 
+def _git_message(result: subprocess.CompletedProcess) -> str:
+    """Git's output as one bounded, control-free line for an error message. Git prints paths and text the
+    remote controls, so the raw stderr must not reach the user unbounded (audit run-1, REPORT.md §5)."""
+    return one_line(f"{result.stderr}\n{result.stdout}".strip()) or f"Exit-Code {result.returncode}"
+
+
 def _git(data_dir: Path, *args: str) -> str:
     result = _run(data_dir, *args)
     if result.returncode != 0:
-        raise SyncError(f"Git meldet einen Fehler: {result.stderr.strip() or result.returncode}")
+        raise SyncError(f"Git meldet einen Fehler: {_git_message(result)}")
     return result.stdout
 
 
@@ -388,7 +394,7 @@ def _merge_remote(
         raise SyncError(f"Der Merge-Treiber ist abgestürzt, das Zusammenführen wurde abgebrochen: {failure}")
     conflicts = _git(data_dir, "diff", "--name-only", "--diff-filter=U").splitlines()
     if not conflicts:  # refused before it started, e.g. an untracked file is in the way: nothing to abort
-        raise SyncError(f"Das Zusammenführen ist fehlgeschlagen: {outcome.stderr.strip() or outcome.stdout.strip()}")
+        raise SyncError(f"Das Zusammenführen ist fehlgeschlagen: {_git_message(outcome)}")
     if all(name in choices for name in conflicts):
         _settle(data_dir, conflicts, choices)
         return None
@@ -519,7 +525,7 @@ def _fetch(data_dir: Path) -> None:
     result = _run_network(data_dir, "fetch", "--quiet", REMOTE)
     if result.returncode != 0:
         raise SyncError("Der Remote ist nicht erreichbar. Lokal bleibt alles erhalten, der Abgleich lässt sich später "
-                        f"wiederholen.\n{result.stderr.strip()}")
+                        f"wiederholen. {_git_message(result)}")
 
 
 def _max_git_mb() -> float:
@@ -558,5 +564,5 @@ def _ref_exists(data_dir: Path, ref: str) -> bool:
 def _push(data_dir: Path, branch: str) -> None:
     result = _run_network(data_dir, "push", "--quiet", "-u", REMOTE, f"HEAD:refs/heads/{branch}")
     if result.returncode != 0:
-        raise SyncError("Hochladen ist fehlgeschlagen. Die Änderungen sind lokal committet und bleiben erhalten.\n"
-                        f"{result.stderr.strip()}")
+        raise SyncError("Hochladen ist fehlgeschlagen. Die Änderungen sind lokal committet und bleiben erhalten. "
+                        f"{_git_message(result)}")

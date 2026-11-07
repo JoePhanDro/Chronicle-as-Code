@@ -195,9 +195,12 @@ def _technique_condition(technique: str | None) -> tuple[str, str]:
 
 def _filter_sql(flt: EventFilter) -> tuple[str, list]:
     expression = _match_expression(flt.query or "")
+    # A query that holds no word at all (only punctuation) matches nothing, not the whole list (audit run-1, §5).
+    words_only = bool((flt.query or "").strip()) and expression is None
     # t0 is stored in UTC, so the first ten characters are the UTC day.
     conditions = [
         (flt.topic is not None, _TOPIC_CLAUSE, flt.topic),
+        (words_only, "1 = 0", None),
         (expression is not None, _QUERY_CLAUSE, expression),
         (flt.tag, "EXISTS (SELECT 1 FROM json_each(events.tags) WHERE lower(json_each.value) = lower(?))", flt.tag),
         (flt.phase, "events.phase = ?", flt.phase),
@@ -209,7 +212,8 @@ def _filter_sql(flt: EventFilter) -> tuple[str, list]:
         (flt.until is not None, "substr(events.t0, 1, 10) <= ?", flt.until),
     ]
     active = [(clause, param) for used, clause, param in conditions if used]
-    params = [param.isoformat() if isinstance(param, date) else param for _, param in active]
+    # The "1 = 0" clause of a wordless query has no placeholder, so its None is not a parameter.
+    params = [param.isoformat() if isinstance(param, date) else param for _, param in active if param is not None]
     where = f" WHERE {' AND '.join(clause for clause, _ in active)}" if active else ""
     return where, params
 

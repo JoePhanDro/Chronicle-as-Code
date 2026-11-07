@@ -69,4 +69,7 @@ def report_headers(filename: str) -> dict[str, str]:
         "Content-Disposition": f'attachment; filename="{filename}"',
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "no-store",
+        # The report is self-contained (inline scripts/styles, data: images); it must not reach the network.
+        "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                                   "img-src data: blob:; font-src data:",
     }

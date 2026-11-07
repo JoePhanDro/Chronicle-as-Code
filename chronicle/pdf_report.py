@@ -165,7 +165,7 @@ def _techniques(events: list[Event]) -> list:
     if not counts:
         return []
     rows = [[Paragraph("Technik", SMALL), Paragraph("Events", SMALL)]]
-    rows += [[Paragraph(f"<font face=\"Courier\">{technique}</font>", BODY), Paragraph(str(count), BODY)]
+    rows += [[Paragraph(f"<font face=\"Courier\">{_text(technique)}</font>", BODY), Paragraph(str(count), BODY)]
              for technique, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
     table = Table(rows, colWidths=[40 * mm, 20 * mm], hAlign="LEFT", repeatRows=1)
     table.setStyle(TableStyle([
@@ -214,7 +214,7 @@ def _event_block(event: Event, events: list[Event], titles: dict[str, str]) -> l
         Paragraph(" · ".join(_text(fact) for fact in facts) + f" · <font face=\"Courier\">{_text(event.key)}</font>", SMALL),
     ]
     if event.techniques:
-        block.append(Paragraph("ATT&amp;CK: <font face=\"Courier\">" + ", ".join(event.techniques) + "</font>", SMALL))
+        block.append(Paragraph("ATT&amp;CK: <font face=\"Courier\">" + ", ".join(_text(t) for t in event.techniques) + "</font>", SMALL))
     if event.tags:
         block.append(Paragraph("Tags: " + ", ".join(_text(tag) for tag in event.tags), SMALL))
     if event.comments:

@@ -19,6 +19,9 @@ FAILURE_WINDOW_SECONDS = 15 * 60
 # The reading lock (issue #13): without an account, a visitor reads the data after entering the lock password.
 # That session belongs to this account. Its password hash matches no password, so it cannot log in directly.
 GUEST_USERNAME = "lesezugriff"
+# The reading-lock account is created by the app itself (ensure_guest). The name is reserved, so no admin
+# can create an account that a later lock session would adopt (audit run-1, REPORT.md §5).
+RESERVED_USERNAMES = (GUEST_USERNAME,)
 UNUSABLE_HASH = "!"
 LOCK_SETTING = "reading_lock_hash"
 # Failed unlocks are counted like failed logins. The parentheses keep the key apart from any account name.
@@ -41,9 +44,15 @@ def validate_role(role: str) -> None:
 
 # Users
 
-def create_user(conn: sqlite3.Connection, username: str, password_hash: str, role: str, must_change: bool = False) -> int:
-    """`must_change` marks a password that was set by someone else; the user must replace it at the next login."""
+def create_user(
+    conn: sqlite3.Connection, username: str, password_hash: str, role: str, must_change: bool = False, *,
+    allow_reserved: bool = False,
+) -> int:
+    """`must_change` marks a password that was set by someone else; the user must replace it at the next login.
+    `allow_reserved` is for the app's own accounts (the reading lock) and must not be exposed to forms."""
     validate_username(username)
+    if not allow_reserved and username.lower() in RESERVED_USERNAMES:
+        raise ValueError("Benutzername ist reserviert")
     validate_role(role)
     with conn:
         cursor = conn.execute(
@@ -108,6 +117,8 @@ def record_setup_failure(conn: sqlite3.Connection, ip: str) -> None:
 def create_first_admin(conn: sqlite3.Connection, username: str, password_hash: str) -> int | None:
     """Create the first account, as admin. Returns None if an account exists; the check and the insert share one transaction."""
     validate_username(username)
+    if username.lower() in RESERVED_USERNAMES:
+        raise ValueError("Benutzername ist reserviert")
     conn.execute("BEGIN IMMEDIATE")
     try:
         if count_users(conn) > 0:
@@ -131,14 +142,20 @@ def count_active_admins(conn: sqlite3.Connection) -> int:
 UPDATABLE_FIELDS = {"role", "active", "password_hash", "must_change_password"}
 
 
-def update_user(conn: sqlite3.Connection, user_id: int, **fields) -> None:
+def apply_user_changes(conn: sqlite3.Connection, user_id: int, fields: dict) -> None:
+    """Apply column changes without opening a transaction; the caller owns it (see administration.update_account).
+    The field names are checked here, so they can never reach the SQL string unvalidated."""
     if not set(fields) <= UPDATABLE_FIELDS:
         raise ValueError(f"Nicht änderbare Felder: {set(fields) - UPDATABLE_FIELDS}")
     if not fields:
         return
     assignments = ", ".join(f"{name} = ?" for name in fields)
+    conn.execute(f"UPDATE users SET {assignments} WHERE id = ?", (*fields.values(), user_id))
+
+
+def update_user(conn: sqlite3.Connection, user_id: int, **fields) -> None:
     with conn:
-        conn.execute(f"UPDATE users SET {assignments} WHERE id = ?", (*fields.values(), user_id))
+        apply_user_changes(conn, user_id, fields)
 
 
 # Sessions: the cookie carries a random token, the database only stores its hash.
@@ -198,7 +215,7 @@ def ensure_guest(conn: sqlite3.Connection) -> int:
     """The account behind unlocked reading sessions. Created on first use, switched on and off with the lock."""
     row = get_user_by_name(conn, GUEST_USERNAME)
     if row is None:
-        return create_user(conn, GUEST_USERNAME, UNUSABLE_HASH, "viewer")
+        return create_user(conn, GUEST_USERNAME, UNUSABLE_HASH, "viewer", allow_reserved=True)
     return row["id"]
 
 

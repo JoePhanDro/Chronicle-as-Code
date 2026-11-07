@@ -30,5 +30,8 @@
 	header {
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "same-origin"
+		# Framing is refused outright; SameSite=strict already covers legacy browsers (audit run-1, §5)
+		X-Frame-Options "DENY"
+		Content-Security-Policy "frame-ancestors 'none'"
 	}
 }
