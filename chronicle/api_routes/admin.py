@@ -9,7 +9,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict
 
-from .. import accounts, administration
+from .. import __version__, accounts, administration
 from ..auth import Auth, client_ip
 from ..pdf_report import make_pdf_report
 from ..report import make_report, report_headers
@@ -35,6 +35,11 @@ class UserUpdate(BaseModel):
 def make_admin_routes(get_conn: Callable, auth: Auth) -> APIRouter:
     router = APIRouter()
     admin_only = auth.require_role("admin")
+
+    @router.get("/api/v1/admin/version")
+    def version(_: dict = Depends(admin_only)) -> dict:
+        """The running version, for admins only; the public health endpoint does not disclose it (issue #261)."""
+        return {"version": __version__}
 
     @router.get("/api/v1/users")
     def list_users(conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(admin_only)) -> list[dict]:

@@ -262,9 +262,12 @@ Mermaid-Diagramme in Event-Beschreibungen werden im Browser gezeichnet. Die Bibl
 
 Alle Pfade liegen unter `/api/v1`. Schreibende Anfragen brauchen den Header `X-CSRF-Token` mit dem Wert aus `GET /api/v1/auth/me`.
 
+Es gibt keine Doku-Seiten (`/docs`, `/redoc`, `/openapi.json`): Sie laden Skripte von einem CDN und legen die komplette Routenliste offen (Issue #261). Das Schema liegt im Repo unter `schema/timeline.schema.json`.
+
 | Methode | Pfad | Rolle | Inhalt |
 |---|---|---|---|
-| GET | `/health` | öffentlich | Status und Version |
+| GET | `/health` | öffentlich | nur `{"status": "ok"}` — keine Version, das ist öffentlich (Issue #261) |
+| GET | `/admin/version` | admin | laufende Version |
 | POST | `/auth/login` | öffentlich | JSON `{username, password}`, setzt Sitzungscookie |
 | POST | `/auth/logout` | angemeldet | beendet die Sitzung |
 | POST | `/auth/password` | angemeldet | eigenes Passwort ändern, JSON `{current_password, new_password}`, beendet andere Sitzungen |
