@@ -17,9 +17,9 @@ from .errors import APPLY_HINT, Conflict
 from .loader import link_below
 
 EVENT_SELECT = """
-SELECT events.pk, events.key, events.t0, events.phase, events.actor, events.system, events.action,
-       events.status, events.triggered_by, events.techniques, events.tags, events.detection, events.entities,
-       events.comments, events.details, events.home_topic, events.version
+SELECT events.pk, events.key, events.t0, events.t1, events.detected_at, events.phase, events.actor, events.system,
+       events.action, events.status, events.triggered_by, events.techniques, events.tags, events.detection,
+       events.entities, events.comments, events.details, events.home_topic, events.version
 FROM events
 """
 

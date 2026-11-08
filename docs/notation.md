@@ -50,6 +50,8 @@ Unbekannte Felder sind ein Fehler. Ein Tippfehler im Schlüssel wird also nicht 
 |---|---|---|
 | `key` | ja | gleiches Muster wie beim Topic, eindeutig über alle Dateien |
 | `t0` | ja | ISO-8601-Zeitpunkt mit Offset, z. B. `2026-10-14T08:40:00+02:00`. Gespeichert als UTC |
+| `t1` | nein | Ende des Zeitraums, gleiches Format wie `t0`, muss `>= t0` sein (ADR 0025, Issue #208). Mit `t1` ist das Event ein Zeitraum, ohne ein Zeitpunkt |
+| `detected_at` | nein | Entdeckungszeitpunkt, gleiches Format wie `t0`, keine Bedingung gegen `t0` (ADR 0025, Issue #208) |
 | `phase` | ja | `Identification`, `Exploit`, `Analysis`, `Containment`, `Mitigation`, `Recovery`, `Lessons Learned` oder `Activity` |
 | `actor` | ja | nicht leer. Akteure sind Attribute, keine eigenen Knoten (ADR 0002) |
 | `system` | nein | Text |

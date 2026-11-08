@@ -341,6 +341,15 @@ EN: dict[str, str] = {
     "IOCs als STIX 2.1": "IOCs as STIX 2.1",
     "Alle IOCs als CSV": "All IOCs as CSV",
     "Alle IOCs als STIX 2.1": "All IOCs as STIX 2.1",
+    # event time ranges and detection time (issue #208)
+    "Zeitraum und Entdeckung (optional)": "Time range and detection (optional)",
+    "Ein Event mit Ende (t1) ist ein Zeitraum, sonst ein Zeitpunkt. „Entdeckt“ (detected_at) darf vor t0 liegen (Schätzung, Uhrenabweichung) — dann zeigt die Anzeige einen Hinweis.":
+        "An event with an end (t1) is a time range, otherwise a point in time. “Detected” (detected_at) may lie before t0 (estimate, clock skew) — the display then shows a hint.",
+    "Ende (t1)": "End (t1)",
+    "Entdeckt (detected_at)": "Detected (detected_at)",
+    "Dauer": "Duration",
+    "Verweildauer": "Dwell time",
+    "Entdeckung liegt vor t0 (Schätzung/Uhrenabweichung)": "Detection lies before t0 (estimate/clock skew)",
     # reports
     "HTML-Bericht": "HTML report",
     "PDF technisch": "Technical PDF",

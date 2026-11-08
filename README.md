@@ -158,6 +158,8 @@ topic:
 events:
   - key: exploit-2026-10-14          # eindeutig über alle Topics, Pflicht
     t0: 2026-10-14T08:40:00+02:00    # Pflicht, mit Zeitzone (gespeichert als UTC)
+    t1: 2026-10-16T18:00:00+02:00    # optional: Ende des Zeitraums (>= t0), dann ist das Event ein Balken in der Zeitleiste (Issue #208)
+    detected_at: 2026-10-24T09:00:00+02:00  # optional: Entdeckungszeitpunkt, darf vor t0 liegen
     phase: Exploit                   # Identification | Exploit | Analysis | Containment | Mitigation | Recovery | Lessons Learned
     actor: Angreifer (extern)
     system: wp-portal-01             # optional

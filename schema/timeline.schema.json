@@ -147,6 +147,34 @@
           "title": "T0",
           "type": "string"
         },
+        "t1": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "End of the event's time range (issue #208, ADR 0025); >= t0",
+          "title": "T1"
+        },
+        "detected_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the event was noticed (issue #208, ADR 0025); may be before t0",
+          "title": "Detected At"
+        },
         "phase": {
           "$ref": "#/$defs/Phase"
         },

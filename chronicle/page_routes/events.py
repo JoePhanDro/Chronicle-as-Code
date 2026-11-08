@@ -15,8 +15,8 @@ from starlette.datastructures import UploadFile  # form uploads are Starlette ob
 from .. import accounts, presets, repository
 from ..auth import client_ip
 from ..evidence import EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, MAX_FORM_FILES, Blob, check_file
-from ..models import TECHNIQUE_ID, Phase, Status
-from ..event_input import EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
+from ..models import TECHNIQUE_ID, Phase, Status, human_span
+from ..event_input import DEFAULT_TIMEZONE, EVENT_TIMEZONES, EventWrite, event_of, new_event_key, t0_from_parts, t0_parts, topic_list
 from ..store import StoreError
 from .common import TEMPLATES, WRITER_ROLES, PageContext, _text_param, _choice_param, _day_param, _page_param, _error_text
 
@@ -65,10 +65,21 @@ def _entities_from_form(form) -> list[dict]:
     return entities
 
 
+def _optional_time_from_form(form, prefix: str) -> str | None:
+    """An optional time field of the form (t1, detected_at, issue #208): None when all parts are empty,
+    otherwise the same parsing as t0 (a partial entry raises, like t0)."""
+    day, hour, minute = _raw(form, f"{prefix}_date"), _raw(form, f"{prefix}_hour"), _raw(form, f"{prefix}_minute")
+    if not (day or hour or minute):
+        return None
+    return t0_from_parts(day, hour, minute, _raw(form, f"{prefix}_zone") or DEFAULT_TIMEZONE)
+
+
 def _payload_from_form(form, topic_home: str | None = None) -> dict:
     return {
         "key": _field(form, "key"),
         "t0": t0_from_parts(_raw(form, "t0_date"), _raw(form, "t0_hour"), _raw(form, "t0_minute"), _raw(form, "t0_zone")),
+        "t1": _optional_time_from_form(form, "t1"),
+        "detected_at": _optional_time_from_form(form, "detected"),
         "phase": _raw(form, "phase"),
         "actor": _field(form, "actor"),
         "system": _field(form, "system") or None,
@@ -105,6 +116,10 @@ def edit_form(event: dict) -> dict:
         **{f"det_{name}": detection.get(name) or "" for name in DETECTION_FIELDS},
         "details": event["details"] or "", "topics": event["topics"], "topic": event["home_topic"],
         "version": event["version"], **t0_parts(event["t0"]),
+        **({f"t1_{part}": value for part, value in t0_parts(event["t1"]).items()} if event.get("t1") else
+           {f"t1_{part}": "" for part in ("date", "hour", "minute", "zone")}),
+        **({f"detected_{part}": value for part, value in t0_parts(event["detected_at"]).items()} if event.get("detected_at") else
+           {f"detected_{part}": "" for part in ("date", "hour", "minute", "zone")}),
     }
 
 
@@ -254,8 +269,19 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
         if event is None:
             return render(request, "not_found.html", user, status_code=404)
         saved = {"phase": "Phase", "status": "Status"}.get(request.query_params.get("gespeichert") or "")
+        # Duration and dwell time are derived, never stored (ADR 0025).
+        t0 = datetime.fromisoformat(event["t0"])
+        duration = dwell = None
+        detected_early = False
+        if event.get("t1"):
+            duration = human_span((datetime.fromisoformat(event["t1"]) - t0).total_seconds())
+        if event.get("detected_at"):
+            detected = datetime.fromisoformat(event["detected_at"])
+            dwell = human_span((detected - t0).total_seconds())
+            detected_early = detected < t0
         return render(request, "event.html", user, mode="view", event=event, errors=None, saved=saved,
-                      links=repository.get_event_links(conn, key), **form_context(conn, form=None))
+                      links=repository.get_event_links(conn, key), duration=duration, dwell=dwell,
+                      detected_early=detected_early, **form_context(conn, form=None))
 
     @router.post("/events/{key}/edit", response_class=HTMLResponse)
     async def update_event_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

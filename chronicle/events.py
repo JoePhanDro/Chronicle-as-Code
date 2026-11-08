@@ -31,7 +31,7 @@ from .store import (
     update_event_in_file,
 )
 
-EDITABLE_FIELDS = ("t0", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "tags", "detection", "entities", "comments", "details")
+EDITABLE_FIELDS = ("t0", "t1", "detected_at", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "tags", "detection", "entities", "comments", "details")
 
 
 def _update_in_folder(
@@ -69,7 +69,8 @@ def _index_field_change(conn: sqlite3.Connection, key: str, event: Event, writte
     with conn:
         conn.execute(
             """
-            UPDATE events SET t0 = ?, phase = ?, actor = ?, system = ?, action = ?, status = ?,
+            UPDATE events SET t0 = ?, t1 = ?, detected_at = ?, phase = ?, actor = ?, system = ?, action = ?,
+                              status = ?,
                               triggered_by = ?, techniques = ?, tags = ?, detection = ?, entities = ?, comments = ?,
                               details = ?,
                               version = version + 1,
@@ -159,7 +160,10 @@ def update_event(
     old = get_event(conn, key)
     old_topics = topic_keys_of(conn, row["pk"])
     # Nested blocks are compared in their stored JSON form; comparing the model reprs would always differ.
-    new_values = {"t0": event.t0.isoformat(), "phase": event.phase.value, "actor": event.actor,
+    new_values = {"t0": event.t0.isoformat(),
+                  "t1": event.t1.isoformat() if event.t1 else None,
+                  "detected_at": event.detected_at.isoformat() if event.detected_at else None,
+                  "phase": event.phase.value, "actor": event.actor,
                   "system": event.system, "action": event.action, "status": event.status.value,
                   "triggered_by": event.triggered_by, "techniques": event.techniques, "tags": event.tags,
                   "detection": event.detection.model_dump(mode="json", exclude_none=True) if event.detection else None,
@@ -196,8 +200,8 @@ def add_comment(
         else:
             updated = {
                 name: current[name] for name in
-                ("key", "t0", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "tags",
-                 "detection", "entities", "details")
+                ("key", "t0", "t1", "detected_at", "phase", "actor", "system", "action", "status", "triggered_by",
+                 "techniques", "tags", "detection", "entities", "details")
             }
             updated["comments"] = [*current["comments"], comment]
             _index_field_change(conn, key, Event.model_validate(updated), path, data_dir)

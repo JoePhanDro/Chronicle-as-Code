@@ -601,7 +601,7 @@
     else groupKeys.sort((a, b) => a.localeCompare(b, 'de'));
 
     function timelineItem(ev) {
-      return { id: ev.id, group: groupKey(ev), start: ev.t0, content: '', className: 'ch-item', style: `--c: ${ev.color}` };
+      return { id: ev.id, group: groupKey(ev), start: ev.t0, end: ev.t1 || undefined, content: '', className: 'ch-item', style: `--c: ${ev.color}` };
     }
 
     // Axis in UTC unless the local zone is chosen. vis.moment is part of vis-timeline's standalone bundle.
