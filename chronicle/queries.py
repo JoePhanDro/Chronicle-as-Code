@@ -118,7 +118,8 @@ def list_topics(conn: sqlite3.Connection, *, by_attention: bool = False) -> list
     """
     rows = conn.execute(
         """
-        SELECT topics.key, topics.title, topics.kind, topics.summary, topics.reporting, topics.updated_at,
+        SELECT topics.key, topics.title, topics.kind, topics.summary, topics.reporting, topics.notifications,
+               topics.updated_at,
                COUNT(events.pk) AS event_count,
                MAX(events.t0) AS last_event_at,
                (SELECT latest.phase FROM topic_events AS link JOIN events AS latest ON latest.pk = link.event_pk
@@ -136,6 +137,7 @@ def list_topics(conn: sqlite3.Connection, *, by_attention: bool = False) -> list
     for row in rows:
         topic = dict(row)
         topic["reporting"] = json.loads(topic["reporting"]) if topic["reporting"] else None
+        topic["notifications"] = json.loads(topic["notifications"]) if topic["notifications"] else None
         open_count, in_progress_count = topic.pop("open_count"), topic.pop("in_progress_count")
         if open_count:
             topic["status"] = "open"
@@ -153,12 +155,13 @@ def list_topics(conn: sqlite3.Connection, *, by_attention: bool = False) -> list
 
 def get_topic(conn: sqlite3.Connection, key: str) -> dict | None:
     row = conn.execute(
-        "SELECT key, title, kind, summary, reporting, updated_at FROM topics WHERE key = ?", (key,)
+        "SELECT key, title, kind, summary, reporting, notifications, updated_at FROM topics WHERE key = ?", (key,)
     ).fetchone()
     if row is None:
         return None
     topic = dict(row)
     topic["reporting"] = json.loads(topic["reporting"]) if topic["reporting"] else None
+    topic["notifications"] = json.loads(topic["notifications"]) if topic["notifications"] else None
     return topic
 
 

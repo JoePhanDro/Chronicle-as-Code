@@ -260,6 +260,91 @@ class Reporting(BaseModel):
         return value
 
 
+NotificationTrigger = Literal["new_event", "status_change", "new_evidence", "rule_match"]
+NOTIFICATION_TRIGGERS: tuple[str, ...] = ("new_event", "status_change", "new_evidence", "rule_match")
+
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+EMAIL_PATTERN = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}(\.[^@\s]+)+$")
+
+
+class WebhookConfig(BaseModel):
+    """Webhook channel of a topic (issue #258): the URL is stored here, the HMAC secret comes from the
+    environment (CHRONICLE_WEBHOOK_SECRET) and never lands in the YAML files that are in Git."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    url: str
+    triggers: list[NotificationTrigger] = Field(default_factory=lambda: list(NOTIFICATION_TRIGGERS))
+
+    @field_validator("url")
+    @classmethod
+    def _webhook_url(cls, value: str) -> str:
+        from urllib.parse import urlsplit
+
+        value = value.strip()
+        if len(value) > 2000:
+            raise ValueError("Webhook-URL: höchstens 2000 Zeichen")
+        parsed = urlsplit(value)
+        # https only; plain http just for a local test receiver. The URL is configured by admins, but the
+        # server makes the request, so it must not point anywhere without TLS.
+        if parsed.scheme == "https":
+            pass
+        elif parsed.scheme == "http" and parsed.hostname and parsed.hostname.lower() in LOOPBACK_HOSTS:
+            pass
+        else:
+            raise ValueError("Webhook-URL braucht https (http nur für localhost/127.0.0.1)")
+        if not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("Webhook-URL ohne Zugangsdaten und mit Host, z. B. https://hooks.example.com/abc")
+        return value
+
+    @field_validator("triggers")
+    @classmethod
+    def _trigger_set(cls, value: list[str]) -> list[str]:
+        return sorted(set(value))
+
+
+class EmailConfig(BaseModel):
+    """E-mail channel of a topic (issue #258): recipients are stored here, the SMTP server and credentials
+    come from the environment (CHRONICLE_SMTP_*), so no secrets land in the YAML files that are in Git."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    to: list[str] = Field(min_length=1, max_length=20)
+    triggers: list[NotificationTrigger] = Field(default_factory=lambda: list(NOTIFICATION_TRIGGERS))
+
+    @field_validator("to")
+    @classmethod
+    def _recipients(cls, value: list[str]) -> list[str]:
+        cleaned = []
+        for item in value:
+            item = item.strip()
+            if not item or len(item) > 200 or not EMAIL_PATTERN.fullmatch(item):
+                raise ValueError(f"Keine gültige E-Mail-Adresse: {item[:60]!r}")
+            cleaned.append(item)
+        return sorted(set(cleaned))
+
+    @field_validator("triggers")
+    @classmethod
+    def _trigger_set(cls, value: list[str]) -> list[str]:
+        return sorted(set(value))
+
+
+class Notifications(BaseModel):
+    """The notification channels of a topic (issue #258). Delivery is active per trigger; the secrets
+    (webhook HMAC, SMTP credentials) live in the environment, not in the topic file."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    webhook: WebhookConfig | None = None
+    email: EmailConfig | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one_channel(self) -> Notifications:
+        if not (self.webhook or self.email):
+            raise ValueError("notifications braucht mindestens webhook oder email")
+        return self
+
+
 class Topic(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
@@ -268,6 +353,7 @@ class Topic(BaseModel):
     kind: TopicKind = "other"
     summary: str = ""
     reporting: Reporting | None = Field(default=None, description="Meldepflicht des Topics (issue #229)")
+    notifications: Notifications | None = Field(default=None, description="Benachrichtigungskanäle des Topics (issue #258)")
 
 
 class TopicCreate(Topic):

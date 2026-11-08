@@ -1,0 +1,43 @@
+{% set notify_checkbox = "h-4 w-4 rounded border-white/20 bg-slate-950/70 accent-sky-400" %}
+<section class="mt-8 max-w-2xl border-t border-white/10 pt-5" aria-labelledby="notify-heading">
+  <h2 id="notify-heading" class="text-sm font-medium text-slate-100">{{ t("Benachrichtigungen") }}</h2>
+  <p class="mt-1 text-xs text-slate-400">
+    {% if notify_status.webhook_secret %}
+    <span class="text-emerald-300">{{ t("Webhook-Signatur gesetzt (CHRONICLE_WEBHOOK_SECRET)") }}</span>
+    {% else %}
+    <span class="text-amber-300">{{ t("CHRONICLE_WEBHOOK_SECRET fehlt — Webhook bleibt deaktiviert") }}</span>
+    {% endif %}
+    <span aria-hidden="true">·</span>
+    {% if notify_status.smtp %}
+    <span class="text-emerald-300">{{ t("SMTP konfiguriert") }}</span>
+    {% else %}
+    <span class="text-amber-300">{{ t("CHRONICLE_SMTP_HOST fehlt — E-Mail bleibt deaktiviert") }}</span>
+    {% endif %}
+  </p>
+  <p class="mt-1 text-xs text-slate-500">{{ t("Die Secrets liegen in der Umgebung, nicht in der Topic-Datei. Jede Zustellung und jeder Fehlschlag steht ohne Inhalt im Audit-Log; gedrosselte Meldungen ebenfalls (Rate-Limit).") }}</p>
+  <form method="post" action="/topics/{{ topic.key }}/notifications" class="mt-3 space-y-4">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <label class="block"><span class="{{ label_class }}">{{ t("Webhook-URL (https; http nur localhost)") }}</span>
+      <input name="webhook_url" type="url" value="{{ notify_form.webhook_url }}" placeholder="https://hooks.example.com/…" class="{{ input_class }} font-mono"></label>
+    <fieldset>
+      <legend class="{{ label_class }}">{{ t("Webhook auslösen bei") }}</legend>
+      <div class="flex flex-wrap gap-x-4 gap-y-1">
+        {% for trigger in triggers %}<label class="inline-flex items-center gap-1.5 text-sm text-slate-300"><input type="checkbox" name="webhook_triggers" value="{{ trigger.value }}" {{ 'checked' if trigger.value in notify_form.webhook_triggers }} class="{{ notify_checkbox }}">{{ trigger.label }}</label>{% endfor %}
+      </div>
+    </fieldset>
+    <label class="block"><span class="{{ label_class }}">{{ t("E-Mail-Empfänger (mit Komma getrennt)") }}</span>
+      <input name="email_to" value="{{ notify_form.email_to }}" placeholder="soc@example.com, leitung@example.com" class="{{ input_class }}"></label>
+    <fieldset>
+      <legend class="{{ label_class }}">{{ t("E-Mail senden bei") }}</legend>
+      <div class="flex flex-wrap gap-x-4 gap-y-1">
+        {% for trigger in triggers %}<label class="inline-flex items-center gap-1.5 text-sm text-slate-300"><input type="checkbox" name="email_triggers" value="{{ trigger.value }}" {{ 'checked' if trigger.value in notify_form.email_triggers }} class="{{ notify_checkbox }}">{{ trigger.label }}</label>{% endfor %}
+      </div>
+    </fieldset>
+    <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5 max-sm:min-h-11">{{ t("Benachrichtigungen speichern") }}</button>
+  </form>
+  <form method="post" action="/topics/{{ topic.key }}/notifications/test" class="mt-3">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5 max-sm:min-h-11">{{ t("Test-Benachrichtigung senden") }}</button>
+    <span class="ml-2 text-xs text-slate-400">{{ t("wird im Audit-Log protokolliert") }}</span>
+  </form>
+</section>

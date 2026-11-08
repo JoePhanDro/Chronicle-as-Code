@@ -68,6 +68,39 @@
       "title": "Detection",
       "type": "object"
     },
+    "EmailConfig": {
+      "additionalProperties": false,
+      "description": "E-mail channel of a topic (issue #258): recipients are stored here, the SMTP server and credentials\ncome from the environment (CHRONICLE_SMTP_*), so no secrets land in the YAML files that are in Git.",
+      "properties": {
+        "to": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "To",
+          "type": "array"
+        },
+        "triggers": {
+          "items": {
+            "enum": [
+              "new_event",
+              "status_change",
+              "new_evidence",
+              "rule_match"
+            ],
+            "type": "string"
+          },
+          "title": "Triggers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "to"
+      ],
+      "title": "EmailConfig",
+      "type": "object"
+    },
     "Event": {
       "additionalProperties": false,
       "properties": {
@@ -242,6 +275,36 @@
       "title": "Evidence",
       "type": "object"
     },
+    "Notifications": {
+      "additionalProperties": false,
+      "description": "The notification channels of a topic (issue #258). Delivery is active per trigger; the secrets\n(webhook HMAC, SMTP credentials) live in the environment, not in the topic file.",
+      "properties": {
+        "webhook": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WebhookConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "email": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmailConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "Notifications",
+      "type": "object"
+    },
     "Phase": {
       "enum": [
         "Identification",
@@ -343,6 +406,18 @@
           ],
           "default": null,
           "description": "Meldepflicht des Topics (issue #229)"
+        },
+        "notifications": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Notifications"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Benachrichtigungskanäle des Topics (issue #258)"
         }
       },
       "required": [
@@ -350,6 +425,34 @@
         "title"
       ],
       "title": "Topic",
+      "type": "object"
+    },
+    "WebhookConfig": {
+      "additionalProperties": false,
+      "description": "Webhook channel of a topic (issue #258): the URL is stored here, the HMAC secret comes from the\nenvironment (CHRONICLE_WEBHOOK_SECRET) and never lands in the YAML files that are in Git.",
+      "properties": {
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "triggers": {
+          "items": {
+            "enum": [
+              "new_event",
+              "status_change",
+              "new_evidence",
+              "rule_match"
+            ],
+            "type": "string"
+          },
+          "title": "Triggers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "WebhookConfig",
       "type": "object"
     }
   },

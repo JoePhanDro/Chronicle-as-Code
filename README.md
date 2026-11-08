@@ -114,8 +114,22 @@ Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie 
 | `CHRONICLE_MAX_BODY_BYTES` | Maximale Größe des Anfragekörpers in Bytes. Größere Anfragen bekommen 413, bevor irgendein Teil sie verarbeitet; 0 schaltet die Begrenzung ab | 112 MiB (10 Evidence-Dateien plus Spielraum) |
 | `CHRONICLE_SYNC_MAX_GIT_MB` | Maximale Größe des `.git`-Objektspeichers in MiB, bevor der Abgleich vor dem Zusammenführen abbricht (Schutz vor Remotes, die den Datenordner füllen) | 512 |
 | `CHRONICLE_DATA` | Datenordner mit den Topic-Dateien, die Quelle der Wahrheit (siehe unten). Pflicht: Ohne ihn startet der Server nicht. `python -m chronicle.serve --data <ordner>` setzt es | – |
+| `CHRONICLE_WEBHOOK_SECRET` | HMAC-SHA256-Secret für die Signatur von Webhook-Benachrichtigungen (`X-Chronicle-Signature: sha256=…`). Ohne Secret wird kein Webhook versendet | leer (Webhook deaktiviert) |
+| `CHRONICLE_SMTP_HOST` | SMTP-Server für E-Mail-Benachrichtigungen. Ohne Host bleibt der E-Mail-Kanal deaktiviert | leer (E-Mail deaktiviert) |
+| `CHRONICLE_SMTP_PORT` | SMTP-Port | `587` |
+| `CHRONICLE_SMTP_STARTTLS` | `0` schaltet STARTTLS ab | `1` |
+| `CHRONICLE_SMTP_SSL` | `1` für implizites TLS (z. B. Port 465) statt STARTTLS | `0` |
+| `CHRONICLE_SMTP_USER` / `CHRONICLE_SMTP_PASSWORD` | Zugangsdaten, falls der SMTP-Server Anmeldung verlangt | leer (ohne Anmeldung) |
+| `CHRONICLE_SMTP_FROM` | Absenderadresse der Benachrichtigungs-Mails | `chronicle@<SMTP-Host>` |
+| `CHRONICLE_SMTP_TIMEOUT` | Timeout für den SMTP-Versand in Sekunden | `10` |
+| `CHRONICLE_NOTIFY_COOLDOWN_SECONDS` | Rate-Limit: Mindestabstand in Sekunden zwischen zwei Benachrichtigungen desselben Topics, Kanals und Triggers (gegen Spam bei Import-Fluten). `0` schaltet ab | `60` |
+| `CHRONICLE_BASE_URL` | Öffentliche Basis-URL für Links in Benachrichtigungs-Mails, z. B. `https://chronicle.example.com` | leer (relative Links) |
 
 Die Werte im Compose-Stack kommen aus `.env` (Vorlage: `.env.example`). `.env` wird nicht versioniert.
+
+### Benachrichtigungen (Webhook / E-Mail)
+
+Pro Topic lassen sich Kanäle konfigurieren (Admin, auf der Topic-Seite unter „Bearbeiten“ oder in der `timeline.yaml` unter `topic.notifications`): Webhook-URL und E-Mail-Empfänger, jeweils mit den Auslösern `new_event`, `status_change`, `new_evidence`, `rule_match`. Die Secrets (Webhook-Signatur, SMTP-Zugang) liegen nur in der Umgebung, nie in den Topic-Dateien, die in Git liegen. Der Webhook erhält den Event als JSON, signiert mit HMAC-SHA256 (`X-Chronicle-Signature`), mit 2 Retries bei Timeout/5xx; Redirects werden nicht verfolgt. Jede Zustellung, jeder Fehlschlag und jedes rate-limitierte Unterdrücken landet ohne Inhalt im Audit-Log (`notification_sent` / `notification_failed` / `notification_suppressed`). Beispiel siehe [Issue #258](https://github.com/JoePhanDro/Chronicle-as-Code/issues/258).
 
 ## Datenformat (`timeline.yaml`)
 

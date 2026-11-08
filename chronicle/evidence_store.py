@@ -8,12 +8,12 @@ import sqlite3
 import stat
 from pathlib import Path
 
-from . import accounts
+from . import accounts, notifications
 from .errors import Invalid, NotFound
 from .evidence import EVIDENCE_TYPES, MAX_DESCRIPTION_LENGTH, Blob
 from .folder_writes import all_or_nothing, file_of_event, recorded_version, store_change
 from .index import reindex
-from .queries import evidence_meta
+from .queries import evidence_meta, get_event
 from .store import (
     StoreError,
     add_evidence_to_file,
@@ -117,7 +117,12 @@ def add_evidence(
     data_dir: Path,
 ) -> dict:
     """Attach a checked file to an event: the file goes to evidence/ and the topic file names it."""
-    return _add_evidence_in_folder(conn, key, blob, evidence_type, description, data_dir, actor_id, ip)
+    added = _add_evidence_in_folder(conn, key, blob, evidence_type, description, data_dir, actor_id, ip)
+    event = get_event(conn, key)
+    notifications.enqueue(conn, "new_evidence", event, event["topics"] if event else [],
+                          extra={"evidence": {"file": added["file"], "type": added["type"]}},
+                          actor_id=actor_id, ip=ip)
+    return added
 
 
 def delete_evidence(conn: sqlite3.Connection, evidence_id: int, actor_id: int, ip: str, data_dir: Path) -> None:

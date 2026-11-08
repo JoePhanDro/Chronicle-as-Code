@@ -11,17 +11,18 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
-from .. import i18n, reporting, repository
+from .. import i18n, notifications, reporting, repository
 from ..auth import client_ip
 from ..exporter import ExportError
 from ..report import make_dashboard
-from ..models import Topic, TopicKind
+from ..models import Notifications, Topic, TopicKind
 from ..event_input import EventWrite, event_of, new_topic_key, topic_list
 from .common import WRITER_ROLES, PageContext, _error_text
 
 
 TOPIC_KINDS = list(get_args(TopicKind))
 REGULATION_OPTIONS = [{"value": value, "label": label} for value, label in reporting.REGULATION_LABELS.items()]
+TRIGGER_OPTIONS = [{"value": value, "label": label} for value, label in notifications.TRIGGER_LABELS.items() if value != "test"]
 
 
 def _rep_form(topic: dict | None) -> dict | None:
@@ -31,6 +32,19 @@ def _rep_form(topic: dict | None) -> dict | None:
     known = datetime.fromisoformat(topic["reporting"]["known_at"])
     return {"regulation": topic["reporting"]["regulation"],
             "known_at": known.astimezone(UTC).strftime("%Y-%m-%dT%H:%M")}
+
+
+def _notify_form(topic: dict | None) -> dict:
+    """The notification block of the topic page: the stored config as form values (issue #258)."""
+    cfg = (topic or {}).get("notifications") or {}
+    webhook = cfg.get("webhook") or {}
+    email = cfg.get("email") or {}
+    return {
+        "webhook_url": webhook.get("url", ""),
+        "webhook_triggers": webhook.get("triggers") or list(notifications.TRIGGERS),
+        "email_to": ", ".join(email.get("to") or []),
+        "email_triggers": email.get("triggers") or list(notifications.TRIGGERS),
+    }
 
 
 def _topic_values(form) -> dict:
@@ -81,7 +95,9 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
                       closable=len(closable), foreign_open=len(unresolved) - len(closable), closed=closed,
                       status=repository.most_pressing_status(event["status"] for event in events),
                       delete_plan=delete_plan, meldepflicht=meldepflicht, regulations=REGULATION_OPTIONS,
-                      rep_form=_rep_form(topic))
+                      rep_form=_rep_form(topic), notify_form=_notify_form(topic),
+                      notify_status=notifications.status(), triggers=TRIGGER_OPTIONS,
+                      notify_flash=request.query_params.get("notify", ""))
 
     @router.get("/topics", response_class=HTMLResponse)
     def topics_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
@@ -158,6 +174,10 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
         if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
             return render(request, "forbidden.html", user, status_code=403)
         values = {**_topic_values(form), "key": key}
+        # The regular edit form does not carry the notification config (admin-only, issue #258); keep the stored one.
+        current = repository.get_topic(conn, key)
+        if current is not None:
+            values["notifications"] = current["notifications"]
         try:
             repository.update_topic(conn, key, Topic.model_validate(values), user["id"], client_ip(request), data_dir=request.app.state.data_dir)
         except (ValidationError, repository.RepositoryError) as exc:
@@ -239,5 +259,53 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
             status = 404 if isinstance(exc, repository.NotFound) else 422
             return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
         return RedirectResponse(f"/topics/{key}", status_code=303)
+
+    @router.post("/topics/{key}/notifications", response_class=HTMLResponse)
+    async def save_notifications_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        """Save the notification channels of a topic (issue #258). Admins only; the secrets stay in the environment."""
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] != "admin" or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        current = repository.get_topic(conn, key)
+        if current is None:
+            return render(request, "not_found.html", user, status_code=404)
+        webhook_url = (form.get("webhook_url") or "").strip()
+        email_to = [item.strip() for item in (form.get("email_to") or "").split(",") if item.strip()]
+        channels = {
+            "webhook": {"url": webhook_url, "triggers": form.getlist("webhook_triggers")} if webhook_url else None,
+            "email": {"to": email_to, "triggers": form.getlist("email_triggers")} if email_to else None,
+        }
+        try:
+            notes = Notifications.model_validate(channels) if any(channels.values()) else None
+            topic = Topic.model_validate({
+                **{name: current[name] for name in ("key", "title", "kind", "summary", "reporting")},
+                "notifications": notes,
+            })
+            repository.update_topic(conn, key, topic, user["id"], client_ip(request), data_dir=request.app.state.data_dir)
+        except (ValidationError, repository.RepositoryError) as exc:
+            return topic_page(request, conn, user, key, status_code=422, errors=_error_text(exc))
+        return RedirectResponse(f"/topics/{key}", status_code=303)
+
+    @router.post("/topics/{key}/notifications/test", response_class=HTMLResponse)
+    async def test_notifications_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        """Send a test notification on every configured channel and log it in the audit log (issue #258). Admins only."""
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] != "admin" or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        if repository.get_topic(conn, key) is None:
+            return render(request, "not_found.html", user, status_code=404)
+        result = notifications.send_test(conn, key, user["id"], client_ip(request))
+        outcomes = list(result["channels"].values())
+        if not result["configured"]:
+            flash = "disabled"
+        elif outcomes and all(not str(outcome).startswith(("failed", "disabled")) for outcome in outcomes):
+            flash = "sent"
+        else:
+            flash = "failed"
+        return RedirectResponse(f"/topics/{key}?notify={flash}", status_code=303)
 
     return router

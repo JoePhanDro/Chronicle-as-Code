@@ -63,6 +63,9 @@
       {% if last %}<span aria-hidden="true">·</span><span>{{ t("zuletzt") }} <time class="font-mono text-xs" data-utc="{{ last }}">{{ last[:16].replace('T', ' ') }}</time></span>{% endif %}
     </p>
     {% if closed is not none and not errors %}<p role="status" class="mt-2 text-sm text-emerald-300">{{ closed }} {{ 'Event' if closed == 1 else 'Events' }} abgeschlossen.</p>{% endif %}
+    {% if notify_flash == 'sent' %}<p role="status" class="mt-2 text-sm text-emerald-300">{{ t("Test-Benachrichtigung wurde versendet (Details im Audit-Log).") }}</p>{% endif %}
+    {% if notify_flash == 'failed' %}<p role="alert" class="mt-2 text-sm text-rose-300">{{ t("Test-Benachrichtigung fehlgeschlagen — Grund im Audit-Log.") }}</p>{% endif %}
+    {% if notify_flash == 'disabled' %}<p role="status" class="mt-2 text-sm text-amber-300">{{ t("Für dieses Topic sind keine Benachrichtigungen konfiguriert.") }}</p>{% endif %}
     {% if can_write and closable %}
     {% set question = 'Alle ' ~ closable ~ ' offenen Events dieses Topics auf „abgeschlossen“ setzen?' %}
     {% set note = (('1 verknüpftes Event aus anderen Topics bleibt' if foreign_open == 1 else foreign_open ~ ' verknüpfte Events aus anderen Topics bleiben') ~ ' unverändert, das Topic gilt dann noch nicht als abgeschlossen.') if foreign_open else 'Danach gilt das Topic als abgeschlossen.' %}
@@ -175,6 +178,10 @@
     {% include "_reporting_fields.html" %}
     <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Speichern</button>
   </form>
+
+  {% if user.role == 'admin' %}
+  {% include "_notifications_fields.html" %}
+  {% endif %}
 
   {% if can_write and addable %}
   <form method="post" action="/topics/{{ topic.key }}/link" aria-labelledby="link-heading" class="mt-8 flex max-w-2xl flex-wrap items-end gap-3 border-t border-white/10 pt-5">
