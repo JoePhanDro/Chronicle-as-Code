@@ -116,14 +116,28 @@ def collect_entities(
     return sorted(result, key=lambda item: (item["type"], item["value"]))
 
 
+# Leading characters that make Excel/LibreOffice interpret a cell as a formula (CSV injection).
+CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_cell(value: str) -> str:
+    """Neutralize formula injection: a cell starting with = + - @ tab or CR gets a leading apostrophe,
+    so spreadsheet apps show the text instead of running it (GitHub Advanced Security on PR #271)."""
+    if value and value[0] in CSV_FORMULA_PREFIXES:
+        return "'" + value
+    return value
+
+
 def entities_csv(rows: list[dict]) -> bytes:
-    """CSV with a header row: type, value, first_seen, last_seen, events and topics (';'-separated in the cell)."""
+    """CSV with a header row: type, value, first_seen, last_seen, events and topics (';'-separated in the cell).
+    Every text cell is passed through _csv_cell."""
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer)
     writer.writerow(["type", "value", "first_seen", "last_seen", "events", "topics"])
     for row in rows:
-        writer.writerow([row["type"], row["value"], row["first_seen"], row["last_seen"],
-                         ";".join(row["events"]), ";".join(row["topics"])])
+        writer.writerow([_csv_cell(row["type"]), _csv_cell(row["value"]), _csv_cell(row["first_seen"]),
+                         _csv_cell(row["last_seen"]), _csv_cell(";".join(row["events"])),
+                         _csv_cell(";".join(row["topics"]))])
     return buffer.getvalue().encode("utf-8")
 
 

