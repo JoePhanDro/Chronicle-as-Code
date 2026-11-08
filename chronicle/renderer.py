@@ -71,6 +71,12 @@ _env = Environment(
     lstrip_blocks=True,
 )
 
+# Language of the dashboard view (issue #220); reports keep the default German.
+from . import i18n as _i18n  # noqa: E402
+
+_env.globals["t"] = _i18n.t
+_env.globals["lang"] = _i18n.DEFAULT_LANG
+
 
 def render_dashboard(
     timeline: Timeline,

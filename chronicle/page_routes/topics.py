@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 
-from .. import repository, reporting
+from .. import i18n, reporting, repository
 from ..auth import client_ip
 from ..exporter import ExportError
 from ..report import make_dashboard
@@ -139,12 +139,16 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
     def topic_dashboard_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
         if user is None:
             return RedirectResponse("/login", status_code=303)
+        # The dashboard reads the language global while rendering (issue #220); reports keep German.
+        token = i18n.current_lang.set(i18n.language_of(request))
         try:
             return HTMLResponse(make_dashboard(conn, key, embedded=request.query_params.get("embed") == "1"))
         except repository.NotFound:
             return render(request, "not_found.html", user, status_code=404)
         except ExportError as exc:  # shown inside the frame on the topic page; the text is escaped (it may hold file names)
             return HTMLResponse(escape(str(exc)), status_code=409)
+        finally:
+            i18n.current_lang.reset(token)
 
     @router.post("/topics/{key}/edit", response_class=HTMLResponse)
     async def edit_topic_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

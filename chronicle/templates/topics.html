@@ -4,23 +4,23 @@
 {% set status_dot = {'open': 'bg-rose-500', 'in_progress': 'bg-amber-500 motion-safe:animate-pulse', 'resolved': 'bg-emerald-500'} %}
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div>
-    <h1 class="text-xl font-semibold text-slate-100">Topics</h1>
-    {% if topics %}<p class="text-sm text-slate-400">{{ topics | length }} {{ 'Topic' if topics | length == 1 else 'Topics' }}, offene zuerst, darin das neueste Event zuerst (<span data-zone-label>UTC</span>)</p>{% endif %}
+    <h1 class="text-xl font-semibold text-slate-100">{{ t("Topics") }}</h1>
+    {% if topics %}<p class="text-sm text-slate-400">{{ topics | length }} {{ t('Topic') if topics | length == 1 else t('Topics') }}, {{ t('offene zuerst, darin das neueste Event zuerst') }} (<span data-zone-label>UTC</span>)</p>{% endif %}
   </div>
-  {% if can_write and topics %}<a href="/topics/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Neues Topic</a>{% endif %}
+  {% if can_write and topics %}<a href="/topics/new" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">{{ t("Neues Topic") }}</a>{% endif %}
 </div>
 {% if topics | length > 5 %}
 <div class="mb-4 flex flex-wrap items-end gap-3">
   <label class="block min-w-[14rem] flex-1">
-    <span class="mb-1 block text-xs font-medium text-slate-400">Topics filtern</span>
-    <input id="topic-filter" type="search" autocomplete="off" placeholder="Titel, Key oder Art" aria-controls="topic-list"
+    <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Topics filtern") }}</span>
+    <input id="topic-filter" type="search" autocomplete="off" placeholder="{{ t('Titel, Key oder Art') }}" aria-controls="topic-list"
            class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
   </label>
   <label class="block">
-    <span class="mb-1 block text-xs font-medium text-slate-400">Status</span>
+    <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Status") }}</span>
     <select id="topic-status" aria-controls="topic-list"
             class="rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
-      <option value="">Alle</option>
+      <option value="">{{ t("Alle") }}</option>
       {% for value, label in status_text.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
     </select>
   </label>
@@ -37,8 +37,8 @@
         <span class="min-w-0">
           <span class="line-clamp-2 text-sm font-medium text-slate-100">{{ topic.title }}</span>
           {% if topic.status %}<span class="mt-1 flex items-center gap-2 text-xs font-medium text-slate-200"><span class="h-2 w-2 flex-none rounded-full {{ status_dot[topic.status] }}" aria-hidden="true"></span>{{ status_text[topic.status] }}</span>{% endif %}
-          {% if topic.melde == 'overdue' %}<span class="mt-1 rounded-md bg-rose-500/20 px-1.5 py-0.5 text-xs font-medium text-rose-200">Meldepflicht überfällig</span>
-          {% elif topic.melde == 'due' %}<span class="mt-1 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-xs font-medium text-amber-200">Frist läuft ab</span>{% endif %}
+          {% if topic.melde == 'overdue' %}<span class="mt-1 rounded-md bg-rose-500/20 px-1.5 py-0.5 text-xs font-medium text-rose-200">{{ t("Meldepflicht überfällig") }}</span>
+          {% elif topic.melde == 'due' %}<span class="mt-1 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-xs font-medium text-amber-200">{{ t("Frist läuft ab") }}</span>{% endif %}
           <span class="mt-1 block font-mono text-xs text-slate-400">
             {{ topic.key }} · {{ topic.kind }}{% if topic.phase %} · {{ topic.phase }}{% endif %}
             {%- if topic.last_event_at %} · <time class="whitespace-nowrap" data-utc="{{ topic.last_event_at }}">{{ topic.last_event_at[:16].replace('T', ' ') }}</time>{% endif %}

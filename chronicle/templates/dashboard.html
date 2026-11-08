@@ -411,8 +411,8 @@
       {% if embedded %}detailsEl.replaceChildren(); return;{% endif %}
       detailsEl.replaceChildren(el('div', 'flex h-full min-h-[240px] flex-col items-center justify-center text-center', [
         el('div', 'grid h-14 w-14 place-items-center rounded-2xl bg-sky-400/10 text-2xl text-sky-300 ring-1 ring-sky-400/20', '◎'),
-        el('p', 'mt-4 text-sm font-medium text-slate-300', 'Kein Event ausgewählt'),
-        el('p', 'mt-1 max-w-xs text-xs text-slate-500', 'Wähle ein Event in der Timeline oder einen Knoten im Graphen.'),
+        el('p', 'mt-4 text-sm font-medium text-slate-300', {{ t('Kein Event ausgewählt') | tojson }}),
+        el('p', 'mt-1 max-w-xs text-xs text-slate-500', {{ t('Wähle ein Event in der Timeline oder einen Knoten im Graphen.') | tojson }}),
       ]));
     }
 
@@ -475,16 +475,16 @@
         if (ev.detection.rule_version) parts.push(`Stand ${ev.detection.rule_version}`);
         if (ev.detection.source) parts.push(ev.detection.source);
         if (ev.detection.alert_id) parts.push(ev.detection.alert_id);
-        hero.append(el('div', 'text-xs text-slate-400', `Erkannt durch: ${parts.join(' · ')}`));
+        hero.append(el('div', 'text-xs text-slate-400', `{{ t('Erkannt durch:') }} ${parts.join(' · ')}`));
       }
 
       const links = [];
       for (const causeId of ev.triggered_by) {
         const trigger = eventsById.get(causeId);
-        links.push(trigger ? eventButton(trigger, '↑ ausgelöst durch: ') : el('span', 'rounded-md px-2 py-0.5 text-xs text-orange-300 ring-1 ring-orange-400/20', `↑ ausgelöst durch: ${causeId}`));
+        links.push(trigger ? eventButton(trigger, {{ t('↑ ausgelöst durch:') | tojson }} + ' ') : el('span', 'rounded-md px-2 py-0.5 text-xs text-orange-300 ring-1 ring-orange-400/20', `{{ t('↑ ausgelöst durch:') }} ${causeId}`));
       }
       for (const child of DATA.events.filter(other => other.triggered_by.includes(ev.id))) {
-        links.push(eventButton(child, '↓ löst aus: '));
+        links.push(eventButton(child, {{ t('↓ löst aus:') | tojson }} + ' '));
       }
       if (links.length) hero.append(el('div', 'flex flex-wrap gap-2', links));
 
@@ -499,7 +499,7 @@
       }
       if (ev.comments.length) {
         sections.push(el('div', 'mt-5 rounded-2xl bg-slate-950/40 p-5 ring-1 ring-white/5', [
-          el('h3', 'mb-3 text-[11px] font-semibold uppercase tracking-[.2em] text-slate-500', 'Notizen'),
+          el('h3', 'mb-3 text-[11px] font-semibold uppercase tracking-[.2em] text-slate-500', {{ t('Notizen') | tojson }}),
           ...ev.comments.map(comment => el('div', 'mb-3 border-l-2 border-sky-400/40 pl-3 last:mb-0', [
             el('div', 'text-xs text-slate-400', `${comment.author} · ${formatTime(comment.created_at)}`),
             el('div', 'mt-1 whitespace-pre-wrap text-sm text-slate-200', comment.text),

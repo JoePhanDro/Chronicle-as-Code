@@ -1,10 +1,10 @@
 {% from "_logo.html" import logo %}
 <!doctype html>
-<html lang="de">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Erster Start · Chronicle</title>
+  <title>{{ t("Erster Start") }} · Chronicle</title>
   <link rel="stylesheet" href="/static/app.css">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
@@ -26,11 +26,11 @@
         {{ logo('h-10 w-10') }}
         <div>
           <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300">Chronicle</div>
-          <h1 class="text-lg font-semibold text-slate-100">Erster Start</h1>
+          <h1 class="text-lg font-semibold text-slate-100">{{ t("Erster Start") }}</h1>
         </div>
       </div>
 
-      <p class="mb-5 text-sm text-slate-400">Es gibt noch kein Konto. Den Einmal-Code findest du im Log des Servers (<code class="font-mono text-xs">docker compose logs api</code>).</p>
+      <p class="mb-5 text-sm text-slate-400">{{ t("Es gibt noch kein Konto. Den Einmal-Code findest du im Log des Servers") }} (<code class="font-mono text-xs">docker compose logs api</code>).</p>
 
       {% if error %}
       <p role="alert" class="mb-4 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{{ error }}</p>
@@ -39,23 +39,23 @@
       <form method="post" action="/setup" class="space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-400">Einmal-Code aus dem Log</span>
+          <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Einmal-Code aus dem Log") }}</span>
           <input name="setup_code" autocomplete="off" required autofocus
                  class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 font-mono text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
         </label>
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-400">Benutzername des Admins</span>
+          <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Benutzername des Admins") }}</span>
           <input name="username" autocomplete="username" required minlength="3" maxlength="64"
                  class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
         </label>
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-400">Passwort (mindestens {{ min_length }} Zeichen)</span>
+          <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Passwort (mindestens") }} {{ min_length }} {{ t("Zeichen)") }}</span>
           <input name="password" type="password" autocomplete="new-password" required minlength="{{ min_length }}"
                  class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
         </label>
         <button type="submit"
                 class="w-full rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink transition hover:brightness-110">
-          Admin anlegen
+          {{ t("Admin anlegen") }}
         </button>
       </form>
     </div>

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Abgleichen{% endblock %}
 {% block content %}
-<h1 class="text-xl font-semibold text-slate-100">Abgleichen</h1>
-<p class="mb-6 mt-2 text-sm text-slate-400">Vergleicht die Topic-Dateien mit dem Stand des gemeinsamen Git-Remotes. Erst die Vorschau prüfen, dann abgleichen. Dabei wird lokal committet, der Remote übernommen und hochgeladen.</p>
+<h1 class="text-xl font-semibold text-slate-100">{{ t("Abgleichen") }}</h1>
+<p class="mb-6 mt-2 text-sm text-slate-400">{{ t("Vergleicht die Topic-Dateien mit dem Stand des gemeinsamen Git-Remotes. Erst die Vorschau prüfen, dann abgleichen. Dabei wird lokal committet, der Remote übernommen und hochgeladen.") }}</p>
 
 {% if error %}
 <p role="alert" class="mb-6 whitespace-pre-line rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{{ error }}</p>
@@ -10,7 +10,7 @@
 
 {% if result %}
 <section aria-labelledby="sync-result" class="mb-6 rounded-xl border border-white/10 px-4 py-3 text-sm">
-  <h2 id="sync-result" class="mb-2 font-semibold text-slate-100">Ergebnis</h2>
+  <h2 id="sync-result" class="mb-2 font-semibold text-slate-100">{{ t("Ergebnis") }}</h2>
   {% if result.conflicts %}
     <p class="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">Konflikt in {{ result.conflicts|join(", ") }}. Das Zusammenführen ist abgebrochen, nichts wurde hochgeladen. Wähle für jede Datei, welcher Stand gelten soll.</p>
     <form method="post" action="/abgleich">
@@ -20,29 +20,29 @@
       <h3 class="font-mono text-slate-100">{{ side.name }}</h3>
       {% if side.diff %}
       <pre aria-label="Unterschiede in {{ side.name }}" class="mt-2 overflow-x-auto rounded-lg border border-white/10 p-3 font-mono text-xs leading-relaxed">{% for line in side.diff %}<span class="block {% if line.startswith('+') %}text-emerald-300{% elif line.startswith('-') %}text-rose-300{% else %}text-slate-500{% endif %}">{{ line }}</span>{% endfor %}</pre>
-      <p class="mt-1 text-xs text-slate-500">&minus; dieser Stand, + Stand des Remotes.</p>
+      <p class="mt-1 text-xs text-slate-500">&minus; {{ t("dieser Stand") }}, + {{ t("Stand des Remotes") }}.</p>
       {% endif %}
       <div class="mt-2 grid gap-3 md:grid-cols-2">
         {% for title, text in (("Dieser Stand", side.ours), ("Stand des Remotes", side.theirs)) %}
         <details class="rounded-lg border border-white/10 px-3 py-2">
           <summary class="cursor-pointer text-slate-300">{{ title }}</summary>
-          {% if text is none %}<p class="mt-2 text-slate-500">Die Datei gibt es auf dieser Seite nicht.</p>
+          {% if text is none %}<p class="mt-2 text-slate-500">{{ t("Die Datei gibt es auf dieser Seite nicht.") }}</p>
           {% else %}<pre class="mt-2 overflow-x-auto font-mono text-xs text-slate-300">{{ text }}</pre>{% endif %}
         </details>
         {% endfor %}
       </div>
       <fieldset class="mt-3">
-        <legend class="text-slate-300">Welcher Stand soll gelten?</legend>
-        <label class="mr-4 inline-flex items-center gap-2 text-slate-200"><input type="radio" name="wahl:{{ side.name }}" value="ours" required>Diese Kopie behalten</label>
-        <label class="inline-flex items-center gap-2 text-slate-200"><input type="radio" name="wahl:{{ side.name }}" value="theirs" required>Stand des Remotes übernehmen</label>
+        <legend class="text-slate-300">{{ t("Welcher Stand soll gelten?") }}</legend>
+        <label class="mr-4 inline-flex items-center gap-2 text-slate-200"><input type="radio" name="wahl:{{ side.name }}" value="ours" required>{{ t("Diese Kopie behalten") }}</label>
+        <label class="inline-flex items-center gap-2 text-slate-200"><input type="radio" name="wahl:{{ side.name }}" value="theirs" required>{{ t("Stand des Remotes übernehmen") }}</label>
       </fieldset>
     </div>
     {% endfor %}
-    <p class="mt-4 text-xs text-slate-500">Die gewählte Datei ersetzt die andere vollständig. Danach wird geprüft und hochgeladen; Git behält den früheren Stand.</p>
-    <button type="submit" class="mt-2 rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Auswahl übernehmen und abgleichen</button>
+    <p class="mt-4 text-xs text-slate-500">{{ t("Die gewählte Datei ersetzt die andere vollständig. Danach wird geprüft und hochgeladen; Git behält den früheren Stand.") }}</p>
+    <button type="submit" class="mt-2 rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">{{ t("Auswahl übernehmen und abgleichen") }}</button>
     </form>
   {% elif result.problems %}
-    <p class="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">Der zusammengeführte Stand besteht die Prüfung nicht. Die Zusammenführung ist rückgängig gemacht, nichts wurde hochgeladen.</p>
+    <p class="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">{{ t("Der zusammengeführte Stand besteht die Prüfung nicht. Die Zusammenführung ist rückgängig gemacht, nichts wurde hochgeladen.") }}</p>
     <ul class="mt-2 list-disc space-y-1 pl-5 text-rose-200">
       {% for problem in result.problems %}<li class="whitespace-pre-line">{{ problem }}</li>{% endfor %}
     </ul>
@@ -58,15 +58,15 @@
 {% if preview %}
   {% if preview.problems %}
   <section aria-labelledby="sync-checks" class="mb-6 rounded-xl border border-white/10 px-4 py-3 text-sm">
-    <h2 id="sync-checks" class="mb-2 font-semibold text-slate-100">Prüfung</h2>
-    <p class="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">Die Dateien bestehen die Prüfung nicht. Bitte zuerst beheben, dann ist die Vorschau verfügbar.</p>
+    <h2 id="sync-checks" class="mb-2 font-semibold text-slate-100">{{ t("Prüfung") }}</h2>
+    <p class="rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">{{ t("Die Dateien bestehen die Prüfung nicht. Bitte zuerst beheben, dann ist die Vorschau verfügbar.") }}</p>
     <ul class="mt-2 list-disc space-y-1 pl-5 text-rose-200">
       {% for problem in preview.problems %}<li class="whitespace-pre-line">{{ problem }}</li>{% endfor %}
     </ul>
   </section>
   {% else %}
   <section aria-labelledby="sync-plan" class="mb-6">
-    <h2 id="sync-plan" class="mb-2 text-sm font-semibold text-slate-100">Vorschau</h2>
+    <h2 id="sync-plan" class="mb-2 text-sm font-semibold text-slate-100">{{ t("Vorschau") }}</h2>
     <ul class="divide-y divide-white/10 rounded-xl border border-white/10">
       {% for change in preview.changes %}
       <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3 text-sm">
@@ -75,13 +75,13 @@
         <span class="font-mono text-xs text-slate-500">{{ change.file }}</span>
       </li>
       {% else %}
-      <li class="px-4 py-3 text-sm text-slate-500">Keine Änderungen gegenüber dem Remote.</li>
+      <li class="px-4 py-3 text-sm text-slate-500">{{ t("Keine Änderungen gegenüber dem Remote.") }}</li>
       {% endfor %}
     </ul>
   </section>
   <form method="post" action="/abgleich">
     <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-    <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Abgleichen</button>
+    <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">{{ t("Abgleichen") }}</button>
   </form>
   {% endif %}
 {% endif %}
