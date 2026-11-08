@@ -330,6 +330,12 @@ EN: dict[str, str] = {
     "Ursache": "Cause",
     "Maßnahmen (Eindämmung)": "Measures (containment)",
     "Maßnahmen": "Measures",
+    # entities / IOCs (issue #210)
+    "Entities / IOCs": "Entities / IOCs",
+    "Eine pro Zeile als „Typ: Wert“, z. B. ip: 203.0.113.7": "One per line as “type: value”, e.g. ip: 203.0.113.7",
+    "Typen: ip, hash, domain, url, user, host, email. Defangte Werte (hxxp, [.]) werden beim Speichern aufgelöst; die Suche findet sie über den echten Wert.":
+        "Types: ip, hash, domain, url, user, host, email. Defanged values (hxxp, [.]) are resolved when saving; search finds them by the real value.",
+    "Entity / IOC (Wert)": "Entity / IOC (value)",
     # reports
     "HTML-Bericht": "HTML report",
     "PDF technisch": "Technical PDF",

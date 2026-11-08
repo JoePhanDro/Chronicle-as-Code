@@ -84,7 +84,8 @@ def test_techniques_do_not_hide_a_conflict_in_another_field():
 
 def body_from(current, **changes):
     body = {field: current[field] for field in ("key", "t0", "phase", "actor", "system", "action", "status",
-                                                "triggered_by", "techniques", "details", "version")}
+                                                "triggered_by", "techniques", "tags", "detection", "entities",
+                                                "comments", "details", "version")}
     body.update(topic=current["home_topic"], topics=current["topics"], **changes)
     return body
 

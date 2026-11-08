@@ -12,7 +12,8 @@ from chronicle.repository import Conflict
 def edited(conn, key, **changes):
     current = repository.get_event(conn, key)
     data = {field: current[field] for field in ("key", "t0", "phase", "actor", "system", "action", "status",
-                                                "triggered_by", "details")}
+                                                "triggered_by", "techniques", "tags", "detection", "entities",
+                                                "comments", "details")}
     data.update(changes)
     return current, Event.model_validate(data)
 

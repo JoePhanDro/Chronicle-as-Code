@@ -58,6 +58,7 @@ Unbekannte Felder sind ein Fehler. Ein Tippfehler im Schlüssel wird also nicht 
 | `triggered_by` | nein | Liste von Event-Keys mit 0 bis n Einträgen. Siehe 5 |
 | `techniques` | nein | Liste von MITRE-ATT&CK-Technik-IDs, z. B. `T1190` oder `T1059.001` (Muster `T` + 4 Ziffern, optional `.` + 3 Ziffern), höchstens 50. Gespeichert sortiert und ohne Doppelte. Es wird nur das Format geprüft, nicht der Katalog (ADR 0026) |
 | `details` | nein | Markdown |
+| `entities` | nein | Liste von getypten Entities/IOCs (ADR 0029, Issue #210): je `{type, value}` mit `type` = `ip` | `hash` | `domain` | `url` | `user` | `host` | `email`. Wert wird normalisiert gespeichert (defangte URLs aufgelöst, lowercase), höchstens 100. Gespeichert sortiert und ohne Duplikate |
 | `evidence` | nein | Liste von Evidence-Einträgen (siehe 6) |
 
 Die Phasenfarben gehören zur Darstellung und sind nicht Teil der Notation.

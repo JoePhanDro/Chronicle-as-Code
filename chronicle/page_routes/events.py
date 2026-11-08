@@ -50,6 +50,21 @@ def _detection_from_form(form) -> dict | None:
     return values or None
 
 
+def _entities_from_form(form) -> list[dict]:
+    """The entities of the form (issue #210): one per line as `type: value`, e.g. `ip: 203.0.113.7`.
+    The type and value are validated by the model; a line without a type is a ValueError."""
+    entities = []
+    for line in _raw(form, "entities").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        type_name, separator, value = line.partition(":")
+        if not separator or not value.strip():
+            raise ValueError(f"Entity ohne Typ oder Wert (erwartet z. B. „ip: 203.0.113.7“): {line[:60]!r}")
+        entities.append({"type": type_name.strip().lower(), "value": value.strip()})
+    return entities
+
+
 def _payload_from_form(form, topic_home: str | None = None) -> dict:
     return {
         "key": _field(form, "key"),
@@ -63,6 +78,7 @@ def _payload_from_form(form, topic_home: str | None = None) -> dict:
         "techniques": [item for item in re.split(r"[,;\s]+", _raw(form, "techniques")) if item],
         "tags": [item.strip() for item in re.split(r"[,;]+", _raw(form, "tags")) if item.strip()],
         "detection": _detection_from_form(form),
+        "entities": _entities_from_form(form),
         "details": _raw(form, "details"),
         "topic": topic_home or _raw(form, "topic"),
         "topics": form.getlist("topics"),
@@ -85,6 +101,7 @@ def edit_form(event: dict) -> dict:
         "key": event["key"], "phase": event["phase"], "actor": event["actor"], "system": event["system"] or "",
         "action": event["action"], "status": event["status"], "triggered_by": event["triggered_by"],
         "techniques": ", ".join(event["techniques"]), "tags": ", ".join(event.get("tags", [])),
+        "entities": "\n".join(f"{item['type']}: {item['value']}" for item in event.get("entities", [])),
         **{f"det_{name}": detection.get(name) or "" for name in DETECTION_FIELDS},
         "details": event["details"] or "", "topics": event["topics"], "topic": event["home_topic"],
         "version": event["version"], **t0_parts(event["t0"]),
@@ -128,7 +145,7 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
             topic=topic_key, query=_text_param(params, "q"), phase=_choice_param(params, "phase", Phase),
             status=_choice_param(params, "status", Status), actor=_text_param(params, "actor"),
             system=_text_param(params, "system"), technique=_technique_param(params),
-            tag=_text_param(params, "tag"), rule=_text_param(params, "rule"),
+            tag=_text_param(params, "tag"), rule=_text_param(params, "rule"), entity=_text_param(params, "entity"),
             since=_day_param(params, "since"), until=_day_param(params, "until"),
         )
         return flt, topic_key
@@ -152,7 +169,7 @@ def make_event_pages(ctx: PageContext) -> APIRouter:
         query = {
             "topic": flt.topic, "q": flt.query, "phase": flt.phase, "status": flt.status, "actor": flt.actor,
             "system": flt.system, "technique": flt.technique,
-            "tag": flt.tag, "rule": flt.rule,
+            "tag": flt.tag, "rule": flt.rule, "entity": flt.entity,
             "since": flt.since.isoformat() if flt.since else None,
             "until": flt.until.isoformat() if flt.until else None,
         }

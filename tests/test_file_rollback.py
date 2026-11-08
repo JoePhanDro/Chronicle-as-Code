@@ -105,7 +105,8 @@ def test_a_refused_attachment_removal_keeps_the_file(folder, conn):
 def _event_of(conn, key):
     current = repository.get_event(conn, key)
     data = {field: current[field] for field in ("key", "t0", "phase", "actor", "system", "action", "status",
-                                                "triggered_by", "details")}
+                                                "triggered_by", "techniques", "tags", "detection", "entities",
+                                                "comments", "details")}
     return Event.model_validate(data)
 
 

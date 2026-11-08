@@ -34,6 +34,7 @@ def make_event_routes(get_conn: Callable, auth: Auth) -> APIRouter:
                                       description="ATT&CK technique ID; T1059 also finds T1059.001"),
         tag: str | None = Query(None, description="Exact event tag"),
         rule: str | None = Query(None, description="Rule ID of the detection that led to the event (issue #257)"),
+        entity: str | None = Query(None, description="Value of a typed entity/IOC (issue #210), any type"),
         since: date | None = Query(None, description="t0 on or after this UTC day"),
         until: date | None = Query(None, description="t0 on or before this UTC day"),
         limit: int | None = Query(None, ge=1, le=500, description="Without a limit, all events are returned"),
@@ -44,7 +45,7 @@ def make_event_routes(get_conn: Callable, auth: Auth) -> APIRouter:
         if topic is not None and repository.get_topic(conn, topic) is None:
             raise HTTPException(status_code=404, detail="Topic nicht gefunden")
         flt = repository.EventFilter(topic=topic, query=q, phase=phase, status=status, actor=actor,
-                                     technique=technique, tag=tag, rule=rule, since=since, until=until)
+                                     technique=technique, tag=tag, rule=rule, entity=entity, since=since, until=until)
         return repository.find_events(conn, flt, limit=limit, offset=offset)
 
     @router.get("/api/v1/events/{key}")

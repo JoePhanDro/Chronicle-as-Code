@@ -52,7 +52,7 @@ from .yamlscan import MAX_YAML_BYTES, TOO_LARGE, describe_validation_error
 TOPIC_FIELDS = ("title", "kind", "summary")
 BLOCK_FIELDS = ("reporting", "notifications", "incident")
 EVENT_FIELDS = tuple(name for name in Event.model_fields if name != "key")
-SET_FIELDS = ("techniques",)  # merged like refs: what either side adds is in, what either side removes is out
+SET_FIELDS = ("techniques", "entities")  # merged like refs: what either side adds is in, what either side removes is out
 
 
 class MergeConflict(Exception):
@@ -136,17 +136,33 @@ def _merge_fields(key: str, base: Event | None, ours: Event, theirs: Event, prob
         for name in EVENT_FIELDS if name not in SET_FIELDS
     }
     for name in SET_FIELDS:
-        values[name] = sorted(_merge_refs(getattr(base, name) if base else [], getattr(ours, name), getattr(theirs, name)))
+        key = _set_key(name)
+        values[name] = sorted(_merge_refs(getattr(base, name) if base else [], getattr(ours, name), getattr(theirs, name), key),
+                              key=key)
     return values
 
 
-def _merge_refs(base: list[str], ours: list[str], theirs: list[str]) -> list[str]:
+def _set_key(name: str):
+    """The identity of a set member: the value itself, or (type, value) for entities."""
+    if name == "entities":
+        return lambda item: (item.type, item.value)
+    return lambda item: item
+
+
+def _merge_refs(base: list, ours: list, theirs: list, key=lambda item: item) -> list:
     """Added by either side: in. Removed by either side: out. Order: ours first, then theirs."""
-    result = []
-    for ref in dict.fromkeys([*ours, *theirs]):
-        if ref in base and not (ref in ours and ref in theirs):
+    base_keys = {key(item) for item in base}
+    ours_keys = {key(item) for item in ours}
+    theirs_keys = {key(item) for item in theirs}
+    result, seen = [], set()
+    for item in [*ours, *theirs]:
+        item_key = key(item)
+        if item_key in seen:
             continue
-        result.append(ref)
+        seen.add(item_key)
+        if item_key in base_keys and not (item_key in ours_keys and item_key in theirs_keys):
+            continue
+        result.append(item)
     return result
 
 
