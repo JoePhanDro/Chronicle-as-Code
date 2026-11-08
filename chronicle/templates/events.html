@@ -59,6 +59,11 @@
            class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
   </label>
   <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Entity / IOC (Wert)") }}</span>
+    <input type="text" name="entity" value="{{ query.get('entity', '') }}" placeholder="203.0.113.7"
+           class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 font-mono text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+  </label>
+  <label class="block">
     <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Von (UTC)") }}</span>
     <input type="date" name="since" value="{{ query.get('since', '') }}"
            class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">

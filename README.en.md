@@ -159,6 +159,9 @@ events:
     action: "…"
     status: in_progress              # open | in_progress | resolved
     triggered_by: cve-2026-xxxx      # optional: key of another event
+    entities:                        # optional: typed IOCs (ADR 0029, issue #210), one per entry
+      - {type: ip, value: 203.0.113.7}         # ip | hash | domain | url | user | host | email
+      - {type: url, value: "http://evil.example/x"}  # defanged values (hxxp, [.]) are resolved
     details: |                       # optional, Markdown
       …
     evidence:                        # optional, paths relative to the file

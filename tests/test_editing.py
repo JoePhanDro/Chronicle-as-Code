@@ -41,8 +41,9 @@ def api_login(db_path, username):
 
 def writable(current, **changes):
     """The body a client sends back after GET: only the fields the write API accepts."""
-    body = {name: current[name] for name in ("key", "t0", "phase", "actor", "system", "action",
-                                              "status", "triggered_by", "details")}
+    body = {name: current[name] for name in ("key", "t0", "phase", "actor", "system", "action", "status",
+                                              "triggered_by", "techniques", "tags", "detection", "entities",
+                                              "comments", "details")}
     body.update({"topic": current["home_topic"], "topics": current["topics"], "version": current["version"]})
     body.update(changes)
     return body

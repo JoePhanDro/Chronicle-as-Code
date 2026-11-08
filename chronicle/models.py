@@ -6,12 +6,14 @@ instead of silently dropping data.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from collections import Counter
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Literal
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -123,6 +125,66 @@ class Detection(BaseModel):
         return self
 
 
+EntityType = Literal["ip", "hash", "domain", "url", "user", "host", "email"]
+ENTITY_TYPES: tuple[str, ...] = ("ip", "hash", "domain", "url", "user", "host", "email")
+HASH_HEX = re.compile(r"^[0-9a-f]{32}$|^[0-9a-f]{40}$|^[0-9a-f]{64}$|^[0-9a-f]{128}$")  # md5, sha1, sha256, sha512
+DOMAIN_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def _normalize_entity(entity_type: str, value: str) -> str:
+    """The stored form of an entity value (issue #210). Defanged input is resolved, so search and filters
+    work on the real value; anything invalid raises ValueError."""
+    value = value.strip()
+    if entity_type == "ip":
+        return str(ipaddress.ip_address(value))  # raises for anything that is no IP, canonical form
+    if entity_type == "hash":
+        if not HASH_HEX.fullmatch(value.lower()):
+            raise ValueError("Hash: 32, 40, 64 oder 128 hex-Zeichen (md5, sha1, sha256, sha512)")
+        return value.lower()
+    if entity_type in ("domain", "host"):
+        value = value.lower().rstrip(".")
+        if not value or len(value) > 253 or "://" in value or any(
+            not DOMAIN_LABEL.fullmatch(label) for label in value.split(".")
+        ):
+            raise ValueError(f"Kein gültiger {'Domainname' if entity_type == 'domain' else 'Hostname'}: {value[:60]!r}")
+        return value
+    if entity_type == "url":
+        # Defanging is resolved on input: hxxp(s) -> http(s), [:] -> :, [.] -> .
+        value = re.sub(r"^hxxp(s?)://", lambda m: f"http{m.group(1)}://", value, flags=re.IGNORECASE)
+        value = value.replace("[:]", ":").replace("[.]", ".")
+        parsed = urlsplit(value)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError(f"URL nur mit http/https und Host, ohne Zugangsdaten: {value[:60]!r}")
+        if len(value) > 2000:
+            raise ValueError("URL: höchstens 2000 Zeichen")
+        netloc = parsed.hostname.lower() + (f":{parsed.port}" if parsed.port else "")
+        return urlunsplit((parsed.scheme.lower(), netloc, parsed.path, parsed.query, parsed.fragment))
+    if entity_type == "email":
+        value = value.lower()
+        if not EMAIL_PATTERN.fullmatch(value):
+            raise ValueError(f"Keine gültige E-Mail-Adresse: {value[:60]!r}")
+        return value
+    # user
+    if not value or len(value) > 100 or any(character in value for character in "\r\n\t"):
+        raise ValueError(f"Benutzername: 1 bis 100 Zeichen, keine Steuerzeichen: {value[:60]!r}")
+    return value
+
+
+class Entity(BaseModel):
+    """A typed entity/IOC of an event (issue #210): the same value in several events and topics is the same
+    entity. The value is stored normalized (see _normalize_entity), so equal values compare equal."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    type: EntityType
+    value: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def _normalize(self) -> Entity:
+        self.value = _normalize_entity(self.type, self.value)
+        return self
+
+
 class Event(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
@@ -149,9 +211,29 @@ class Event(BaseModel):
     detection: Detection | None = Field(
         default=None, description="The rule/alert that led to this event (issue #257), if any"
     )
+    entities: list[Entity] = Field(
+        default_factory=list,
+        max_length=100,
+        description="Typed entities/IOCs of the event (issue #210), e.g. [{type: ip, value: 203.0.113.7}]",
+    )
     comments: list[EventComment] = Field(default_factory=list, max_length=200)
     details: str = Field(default="", description="Markdown body shown in the detail view")
     evidence: list[Evidence] = Field(default_factory=list)
+
+    @field_validator("entities", mode="before")
+    @classmethod
+    def _tidy_entities(cls, value: object) -> object:
+        # Forms send "" for nothing.
+        if value is None or value == "":
+            return []
+        return value
+
+    @field_validator("entities")
+    @classmethod
+    def _entity_set(cls, value: list[Entity]) -> list[Entity]:
+        # A set: order and repeats carry no meaning, so they are stored sorted and unique.
+        unique = {(item.type, item.value): item for item in value}
+        return [unique[pair] for pair in sorted(unique)]
 
     @field_validator("details")
     @classmethod

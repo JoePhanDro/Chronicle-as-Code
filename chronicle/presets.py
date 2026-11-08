@@ -25,7 +25,7 @@ from .yamlscan import MAX_YAML_BYTES, TOO_LARGE, YamlRejected, describe_validati
 PRESET_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 PRESET_SUFFIXES = (".yaml", ".yml")
 # The fields of EventFilter a preset may set; the topic field included, so a preset can pin one topic.
-FILTER_FIELDS = ("topic", "query", "tag", "phase", "status", "actor", "system", "technique", "since", "until")
+FILTER_FIELDS = ("topic", "query", "tag", "phase", "status", "actor", "system", "technique", "entity", "since", "until")
 
 
 class PresetRejected(ValueError):
@@ -45,6 +45,7 @@ class PresetFilter(BaseModel):
     actor: str | None = None
     system: str | None = None
     technique: str | None = None
+    entity: str | None = None
     since: date | None = None
     until: date | None = None
 

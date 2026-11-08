@@ -26,7 +26,8 @@ def index_of(conn) -> dict:
 def edit(conn, folder, key, **changes):
     current = repository.get_event(conn, key)
     data = {field: current[field] for field in ("key", "t0", "phase", "actor", "system", "action", "status",
-                                                "triggered_by", "details")}
+                                                "triggered_by", "techniques", "tags", "detection", "entities",
+                                                "comments", "details")}
     data.update(changes)
     repository.update_event(conn, key, Event.model_validate(data), current["topics"], current["version"],
                             actor_id=None, ip="test", data_dir=folder)

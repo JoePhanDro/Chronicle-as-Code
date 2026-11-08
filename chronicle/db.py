@@ -216,28 +216,28 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition
 SEARCH_INDEX = (
     """
     CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
-        action, details, actor, tags, comments,
+        action, details, actor, tags, comments, entities,
         content='events', content_rowid='pk', tokenize='unicode61 remove_diacritics 2'
     )
     """,
     """
     CREATE TRIGGER IF NOT EXISTS events_fts_insert AFTER INSERT ON events BEGIN
-        INSERT INTO events_fts (rowid, action, details, actor, tags, comments)
-        VALUES (new.pk, new.action, new.details, new.actor, new.tags, new.comments);
+        INSERT INTO events_fts (rowid, action, details, actor, tags, comments, entities)
+        VALUES (new.pk, new.action, new.details, new.actor, new.tags, new.comments, new.entities);
     END
     """,
     """
     CREATE TRIGGER IF NOT EXISTS events_fts_delete AFTER DELETE ON events BEGIN
-        INSERT INTO events_fts (events_fts, rowid, action, details, actor, tags, comments)
-        VALUES ('delete', old.pk, old.action, old.details, old.actor, old.tags, old.comments);
+        INSERT INTO events_fts (events_fts, rowid, action, details, actor, tags, comments, entities)
+        VALUES ('delete', old.pk, old.action, old.details, old.actor, old.tags, old.comments, old.entities);
     END
     """,
     """
     CREATE TRIGGER IF NOT EXISTS events_fts_update AFTER UPDATE ON events BEGIN
-        INSERT INTO events_fts (events_fts, rowid, action, details, actor, tags, comments)
-        VALUES ('delete', old.pk, old.action, old.details, old.actor, old.tags, old.comments);
-        INSERT INTO events_fts (rowid, action, details, actor, tags, comments)
-        VALUES (new.pk, new.action, new.details, new.actor, new.tags, new.comments);
+        INSERT INTO events_fts (events_fts, rowid, action, details, actor, tags, comments, entities)
+        VALUES ('delete', old.pk, old.action, old.details, old.actor, old.tags, old.comments, old.entities);
+        INSERT INTO events_fts (rowid, action, details, actor, tags, comments, entities)
+        VALUES (new.pk, new.action, new.details, new.actor, new.tags, new.comments, new.entities);
     END
     """,
 )
@@ -248,7 +248,7 @@ def _ensure_search_index(conn: sqlite3.Connection) -> None:
     existed = _has_table(conn, "events_fts")
     if existed:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(events_fts)")}
-        if not {"tags", "comments"} <= columns:
+        if not {"tags", "comments", "entities"} <= columns:
             conn.execute("DROP TRIGGER IF EXISTS events_fts_insert")
             conn.execute("DROP TRIGGER IF EXISTS events_fts_delete")
             conn.execute("DROP TRIGGER IF EXISTS events_fts_update")
@@ -343,6 +343,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
     _ensure_column(conn, "events", "techniques", "TEXT")
     _ensure_column(conn, "events", "tags", "TEXT")
     _ensure_column(conn, "events", "detection", "TEXT")
+    _ensure_column(conn, "events", "entities", "TEXT")
     _ensure_column(conn, "events", "comments", "TEXT")
     _ensure_column(conn, "topics", "reporting", "TEXT")
     _ensure_column(conn, "topics", "notifications", "TEXT")

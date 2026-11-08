@@ -31,7 +31,7 @@ from .store import (
     update_event_in_file,
 )
 
-EDITABLE_FIELDS = ("t0", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "tags", "comments", "details")
+EDITABLE_FIELDS = ("t0", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "tags", "detection", "entities", "comments", "details")
 
 
 def _update_in_folder(
@@ -70,7 +70,8 @@ def _index_field_change(conn: sqlite3.Connection, key: str, event: Event, writte
         conn.execute(
             """
             UPDATE events SET t0 = ?, phase = ?, actor = ?, system = ?, action = ?, status = ?,
-                              triggered_by = ?, techniques = ?, tags = ?, detection = ?, comments = ?, details = ?,
+                              triggered_by = ?, techniques = ?, tags = ?, detection = ?, entities = ?, comments = ?,
+                              details = ?,
                               version = version + 1,
                               updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE key = ?
@@ -157,10 +158,14 @@ def update_event(
 
     old = get_event(conn, key)
     old_topics = topic_keys_of(conn, row["pk"])
+    # Nested blocks are compared in their stored JSON form; comparing the model reprs would always differ.
     new_values = {"t0": event.t0.isoformat(), "phase": event.phase.value, "actor": event.actor,
                   "system": event.system, "action": event.action, "status": event.status.value,
                   "triggered_by": event.triggered_by, "techniques": event.techniques, "tags": event.tags,
-                  "comments": event.comments, "details": event.details}
+                  "detection": event.detection.model_dump(mode="json", exclude_none=True) if event.detection else None,
+                  "entities": [item.model_dump(mode="json") for item in event.entities],
+                  "comments": [item.model_dump(mode="json") for item in event.comments],
+                  "details": event.details}
     changed = [name for name in EDITABLE_FIELDS if str(old[name]) != str(new_values[name])]
     if sorted(old_topics) != sorted(topic_keys):
         changed.append("topics")
@@ -191,7 +196,8 @@ def add_comment(
         else:
             updated = {
                 name: current[name] for name in
-                ("key", "t0", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "tags", "details")
+                ("key", "t0", "phase", "actor", "system", "action", "status", "triggered_by", "techniques", "tags",
+                 "detection", "entities", "details")
             }
             updated["comments"] = [*current["comments"], comment]
             _index_field_change(conn, key, Event.model_validate(updated), path, data_dir)

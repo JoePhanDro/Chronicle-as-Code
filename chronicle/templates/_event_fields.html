@@ -158,6 +158,15 @@
 </section>
 
 <section class="{{ section_class }}">
+  <h2 class="{{ heading_class }}">{{ t("Entities / IOCs") }}</h2>
+  <label class="block">
+    <span class="{{ label_class }}">{{ t("Eine pro Zeile als „Typ: Wert“, z. B. ip: 203.0.113.7") }}</span>
+    <textarea name="entities" rows="3" placeholder="ip: 203.0.113.7&#10;hash: 9f2c…&#10;domain: evil.example&#10;url: hxxp://evil.example/x&#10;user: jsmith&#10;host: web-01&#10;email: jsmith@example.com" spellcheck="false" class="{{ input_class }} font-mono text-xs">{{ f.entities or '' }}</textarea>
+  </label>
+  <p class="mt-1 text-xs text-slate-500">{{ t("Typen: ip, hash, domain, url, user, host, email. Defangte Werte (hxxp, [.]) werden beim Speichern aufgelöst; die Suche findet sie über den echten Wert.") }}</p>
+</section>
+
+<section class="{{ section_class }}">
   <h2 class="{{ heading_class }}">{{ t("Verknüpfungen") }}</h2>
   <div class="space-y-5">
     <fieldset data-cause-picker>

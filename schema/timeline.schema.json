@@ -101,6 +101,37 @@
       "title": "EmailConfig",
       "type": "object"
     },
+    "Entity": {
+      "additionalProperties": false,
+      "description": "A typed entity/IOC of an event (issue #210): the same value in several events and topics is the same\nentity. The value is stored normalized (see _normalize_entity), so equal values compare equal.",
+      "properties": {
+        "type": {
+          "enum": [
+            "ip",
+            "hash",
+            "domain",
+            "url",
+            "user",
+            "host",
+            "email"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "value"
+      ],
+      "title": "Entity",
+      "type": "object"
+    },
     "Event": {
       "additionalProperties": false,
       "properties": {
@@ -180,6 +211,15 @@
           ],
           "default": null,
           "description": "The rule/alert that led to this event (issue #257), if any"
+        },
+        "entities": {
+          "description": "Typed entities/IOCs of the event (issue #210), e.g. [{type: ip, value: 203.0.113.7}]",
+          "items": {
+            "$ref": "#/$defs/Entity"
+          },
+          "maxItems": 100,
+          "title": "Entities",
+          "type": "array"
         },
         "comments": {
           "items": {

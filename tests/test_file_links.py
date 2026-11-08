@@ -22,7 +22,8 @@ def refs_of(path: Path) -> list[str]:
 def link(conn, folder, key, topics):
     current = repository.get_event(conn, key)
     data = {field: current[field] for field in ("key", "t0", "phase", "actor", "system", "action", "status",
-                                                "triggered_by", "details")}
+                                                "triggered_by", "techniques", "tags", "detection", "entities",
+                                                "comments", "details")}
     return repository.update_event(conn, key, Event.model_validate(data), topics, current["version"],
                                    actor_id=None, ip="test", data_dir=folder)
 
@@ -48,7 +49,8 @@ def test_removing_a_link_removes_the_refs_line(folder, conn):
 def test_a_link_and_a_field_change_in_one_save(folder, conn):
     current = repository.get_event(conn, "analysis")
     data = {field: current[field] for field in ("key", "t0", "phase", "actor", "system", "action", "status",
-                                                "triggered_by", "details")}
+                                                "triggered_by", "techniques", "tags", "detection", "entities",
+                                                "comments", "details")}
     data["action"] = "zusammen geändert"
     repository.update_event(conn, "analysis", Event.model_validate(data), ["inc-2026-042", "b"], current["version"],
                             actor_id=None, ip="test", data_dir=folder)
