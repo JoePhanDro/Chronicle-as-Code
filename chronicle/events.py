@@ -17,6 +17,7 @@ from .folder_writes import (
     recorded_version,
     store_change,
 )
+from . import notifications
 from .index import check_triggers, event_pk_of, event_values, reindex
 from .loader import find_topic_files
 from .models import Event
@@ -123,7 +124,12 @@ def create_event(
     conn: sqlite3.Connection, event: Event, topic_keys: list[str], actor_id: int, ip: str, data_dir: Path
 ) -> dict:
     """Create an event in its home topic: it is appended to the topic file first, the index follows (ADR 0008)."""
-    return _create_in_folder(conn, event, topic_keys, data_dir, actor_id, ip)
+    created = _create_in_folder(conn, event, topic_keys, data_dir, actor_id, ip)
+    # Notifications after the write succeeded, so a delivery problem never rolls the event back (issue #258).
+    notifications.enqueue(conn, "new_event", created, topic_keys, actor_id=actor_id, ip=ip)
+    if created.get("detection"):  # a rule match is a new event with detection info (issue #257)
+        notifications.enqueue(conn, "rule_match", created, topic_keys, actor_id=actor_id, ip=ip)
+    return created
 
 
 def update_event(
@@ -160,7 +166,12 @@ def update_event(
         changed.append("topics")
     if not changed:
         return old  # saving without changes creates no new revision
-    return _update_in_folder(conn, key, event, topic_keys, data_dir, actor_id, ip, changed)
+    updated = _update_in_folder(conn, key, event, topic_keys, data_dir, actor_id, ip, changed)
+    if "status" in changed:
+        notifications.enqueue(conn, "status_change", updated, topic_keys,
+                              extra={"status_change": {"from": old["status"], "to": updated["status"]}},
+                              actor_id=actor_id, ip=ip)
+    return updated
 
 
 def add_comment(

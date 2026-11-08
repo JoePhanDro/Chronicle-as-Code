@@ -216,6 +216,7 @@ def update_topic_in_file(path: Path, topic: Topic, *, expected_version: str) -> 
         section["kind"] = topic.kind
         _put(section, "summary", _text(topic.summary) or None)
         _put(section, "reporting", topic.reporting.model_dump(mode="json", exclude_none=True) if topic.reporting else None)
+        _put(section, "notifications", topic.notifications.model_dump(mode="json", exclude_none=True) if topic.notifications else None)
         stream = io.StringIO()
         _yaml().dump(document, stream)
 
@@ -574,6 +575,8 @@ def _document(timeline: Timeline) -> dict:
         topic["summary"] = _text(timeline.topic.summary)
     if timeline.topic.reporting:
         topic["reporting"] = timeline.topic.reporting.model_dump(mode="json", exclude_none=True)
+    if timeline.topic.notifications:
+        topic["notifications"] = timeline.topic.notifications.model_dump(mode="json", exclude_none=True)
     document: dict = {"topic": topic}
 
     events = [_event_document(event) for event in timeline.events]

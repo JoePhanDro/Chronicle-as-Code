@@ -22,6 +22,19 @@ services:
       CHRONICLE_TRUSTED_PROXIES: ${CHRONICLE_PROXY_IP:-172.30.0.10}
       # The session cookie travels over HTTPS only.
       CHRONICLE_COOKIE_SECURE: "1"
+      # Notifications (issue #258): the secrets stay in the environment; webhook URL and e-mail recipients are
+      # configured per topic in the UI (or in the topic file), never here.
+      CHRONICLE_WEBHOOK_SECRET: ${CHRONICLE_WEBHOOK_SECRET:-}
+      CHRONICLE_SMTP_HOST: ${CHRONICLE_SMTP_HOST:-}
+      CHRONICLE_SMTP_PORT: ${CHRONICLE_SMTP_PORT:-}
+      CHRONICLE_SMTP_STARTTLS: ${CHRONICLE_SMTP_STARTTLS:-}
+      CHRONICLE_SMTP_SSL: ${CHRONICLE_SMTP_SSL:-}
+      CHRONICLE_SMTP_USER: ${CHRONICLE_SMTP_USER:-}
+      CHRONICLE_SMTP_PASSWORD: ${CHRONICLE_SMTP_PASSWORD:-}
+      CHRONICLE_SMTP_FROM: ${CHRONICLE_SMTP_FROM:-}
+      CHRONICLE_SMTP_TIMEOUT: ${CHRONICLE_SMTP_TIMEOUT:-}
+      CHRONICLE_NOTIFY_COOLDOWN_SECONDS: ${CHRONICLE_NOTIFY_COOLDOWN_SECONDS:-}
+      CHRONICLE_BASE_URL: ${CHRONICLE_BASE_URL:-}
     # No published port: the API is reachable only through the proxy.
     volumes:
       - chronicle-db:/db
