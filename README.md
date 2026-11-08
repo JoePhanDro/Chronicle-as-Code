@@ -102,6 +102,10 @@ Ein Bericht ist eine einzelne HTML-Datei zu einem Topic, etwa als Anhang zu eine
 
 Der Bericht ist eine Kopie der Daten. Wer die Datei hat, sieht alles. Teile sie nur bewusst und lösche sie danach.
 
+### IOC-Export (CSV / STIX)
+
+Die getypten Entities (IOCs) eines Topics oder aller Topics lassen sich als **CSV** (`type,value,first_seen,last_seen,events,topics`) oder als **STIX-2.1-Bundle** exportieren — pro Topic auf der Topic-Seite („IOCs als CSV/STIX 2.1“) oder global unter **Berichte**. API: `GET /api/v1/topics/{key}/iocs?format=csv|stix` und `GET /api/v1/iocs?format=csv|stix`, optional mit `since`/`until` (UTC-Tage). Analysten und Admins dürfen exportieren; jeder Export landet ohne IOC-Werte im Audit-Log (ADR 0030, Issue #259).
+
 ## Konfiguration
 
 | Variable | Wirkung | Standard |

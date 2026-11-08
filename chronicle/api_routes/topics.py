@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import repository
+from .. import ioc_export, repository
 from ..auth import Auth, client_ip
 from ..event_input import new_topic_key
+from ..ioc_export import FORMATS
 from ..models import Topic, TopicCreate
 from .common import write
 
@@ -68,5 +70,38 @@ def make_topic_routes(get_conn: Callable, auth: Auth) -> APIRouter:
     def unlink_event(key: str, event_key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> Response:
         write(lambda: repository.unlink_event(conn, key, event_key, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
         return Response(status_code=204)
+
+    @router.get("/api/v1/iocs")
+    def all_iocs(
+        request: Request,
+        format: str = "csv",
+        since: date | None = None,
+        until: date | None = None,
+        conn: sqlite3.Connection = Depends(get_conn),
+        user: dict = Depends(writer),
+    ) -> Response:
+        """All entities of all topics as CSV or STIX 2.1 (issue #259); every export is audited."""
+        if format not in FORMATS:
+            raise HTTPException(status_code=422, detail=f"format muss sein: {', '.join(FORMATS)}")
+        filename, body, media = ioc_export.make_ioc_export(conn, None, format, since, until, user["id"], client_ip(request))
+        return Response(content=body, media_type=media, headers=ioc_export.export_headers(filename))
+
+    @router.get("/api/v1/topics/{key}/iocs")
+    def topic_iocs(
+        key: str,
+        request: Request,
+        format: str = "csv",
+        since: date | None = None,
+        until: date | None = None,
+        conn: sqlite3.Connection = Depends(get_conn),
+        user: dict = Depends(writer),
+    ) -> Response:
+        """The entities of one topic as CSV or STIX 2.1 (issue #259)."""
+        if repository.get_topic(conn, key) is None:
+            raise HTTPException(status_code=404, detail="Topic nicht gefunden")
+        if format not in FORMATS:
+            raise HTTPException(status_code=422, detail=f"format muss sein: {', '.join(FORMATS)}")
+        filename, body, media = ioc_export.make_ioc_export(conn, key, format, since, until, user["id"], client_ip(request))
+        return Response(content=body, media_type=media, headers=ioc_export.export_headers(filename))
 
     return router

@@ -82,6 +82,12 @@
     {% endif %}
     {% if topic.summary %}<p class="mt-2 max-w-2xl text-sm text-slate-400">{{ topic.summary }}</p>{% endif %}
     <a href="/events?topic={{ topic.key }}" class="mt-2 inline-block text-xs text-sky-300 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ t("Im Ereignisprotokoll anzeigen") }}</a>
+    {% if can_write %}
+    <span class="mx-1 text-slate-400" aria-hidden="true">·</span>
+    <a href="/topics/{{ topic.key }}/iocs?format=csv" class="mt-2 inline-block text-xs text-sky-300 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ t("IOCs als CSV") }}</a>
+    <span class="mx-1 text-slate-400" aria-hidden="true">·</span>
+    <a href="/topics/{{ topic.key }}/iocs?format=stix" class="mt-2 inline-block text-xs text-sky-300 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ t("IOCs als STIX 2.1") }}</a>
+    {% endif %}
   </div>
   {% if can_write %}
   <a href="#bearbeiten" id="edit-link" class="text-sm text-sky-300 hover:underline max-sm:flex max-sm:min-h-11 max-sm:items-center">{{ t("Bearbeiten") }}</a>

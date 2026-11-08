@@ -336,6 +336,11 @@ EN: dict[str, str] = {
     "Typen: ip, hash, domain, url, user, host, email. Defangte Werte (hxxp, [.]) werden beim Speichern aufgelöst; die Suche findet sie über den echten Wert.":
         "Types: ip, hash, domain, url, user, host, email. Defanged values (hxxp, [.]) are resolved when saving; search finds them by the real value.",
     "Entity / IOC (Wert)": "Entity / IOC (value)",
+    # IOC export (issue #259)
+    "IOCs als CSV": "IOCs as CSV",
+    "IOCs als STIX 2.1": "IOCs as STIX 2.1",
+    "Alle IOCs als CSV": "All IOCs as CSV",
+    "Alle IOCs als STIX 2.1": "All IOCs as STIX 2.1",
     # reports
     "HTML-Bericht": "HTML report",
     "PDF technisch": "Technical PDF",
