@@ -4,6 +4,8 @@
 
 # Chronicle
 
+*English version: [README.en.md](README.en.md).*
+
 Chronicle organisiert Sicherheitswissen: **Events** (Ereignisse mit Zeitpunkt, Akteur, System und Belegen) gehören zu **Topics** (Incidents, Schwachstellen, Projekte, besondere Ereignisse). Daraus entstehen Timeline, Entitäten-Graph und Detailansicht.
 
 ![Dashboard: Timeline oben, Entitäten-Graph unten, Phasen farblich markiert](docs/screenshots/dashboard.png)
