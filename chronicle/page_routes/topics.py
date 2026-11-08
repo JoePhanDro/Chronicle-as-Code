@@ -8,16 +8,17 @@ from html import escape
 from typing import get_args
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from .. import i18n, notifications, reporting, repository
+from .. import i18n, ioc_export, notifications, reporting, repository
+from ..ioc_export import FORMATS
 from ..auth import client_ip
 from ..exporter import ExportError
 from ..report import make_dashboard
 from ..models import Notifications, Topic, TopicKind, SEVERITIES, SEVERITY_LABELS, TLP_LEVELS, incident_rows
 from ..event_input import EventWrite, event_of, new_topic_key, topic_list
-from .common import WRITER_ROLES, PageContext, _error_text
+from .common import WRITER_ROLES, PageContext, _day_param, _error_text, _text_param
 
 
 TOPIC_KINDS = list(get_args(TopicKind))
@@ -349,5 +350,32 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
         else:
             flash = "failed"
         return RedirectResponse(f"/topics/{key}?notify={flash}", status_code=303)
+
+    def _ioc_download(request: Request, conn: sqlite3.Connection, user: dict, topic_key: str | None) -> Response | HTMLResponse:
+        """The IOC export of one topic or of all topics as a download (issue #259); writers only, audited."""
+        if user["role"] not in WRITER_ROLES:
+            return render(request, "forbidden.html", user, status_code=403)
+        params = request.query_params
+        format = _text_param(params, "format") or "csv"
+        if format not in FORMATS:
+            return render(request, "error.html", user, status_code=422, message=f"format muss sein: {', '.join(FORMATS)}")
+        if topic_key is not None and repository.get_topic(conn, topic_key) is None:
+            return render(request, "not_found.html", user, status_code=404)
+        filename, body, media = ioc_export.make_ioc_export(
+            conn, topic_key, format, _day_param(params, "since"), _day_param(params, "until"), user["id"], client_ip(request)
+        )
+        return Response(content=body, media_type=media, headers=ioc_export.export_headers(filename))
+
+    @router.get("/iocs")
+    def all_iocs_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        return _ioc_download(request, conn, user, None)
+
+    @router.get("/topics/{key}/iocs")
+    def topic_iocs_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        return _ioc_download(request, conn, user, key)
 
     return router

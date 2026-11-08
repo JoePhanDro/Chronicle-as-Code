@@ -101,6 +101,10 @@ A report is a single HTML file for a topic, e.g. as an attachment to a post-mort
 
 The report is a copy of the data. Whoever has the file sees everything. Share it deliberately and delete it afterwards.
 
+### IOC export (CSV / STIX)
+
+The typed entities (IOCs) of one topic or of all topics can be exported as **CSV** (`type,value,first_seen,last_seen,events,topics`) or as a **STIX 2.1 bundle** — per topic on the topic page (“IOCs as CSV/STIX 2.1”) or globally under **Reports**. API: `GET /api/v1/topics/{key}/iocs?format=csv|stix` and `GET /api/v1/iocs?format=csv|stix`, optionally with `since`/`until` (UTC days). Analysts and admins may export; every export is logged in the audit log without IOC values (ADR 0030, issue #259).
+
 ## Configuration
 
 | Variable | Effect | Default |
