@@ -138,6 +138,10 @@ def _yaml_bytes(document: dict) -> bytes:
 def _event_fields(event: dict) -> dict:
     """The fields of an event as the file holds them: the required ones, then those that are set."""
     document = {"key": event["key"], "t0": event["t0"], "phase": event["phase"], "actor": event["actor"]}
+    if event.get("t1"):
+        document["t1"] = event["t1"]
+    if event.get("detected_at"):
+        document["detected_at"] = event["detected_at"]
     if event["system"]:
         document["system"] = event["system"]
     document["action"] = event["action"]

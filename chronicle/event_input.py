@@ -72,12 +72,12 @@ def t0_from_parts(day: str, hour: str, minute: str, zone: str) -> str:
     return local.replace(tzinfo=ZoneInfo(zone)).isoformat()
 
 
-def t0_parts(t0: str, zone: str = DEFAULT_TIMEZONE) -> dict[str, str]:
-    """A stored timestamp split into the form's fields, shown in `zone`."""
+def t0_parts(t0: str, zone: str = DEFAULT_TIMEZONE, prefix: str = "t0") -> dict[str, str]:
+    """A stored timestamp split into the form's fields, shown in `zone`. `prefix` names the field group."""
     local = datetime.fromisoformat(t0).astimezone(ZoneInfo(zone))
     return {
-        "t0_date": local.date().isoformat(),
-        "t0_hour": f"{local.hour:02d}",
-        "t0_minute": f"{local.minute:02d}",
-        "t0_zone": zone,
+        f"{prefix}_date": local.date().isoformat(),
+        f"{prefix}_hour": f"{local.hour:02d}",
+        f"{prefix}_minute": f"{local.minute:02d}",
+        f"{prefix}_zone": zone,
     }

@@ -35,6 +35,8 @@ def _triggers_to_db(keys: Sequence[str]) -> str | None:
 def event_values(event: Event) -> tuple:
     return (
         event.t0.isoformat(),
+        event.t1.isoformat() if event.t1 else None,
+        event.detected_at.isoformat() if event.detected_at else None,
         event.phase.value,
         event.actor,
         event.system,
@@ -305,11 +307,13 @@ def _write_event(
     cursor = conn.execute(
         """
         INSERT INTO events
-            (key, t0, phase, actor, system, action, status, triggered_by, techniques, tags, detection, entities,
-             comments, details, home_topic, version, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            (key, t0, t1, detected_at, phase, actor, system, action, status, triggered_by, techniques, tags, detection,
+             entities, comments, details, home_topic, version, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         ON CONFLICT (key) DO UPDATE SET
             t0 = excluded.t0,
+            t1 = excluded.t1,
+            detected_at = excluded.detected_at,
             phase = excluded.phase,
             actor = excluded.actor,
             system = excluded.system,
@@ -325,6 +329,8 @@ def _write_event(
             version = events.version + 1,
             updated_at = excluded.updated_at
         WHERE events.t0 IS NOT excluded.t0
+           OR events.t1 IS NOT excluded.t1
+           OR events.detected_at IS NOT excluded.detected_at
            OR events.phase IS NOT excluded.phase
            OR events.actor IS NOT excluded.actor
            OR events.system IS NOT excluded.system

@@ -26,7 +26,7 @@ from reportlab.platypus import (
 from . import accounts, reporting, repository
 from .evidence import check_file
 from .exporter import topic_document
-from .models import PHASE_COLORS, SEVERITY_LABELS, STATUS_LABELS, Event, Phase, Timeline
+from .models import PHASE_COLORS, SEVERITY_LABELS, STATUS_LABELS, Event, Phase, Timeline, human_span
 
 # TLP banner colors (issue #225); AMBER gets dark text for contrast.
 TLP_COLORS = {"CLEAR": colors.HexColor("#64748b"), "GREEN": colors.HexColor("#16a34a"),
@@ -208,7 +208,7 @@ def _header(timeline: Timeline, variant: str, made_at: str) -> list:
     events = timeline.events
     flowables += [Spacer(1, 10), _facts_table(_counts(events))]
     if events:
-        first, last = min(e.t0 for e in events), max(e.t0 for e in events)
+        first, last = min(e.t0 for e in events), max(e.t1 or e.t0 for e in events)  # ranges count with their end
         flowables.append(Spacer(1, 4))
         flowables.append(Paragraph(f"Zeitraum: {_when(first)} bis {_when(last)}", SMALL))
     return flowables
@@ -242,7 +242,8 @@ def _management(timeline: Timeline) -> list:
     flowables: list = [Paragraph("Ablauf", H2)]
     if not events:
         return flowables + [Paragraph("Noch keine Events.", BODY)]
-    rows = [[Paragraph(_text(_when(event.t0)), SMALL), Paragraph(f"{_event_dot(event.phase)} {_text(event.action)}", BODY)]
+    rows = [[Paragraph(_text(_when(event.t0) + (f" – {_when(event.t1)}" if event.t1 else "")), SMALL),
+             Paragraph(f"{_event_dot(event.phase)} {_text(event.action)}", BODY)]
             for event in events]
     table = Table(rows, colWidths=[38 * mm, None], repeatRows=0)
     table.setStyle(TableStyle([
@@ -264,6 +265,12 @@ def _image(content: bytes, max_width: float) -> Image | None:
 def _event_block(event: Event, events: list[Event], titles: dict[str, str]) -> list:
     """The heading of an event: title, facts and how it is connected to the other events."""
     facts = [_when(event.t0), event.phase.value, STATUS_LABELS[event.status], event.actor]
+    if event.t1:  # a range: end and duration (issue #208, ADR 0025)
+        facts.append(f"bis {_when(event.t1)} ({human_span((event.t1 - event.t0).total_seconds())})")
+    if event.detected_at:
+        dwell = human_span((event.detected_at - event.t0).total_seconds())
+        note = " (vor t0)" if event.detected_at < event.t0 else ""
+        facts.append(f"entdeckt {_when(event.detected_at)} · Verweildauer {dwell}{note}")
     if event.system:
         facts.append(event.system)
     if event.detection and (event.detection.rule_id or event.detection.alert_id):

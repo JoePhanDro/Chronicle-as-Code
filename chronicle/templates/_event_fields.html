@@ -100,6 +100,47 @@
 </section>
 
 <section class="{{ section_class }}">
+  <h2 class="{{ heading_class }}">{{ t("Zeitraum und Entdeckung (optional)") }}</h2>
+  <p class="mb-3 text-xs text-slate-500">{{ t("Ein Event mit Ende (t1) ist ein Zeitraum, sonst ein Zeitpunkt. „Entdeckt“ (detected_at) darf vor t0 liegen (Schätzung, Uhrenabweichung) — dann zeigt die Anzeige einen Hinweis.") }}</p>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <fieldset>
+      <legend class="{{ label_class }}">{{ t("Ende (t1)") }}</legend>
+      <div class="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)] gap-2">
+        <input type="date" name="t1_date" value="{{ f.t1_date or '' }}" class="{{ input_class }}">
+        <select name="t1_hour" class="{{ input_class }} font-mono">
+          <option value="">—</option>
+          {% for hour in hours %}<option value="{{ hour }}" {{ 'selected' if f.t1_hour == hour }}>{{ hour }}</option>{% endfor %}
+        </select>
+        <select name="t1_minute" class="{{ input_class }} font-mono">
+          <option value="">—</option>
+          {% for minute in minutes %}<option value="{{ minute }}" {{ 'selected' if f.t1_minute == minute }}>{{ minute }}</option>{% endfor %}
+        </select>
+        <select name="t1_zone" class="{{ input_class }}">
+          {% for zone in timezones %}<option value="{{ zone }}" {{ 'selected' if f.t1_zone == zone }}>{{ zone }}</option>{% endfor %}
+        </select>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend class="{{ label_class }}">{{ t("Entdeckt (detected_at)") }}</legend>
+      <div class="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)] gap-2">
+        <input type="date" name="detected_date" value="{{ f.detected_date or '' }}" class="{{ input_class }}">
+        <select name="detected_hour" class="{{ input_class }} font-mono">
+          <option value="">—</option>
+          {% for hour in hours %}<option value="{{ hour }}" {{ 'selected' if f.detected_hour == hour }}>{{ hour }}</option>{% endfor %}
+        </select>
+        <select name="detected_minute" class="{{ input_class }} font-mono">
+          <option value="">—</option>
+          {% for minute in minutes %}<option value="{{ minute }}" {{ 'selected' if f.detected_minute == minute }}>{{ minute }}</option>{% endfor %}
+        </select>
+        <select name="detected_zone" class="{{ input_class }}">
+          {% for zone in timezones %}<option value="{{ zone }}" {{ 'selected' if f.detected_zone == zone }}>{{ zone }}</option>{% endfor %}
+        </select>
+      </div>
+    </fieldset>
+  </div>
+</section>
+
+<section class="{{ section_class }}">
   <h2 class="{{ heading_class }}">{{ t("Beteiligte") }}</h2>
   <div class="grid gap-5 sm:grid-cols-2">
     <label class="block">

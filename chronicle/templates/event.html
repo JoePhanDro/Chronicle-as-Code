@@ -82,6 +82,20 @@
         <dt class="text-xs text-slate-400">{{ t("Zeit") }} (<span data-zone-label>UTC</span>)</dt>
         <dd class="mt-0.5 font-mono text-slate-100"><time data-utc="{{ event.t0 }}">{{ event.t0[:16].replace('T', ' ') }}</time></dd>
       </div>
+      {% if event.t1 %}
+      <div>
+        <dt class="text-xs text-slate-400">{{ t("Ende (t1)") }} · {{ t("Dauer") }}</dt>
+        <dd class="mt-0.5 font-mono text-slate-100"><time data-utc="{{ event.t1 }}">{{ event.t1[:16].replace('T', ' ') }}</time>{% if duration %} · {{ duration }}{% endif %}</dd>
+      </div>
+      {% endif %}
+      {% if event.detected_at %}
+      <div>
+        <dt class="text-xs text-slate-400">{{ t("Entdeckt (detected_at)") }} · {{ t("Verweildauer") }}</dt>
+        <dd class="mt-0.5 font-mono text-slate-100"><time data-utc="{{ event.detected_at }}">{{ event.detected_at[:16].replace('T', ' ') }}</time>{% if dwell %} · {{ dwell }}{% endif %}
+          {% if detected_early %}<span class="mt-0.5 block font-sans text-xs text-amber-300">{{ t("Entdeckung liegt vor t0 (Schätzung/Uhrenabweichung)") }}</span>{% endif %}
+        </dd>
+      </div>
+      {% endif %}
       <div>
         <dt class="text-xs text-slate-400">{{ t("Akteur") }}</dt>
         <dd class="mt-0.5 text-slate-100"><a href="/events?actor={{ event.actor | urlencode }}" class="hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ event.actor }}</a></dd>

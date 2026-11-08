@@ -193,6 +193,10 @@ class Event(BaseModel):
         description="Stable, globally unique key. Re-importing the same key updates the event.",
     )
     t0: datetime = Field(description="ISO 8601 timestamp with timezone offset")
+    t1: datetime | None = Field(default=None, description="End of the event's time range (issue #208, ADR 0025); >= t0")
+    detected_at: datetime | None = Field(
+        default=None, description="When the event was noticed (issue #208, ADR 0025); may be before t0"
+    )
     phase: Phase
     actor: str = Field(min_length=1)
     system: str | None = None
@@ -242,12 +246,20 @@ class Event(BaseModel):
         # what was written. The text is stored with LF.
         return value.replace("\r\n", "\n").replace("\r", "\n")
 
-    @field_validator("t0")
+    @field_validator("t0", "t1", "detected_at")
     @classmethod
-    def _require_timezone(cls, value: datetime) -> datetime:
-        if value.tzinfo is None:
-            raise ValueError("t0 needs a timezone offset, e.g. 2026-10-14T08:12:00+02:00")
-        return value.astimezone(UTC)
+    def _require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("Zeitpunkte brauchen eine Zeitzone (timezone offset), z. B. 2026-10-14T08:12:00+02:00")
+        return value.astimezone(UTC) if value is not None else None
+
+    @model_validator(mode="after")
+    def _t1_not_before_t0(self) -> Event:
+        # A range ends at or after it starts; equality means the same as no t1 (ADR 0025). detected_at may
+        # lie before t0 on purpose (estimates, clock skew) — the display shows a hint instead of an error.
+        if self.t1 is not None and self.t1 < self.t0:
+            raise ValueError("t1 darf nicht vor t0 liegen")
+        return self
 
     @field_validator("triggered_by", mode="before")
     @classmethod
@@ -485,6 +497,21 @@ class IncidentClassification(BaseModel):
         content gets no `incident:` key and old files stay byte-identical."""
         data = self.model_dump(mode="json", exclude_none=True)
         return {name: value for name, value in data.items() if value not in ("", [])}
+
+
+def human_span(seconds: float) -> str:
+    """A duration as a short text, e.g. "3 d 2 h", "5 h 3 min", "42 min", "12 s" (issue #208, ADR 0025)."""
+    total = int(abs(seconds))
+    days, rest = divmod(total, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes, seconds = divmod(rest, 60)
+    if days:
+        return f"{days} d {hours} h"
+    if hours:
+        return f"{hours} h {minutes} min"
+    if minutes:
+        return f"{minutes} min"
+    return f"{seconds} s"
 
 
 def incident_rows(incident: dict | None) -> list[tuple[str, str]]:

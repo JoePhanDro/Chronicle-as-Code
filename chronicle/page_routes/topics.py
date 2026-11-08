@@ -261,7 +261,7 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
                     "system": current["system"], "action": current["action"], "status": "resolved",
                     "triggered_by": current["triggered_by"], "techniques": current["techniques"],
                     "tags": current["tags"], "detection": current["detection"], "entities": current["entities"],
-                    "comments": current["comments"],
+                    "comments": current["comments"], "t1": current["t1"], "detected_at": current["detected_at"],
                     "details": current["details"] or "",
                     "topic": current["home_topic"], "topics": current["topics"],
                 })

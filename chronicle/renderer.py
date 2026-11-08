@@ -152,6 +152,8 @@ def _event_payload(event: Event, src_for: Callable[[Evidence], str]) -> dict:
     return {
         "id": event.key,
         "t0": event.t0.isoformat(),
+        "t1": event.t1.isoformat() if event.t1 else None,  # with t1 the timeline draws a range bar (issue #208)
+        "detected_at": event.detected_at.isoformat() if event.detected_at else None,
         "phase": event.phase.value,
         "color": PHASE_COLORS[event.phase],
         "actor": event.actor,

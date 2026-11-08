@@ -508,6 +508,8 @@ def _stored_values(event: Event) -> dict:
     """The value each field has in the file; None where the field is left out."""
     return {
         "t0": event.t0.isoformat(),
+        "t1": event.t1.isoformat() if event.t1 else None,
+        "detected_at": event.detected_at.isoformat() if event.detected_at else None,
         "phase": event.phase.value,
         "actor": event.actor,
         "system": event.system,
@@ -599,6 +601,10 @@ def _event_document(event: Event) -> dict:
         "phase": event.phase.value,
         "actor": event.actor,
     }
+    if event.t1:
+        item["t1"] = event.t1.isoformat()
+    if event.detected_at:
+        item["detected_at"] = event.detected_at.isoformat()
     if event.system:
         item["system"] = event.system
     item["action"] = event.action
