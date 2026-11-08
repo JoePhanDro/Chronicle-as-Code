@@ -277,19 +277,21 @@ def _refuse_foreign_events(conn: sqlite3.Connection, timeline: Timeline) -> None
 def _upsert_topic(conn: sqlite3.Connection, topic) -> None:
     conn.execute(
         """
-        INSERT INTO topics (key, title, kind, summary, reporting, notifications, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        INSERT INTO topics (key, title, kind, summary, reporting, notifications, incident, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         ON CONFLICT (key) DO UPDATE SET
             title = excluded.title,
             kind = excluded.kind,
             summary = excluded.summary,
             reporting = excluded.reporting,
             notifications = excluded.notifications,
+            incident = excluded.incident,
             updated_at = excluded.updated_at
         """,
         (topic.key, topic.title, topic.kind, topic.summary,
          topic.reporting.model_dump_json() if topic.reporting else None,
-         topic.notifications.model_dump_json() if topic.notifications else None),
+         topic.notifications.model_dump_json() if topic.notifications else None,
+         json.dumps(topic.incident.stored()) if topic.incident and topic.incident.stored() else None),
     )
 
 

@@ -15,7 +15,7 @@ from .. import i18n, notifications, reporting, repository
 from ..auth import client_ip
 from ..exporter import ExportError
 from ..report import make_dashboard
-from ..models import Notifications, Topic, TopicKind
+from ..models import Notifications, Topic, TopicKind, SEVERITIES, SEVERITY_LABELS, TLP_LEVELS, incident_rows
 from ..event_input import EventWrite, event_of, new_topic_key, topic_list
 from .common import WRITER_ROLES, PageContext, _error_text
 
@@ -23,6 +23,8 @@ from .common import WRITER_ROLES, PageContext, _error_text
 TOPIC_KINDS = list(get_args(TopicKind))
 REGULATION_OPTIONS = [{"value": value, "label": label} for value, label in reporting.REGULATION_LABELS.items()]
 TRIGGER_OPTIONS = [{"value": value, "label": label} for value, label in notifications.TRIGGER_LABELS.items() if value != "test"]
+SEVERITY_OPTIONS = [{"value": value, "label": label} for value, label in SEVERITY_LABELS.items() if value in SEVERITIES]
+TLP_OPTIONS = list(TLP_LEVELS)
 
 
 def _rep_form(topic: dict | None) -> dict | None:
@@ -47,6 +49,27 @@ def _notify_form(topic: dict | None) -> dict:
     }
 
 
+def _incident_form(source: dict | None) -> dict:
+    """The incident classification block as form values (issue #225). `source` is a topic dict or submitted form values."""
+    inc = (source or {}).get("incident") or {}
+    persons = inc.get("affected_persons")
+    return {
+        "severity": inc.get("severity") or "",
+        "tlp": inc.get("tlp") or "",
+        "impact": inc.get("impact") or "",
+        "affected_systems": ", ".join(inc.get("affected_systems") or []),
+        "data_categories": ", ".join(inc.get("data_categories") or []),
+        "affected_persons": "" if persons is None else str(persons),
+        "cause": inc.get("cause") or "",
+        "measures": inc.get("measures") or "",
+    }
+
+
+def _incident_view(topic: dict) -> list[tuple[str, str]] | None:
+    """The set fields of the classification as label/value rows for the topic page (issue #225)."""
+    return incident_rows((topic or {}).get("incident")) or None
+
+
 def _topic_values(form) -> dict:
     values = {
         "title": (form.get("title") or "").strip(),
@@ -62,6 +85,18 @@ def _topic_values(form) -> dict:
         values["reporting"] = {"regulation": regulation, "known_at": known_at}
     else:
         values["reporting"] = None
+    # Incident-Klassifikation (issue #225): leeres Formular heißt kein Block.
+    incident = {
+        "severity": (form.get("incident_severity") or "").strip() or None,
+        "tlp": (form.get("incident_tlp") or "").strip() or None,
+        "impact": form.get("incident_impact") or "",
+        "affected_systems": form.get("incident_systems") or "",
+        "data_categories": form.get("incident_data_categories") or "",
+        "affected_persons": (form.get("incident_persons") or "").strip() or None,
+        "cause": form.get("incident_cause") or "",
+        "measures": form.get("incident_measures") or "",
+    }
+    values["incident"] = incident if any(value not in (None, "", []) for value in incident.values()) else None
     return values
 
 
@@ -97,7 +132,9 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
                       delete_plan=delete_plan, meldepflicht=meldepflicht, regulations=REGULATION_OPTIONS,
                       rep_form=_rep_form(topic), notify_form=_notify_form(topic),
                       notify_status=notifications.status(), triggers=TRIGGER_OPTIONS,
-                      notify_flash=request.query_params.get("notify", ""))
+                      notify_flash=request.query_params.get("notify", ""),
+                      incident_form=_incident_form(topic), incident_view=_incident_view(topic),
+                      severities=SEVERITY_OPTIONS, tlp_levels=TLP_OPTIONS)
 
     @router.get("/topics", response_class=HTMLResponse)
     def topics_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
@@ -108,7 +145,8 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
         for topic in topics:  # the reporting badge (issue #229): overdue first, then due soon
             topic["melde"] = (reporting.worst_status(reporting.stage_deadlines(topic["reporting"], now))
                               if topic["reporting"] else "none")
-        return render(request, "topics.html", user, topics=topics)
+            topic["severity"] = (topic.get("incident") or {}).get("severity")  # the severity filter and badge (issue #225)
+        return render(request, "topics.html", user, topics=topics, severities=SEVERITY_OPTIONS)
 
     @router.get("/topics/new", response_class=HTMLResponse)
     def new_topic_page(request: Request, user: dict | None = Depends(page_user)):
@@ -118,7 +156,8 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
             return render(request, "forbidden.html", user, status_code=403)
         return render(request, "topic.html", user, mode="new", topic=None, events=[], addable=[], errors=None,
                       kinds=TOPIC_KINDS, form={"kind": "incident"}, regulations=REGULATION_OPTIONS,
-                      rep_form={"regulation": "none", "known_at": ""})
+                      rep_form={"regulation": "none", "known_at": ""}, incident_form=_incident_form(None),
+                      severities=SEVERITY_OPTIONS, tlp_levels=TLP_OPTIONS)
 
     @router.post("/topics/new", response_class=HTMLResponse)
     async def create_topic_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
@@ -141,7 +180,8 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
         except (ValidationError, repository.RepositoryError) as exc:
             status = 409 if isinstance(exc, repository.Conflict) else 422
             return render(request, "topic.html", user, status_code=status, mode="new", topic=None, events=[], addable=[],
-                          errors=_error_text(exc), kinds=TOPIC_KINDS, form=values)
+                          errors=_error_text(exc), kinds=TOPIC_KINDS, form=values, incident_form=_incident_form(values),
+                          severities=SEVERITY_OPTIONS, tlp_levels=TLP_OPTIONS)
         return RedirectResponse(f"/topics/{created['key']}", status_code=303)
 
     @router.get("/topics/{key}", response_class=HTMLResponse)

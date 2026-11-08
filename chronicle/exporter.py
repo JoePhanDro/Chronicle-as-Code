@@ -119,7 +119,9 @@ def _topic_document(
 
     document = {
         "topic": {"key": topic["key"], "title": topic["title"], "kind": topic["kind"], "summary": topic["summary"],
-                  **({"reporting": topic["reporting"]} if topic.get("reporting") else {})},
+                  **({"reporting": topic["reporting"]} if topic.get("reporting") else {}),
+                  **({"notifications": topic["notifications"]} if topic.get("notifications") else {}),
+                  **({"incident": topic["incident"]} if topic.get("incident") else {})},
     }
     if events:
         document["events"] = sorted(events, key=lambda item: (item["t0"], item["key"]))

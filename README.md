@@ -141,6 +141,15 @@ topic:
   title: "INC-2026-042: …"           # Pflicht
   kind: incident                     # incident | vulnerability | project | special | other
   summary: "…"                       # optional
+  incident:                          # optional, Klassifikation (ADR 0028, Issue #225)
+    severity: high                   # low | medium | high | critical
+    tlp: AMBER                       # CLEAR | GREEN | AMBER | RED
+    impact: "…"                      # Auswirkungen (Freitext)
+    affected_systems: [erp, mail]    # betroffene Systeme
+    data_categories: [personenbezogene Daten]
+    affected_persons: 120            # geschätzte Zahl der Betroffenen
+    cause: "…"                       # Grundursache
+    measures: "…"                    # Eindämmung / Maßnahmen
 
 events:
   - key: exploit-2026-10-14          # eindeutig über alle Topics, Pflicht

@@ -236,9 +236,11 @@
         <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300">Chronicle · {{ 'Bericht' if snapshot else 'Ansicht' }}</div>
         <h1 class="truncate text-base font-semibold text-slate-100">{{ title }}</h1>
         {% if summary %}<p class="truncate text-xs text-slate-400">{{ summary }}</p>{% endif %}
+        {% if classification %}<p class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-300">{% for label, value in classification %}<span><span class="text-slate-500">{{ label }}:</span> {{ value }}</span>{% endfor %}</p>{% endif %}
       </div>
     </div>
     {% endif %}
+    {% if tlp %}<span class="rounded-md px-2 py-1 text-xs font-semibold {{ tlp_badge[tlp] }}">TLP:{{ tlp }}</span>{% endif %}
     {% if snapshot %}<span class="rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-1 text-xs text-amber-200">Berichts-Snapshot · vertraulich · ohne Anmeldung{% if generated_at %} · Stand {{ generated_at }}{% endif %}</span>{% endif %}
     <div id="kpis" class="flex flex-wrap items-center gap-2 text-xs"></div>
   </header>

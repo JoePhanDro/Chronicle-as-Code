@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from ..auth import Auth
 from ..markdown import markdown_filter
-from ..models import PHASE_COLORS, STATUS_LABELS, Phase
+from ..models import PHASE_COLORS, SEVERITY_LABELS, STATUS_LABELS, Phase
 
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -73,6 +73,8 @@ TEMPLATES.env.globals["phase_color"] = lambda name: next(
 
 # One German wording for a status wherever it is shown or chosen; a value outside the enum (old data) is shown as stored.
 TEMPLATES.env.globals["status_text"] = {status.value: label for status, label in STATUS_LABELS.items()}
+# The same for the severity of an incident topic (issue #225).
+TEMPLATES.env.globals["severity_text"] = dict(SEVERITY_LABELS)
 TEMPLATES.env.filters["attack_url"] = lambda technique: (
     "https://attack.mitre.org/techniques/" + str(technique).replace(".", "/") + "/"  # T1059.001 -> T1059/001
 )

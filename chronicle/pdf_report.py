@@ -26,7 +26,12 @@ from reportlab.platypus import (
 from . import accounts, reporting, repository
 from .evidence import check_file
 from .exporter import topic_document
-from .models import PHASE_COLORS, STATUS_LABELS, Event, Phase, Timeline
+from .models import PHASE_COLORS, SEVERITY_LABELS, STATUS_LABELS, Event, Phase, Timeline
+
+# TLP banner colors (issue #225); AMBER gets dark text for contrast.
+TLP_COLORS = {"CLEAR": colors.HexColor("#64748b"), "GREEN": colors.HexColor("#16a34a"),
+              "AMBER": colors.HexColor("#f59e0b"), "RED": colors.HexColor("#dc2626")}
+TLP_TEXT = {"CLEAR": colors.white, "GREEN": colors.white, "AMBER": colors.HexColor("#1e293b"), "RED": colors.white}
 
 VARIANTS = {"technisch": "technischer Bericht", "management": "Management Summary"}
 # The staged reporting-obligation reports (issue #229): which stage each variant covers.
@@ -143,15 +148,63 @@ def _facts_table(rows: list[tuple[str, int]]) -> Table:
     return table
 
 
+def _classification(topic) -> list:
+    """The incident classification of the topic (issue #225) as a small table; nothing when it has none."""
+    incident = topic.incident
+    if not incident or not incident.stored():
+        return []
+    rows = []
+    if incident.severity:
+        rows.append(("Schweregrad", SEVERITY_LABELS.get(incident.severity, incident.severity)))
+    if incident.tlp:
+        rows.append(("TLP", f"TLP:{incident.tlp}"))
+    if incident.impact:
+        rows.append(("Auswirkungen", incident.impact))
+    if incident.affected_systems:
+        rows.append(("Betroffene Systeme", ", ".join(incident.affected_systems)))
+    if incident.data_categories:
+        rows.append(("Datenkategorien", ", ".join(incident.data_categories)))
+    if incident.affected_persons is not None:
+        rows.append(("Betroffene Personen (geschätzt)", str(incident.affected_persons)))
+    if incident.cause:
+        rows.append(("Ursache", incident.cause))
+    if incident.measures:
+        rows.append(("Maßnahmen", incident.measures))
+    table = Table([[Paragraph(_text(label), SMALL), Paragraph(_text(value), BODY)] for label, value in rows],
+                  colWidths=[45 * mm, None], hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("LINEBELOW", (0, 0), (-1, -1), 0.4, RULE), ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    return [Spacer(1, 10), Paragraph("Klassifikation", H2), table]
+
+
+def _tlp_banner(topic) -> list:
+    """A full-width colored banner with the TLP level at the very top of the report (issue #225)."""
+    incident = topic.incident
+    if not incident or not incident.tlp:
+        return []
+    banner = Table([[Paragraph(f"TLP:{incident.tlp}", ParagraphStyle(
+        "Tlp", parent=BODY, fontName="Helvetica-Bold", fontSize=11, textColor=TLP_TEXT[incident.tlp]))]],
+        colWidths=[A4[0] - 40 * mm])
+    banner.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), TLP_COLORS[incident.tlp]),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    return [banner, Spacer(1, 10)]
+
+
 def _header(timeline: Timeline, variant: str, made_at: str) -> list:
     topic = timeline.topic
-    flowables = [
+    flowables = _tlp_banner(topic) + [
         Paragraph(f"{_text(VARIANTS[variant]).upper()} · {_text(topic.kind)} · {_text(topic.key)}", SMALL),
         Paragraph(_text(topic.title), TITLE),
         Paragraph(f"Stand {made_at}", SMALL),
     ]
     if topic.summary:
         flowables += [Spacer(1, 6), Paragraph(_text(topic.summary), BODY)]
+    flowables += _classification(topic)
     events = timeline.events
     flowables += [Spacer(1, 10), _facts_table(_counts(events))]
     if events:
@@ -328,7 +381,10 @@ def render_pdf(timeline: Timeline, evidence: dict[str, bytes], variant: str, mad
         canvas.saveState()
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(MUTED)
-        canvas.drawString(margin, 10 * mm, f"Vertraulich · {timeline.topic.key} · {made_at}")
+        # The TLP level of the topic (issue #225) replaces the plain "Vertraulich" when it is set.
+        incident = timeline.topic.incident
+        label = f"TLP:{incident.tlp}" if incident and incident.tlp else "Vertraulich"
+        canvas.drawString(margin, 10 * mm, f"{label} · {timeline.topic.key} · {made_at}")
         canvas.drawRightString(A4[0] - margin, 10 * mm, f"Seite {document.page}")
         canvas.restoreState()
 
