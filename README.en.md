@@ -157,6 +157,8 @@ topic:
 events:
   - key: exploit-2026-10-14          # unique across all topics, required
     t0: 2026-10-14T08:40:00+02:00    # required, with time zone (stored as UTC)
+    t1: 2026-10-16T18:00:00+02:00    # optional: end of the time range (>= t0); with t1 the event is a bar in the timeline (issue #208)
+    detected_at: 2026-10-24T09:00:00+02:00  # optional: detection time, may lie before t0
     phase: Exploit                   # Identification | Exploit | Analysis | Containment | Mitigation | Recovery | Lessons Learned
     actor: Attacker (external)
     system: wp-portal-01             # optional
