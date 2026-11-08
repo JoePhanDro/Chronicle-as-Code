@@ -40,6 +40,9 @@ Unbekannte Felder sind ein Fehler. Ein Tippfehler im Schlüssel wird also nicht 
 | `title` | ja | nicht leer |
 | `kind` | nein | `incident`, `vulnerability`, `project`, `special` oder `other` (Standard: `other`) |
 | `summary` | nein | Text, Standard leer |
+| `reporting` | nein | Meldepflicht-Block (Rechtsgrundlage, Kenntnisnahme, eigene Fristen), siehe Issue #229 |
+| `notifications` | nein | Benachrichtigungskanäle (Webhook-URL, E-Mail-Empfänger, je Trigger). Secrets liegen in der Umgebung, siehe Issue #258 |
+| `incident` | nein | Incident-Klassifikation (ADR 0028): `severity` (`low`/`medium`/`high`/`critical`), `tlp` (`CLEAR`/`GREEN`/`AMBER`/`RED`), `impact`, `affected_systems`, `data_categories`, `affected_persons` (int ≥ 0), `cause`, `measures`. Alles optional; leere Felder werden nicht geschrieben, alte Dateien bleiben byte-gleich |
 
 ### Event
 

@@ -275,6 +275,96 @@
       "title": "Evidence",
       "type": "object"
     },
+    "IncidentClassification": {
+      "additionalProperties": false,
+      "description": "The classification of an incident topic (issue #225): severity, TLP for sharing reports, impact,\nroot cause and measures. Every field is optional; a topic without the block is unchanged. The levels are\nfixed (like Status and Phase), not configurable per instance.",
+      "properties": {
+        "severity": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Severity"
+        },
+        "tlp": {
+          "anyOf": [
+            {
+              "enum": [
+                "CLEAR",
+                "GREEN",
+                "AMBER",
+                "RED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tlp"
+        },
+        "impact": {
+          "default": "",
+          "title": "Impact",
+          "type": "string"
+        },
+        "affected_systems": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Affected Systems",
+          "type": "array"
+        },
+        "data_categories": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Data Categories",
+          "type": "array"
+        },
+        "affected_persons": {
+          "anyOf": [
+            {
+              "maximum": 1000000000,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "geschätzte Zahl der Betroffenen",
+          "title": "Affected Persons"
+        },
+        "cause": {
+          "default": "",
+          "title": "Cause",
+          "type": "string"
+        },
+        "measures": {
+          "default": "",
+          "title": "Measures",
+          "type": "string"
+        }
+      },
+      "title": "IncidentClassification",
+      "type": "object"
+    },
     "Notifications": {
       "additionalProperties": false,
       "description": "The notification channels of a topic (issue #258). Delivery is active per trigger; the secrets\n(webhook HMAC, SMTP credentials) live in the environment, not in the topic file.",
@@ -418,6 +508,18 @@
           ],
           "default": null,
           "description": "Benachrichtigungskanäle des Topics (issue #258)"
+        },
+        "incident": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IncidentClassification"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Klassifikation des Incidents (issue #225)"
         }
       },
       "required": [

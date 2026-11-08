@@ -8,6 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from . import accounts
+from .models import IncidentClassification
 from .errors import Conflict, Invalid, NotFound, changed_outside
 from .folder_writes import (
     all_or_nothing,
@@ -29,7 +30,7 @@ from .store import (
     update_topic_in_file,
 )
 
-TOPIC_FIELDS = ("title", "kind", "summary", "reporting", "notifications")
+TOPIC_FIELDS = ("title", "kind", "summary", "reporting", "notifications", "incident")
 
 
 def _create_topic_in_folder(conn: sqlite3.Connection, topic: Topic, data_dir: Path, actor_id: int, ip: str) -> dict:
@@ -74,6 +75,8 @@ def update_topic(
         raise NotFound(f"Topic {key!r} nicht gefunden")
     def differs(name: str) -> bool:
         value = getattr(topic, name)
+        if isinstance(value, IncidentClassification):  # empty fields stay out of the file, so compare the stored form
+            return current.get(name) != (value.stored() if value else None)
         if isinstance(value, BaseModel):  # the index holds the parsed JSON dict, the model the nested object
             return current.get(name) != (value.model_dump(mode="json", exclude_none=True) if value else None)
         return current[name] != value

@@ -2,6 +2,7 @@
 {% block title %}Topics{% endblock %}
 {% block content %}
 {% set status_dot = {'open': 'bg-rose-500', 'in_progress': 'bg-amber-500 motion-safe:animate-pulse', 'resolved': 'bg-emerald-500'} %}
+{% set severity_dot = {'low': 'bg-sky-400', 'medium': 'bg-amber-500', 'high': 'bg-orange-500', 'critical': 'bg-rose-500'} %}
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div>
     <h1 class="text-xl font-semibold text-slate-100">{{ t("Topics") }}</h1>
@@ -24,19 +25,28 @@
       {% for value, label in status_text.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
     </select>
   </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Schweregrad") }}</span>
+    <select id="topic-severity" aria-controls="topic-list"
+            class="rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
+      <option value="">{{ t("Alle") }}</option>
+      {% for item in severities %}<option value="{{ item.value }}">{{ item.label }}</option>{% endfor %}
+    </select>
+  </label>
 </div>
 <p id="topic-count" class="mb-2 text-xs text-slate-400" role="status" aria-live="polite"></p>
 {% endif %}
 {% if topics %}
 <ul id="topic-list" class="divide-y divide-white/10 rounded-xl border border-white/10" aria-label="Topics">
   {% for topic in topics %}
-  <li data-status="{{ topic.status or '' }}" data-text="{{ (topic.title ~ ' ' ~ topic.key ~ ' ' ~ topic.kind) | lower }}">
+  <li data-status="{{ topic.status or '' }}" data-severity="{{ topic.severity or '' }}" data-text="{{ (topic.title ~ ' ' ~ topic.key ~ ' ' ~ topic.kind) | lower }}">
     <a href="/topics/{{ topic.key }}" data-list-row title="{{ topic.title }}" class="relative flex items-start justify-between gap-4 py-3 pl-5 pr-4 hover:bg-white/5">
       {% if topic.phase %}<span class="absolute inset-y-2 left-1.5 w-[3px] rounded-full" style="background: {{ phase_color(topic.phase) }}" aria-hidden="true"></span>{% endif %}
       <span class="flex min-w-0 items-start gap-3">
         <span class="min-w-0">
           <span class="line-clamp-2 text-sm font-medium text-slate-100">{{ topic.title }}</span>
           {% if topic.status %}<span class="mt-1 flex items-center gap-2 text-xs font-medium text-slate-200"><span class="h-2 w-2 flex-none rounded-full {{ status_dot[topic.status] }}" aria-hidden="true"></span>{{ status_text[topic.status] }}</span>{% endif %}
+          {% if topic.severity %}<span class="mt-1 flex items-center gap-2 text-xs font-medium text-slate-200"><span class="h-2 w-2 flex-none rounded-full {{ severity_dot[topic.severity] }}" aria-hidden="true"></span>{{ t("Schweregrad:") }} {{ severity_text[topic.severity] }}</span>{% endif %}
           {% if topic.melde == 'overdue' %}<span class="mt-1 rounded-md bg-rose-500/20 px-1.5 py-0.5 text-xs font-medium text-rose-200">{{ t("Meldepflicht überfällig") }}</span>
           {% elif topic.melde == 'due' %}<span class="mt-1 rounded-md bg-amber-500/20 px-1.5 py-0.5 text-xs font-medium text-amber-200">{{ t("Frist läuft ab") }}</span>{% endif %}
           <span class="mt-1 block font-mono text-xs text-slate-400">
@@ -55,22 +65,25 @@
 <p id="topic-none" hidden class="rounded-xl border border-dashed border-white/10 px-6 py-8 text-center text-sm text-slate-400">Kein Topic passt zum Filter.</p>
 <script>
   (function () {
-    var text = document.getElementById('topic-filter'), status = document.getElementById('topic-status');
+    var text = document.getElementById('topic-filter'), status = document.getElementById('topic-status'), severity = document.getElementById('topic-severity');
     var rows = Array.prototype.slice.call(document.querySelectorAll('#topic-list > li'));
     var count = document.getElementById('topic-count'), none = document.getElementById('topic-none');
     function apply() {
       var words = text.value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
       rows.forEach(function (row) {
-        var hit = words.every(function (word) { return row.dataset.text.indexOf(word) !== -1; }) && (!status.value || row.dataset.status === status.value);
+        var hit = words.every(function (word) { return row.dataset.text.indexOf(word) !== -1; })
+          && (!status.value || row.dataset.status === status.value)
+          && (!severity.value || row.dataset.severity === severity.value);
         row.hidden = !hit;
         if (hit) shown += 1;
       });
       none.hidden = shown !== 0;
       document.getElementById('topic-list').hidden = shown === 0;
-      count.textContent = (words.length || status.value) ? shown + ' von ' + rows.length + (rows.length === 1 ? ' Topic' : ' Topics') : '';
+      count.textContent = (words.length || status.value || severity.value) ? shown + ' von ' + rows.length + (rows.length === 1 ? ' Topic' : ' Topics') : '';
     }
     text.addEventListener('input', apply);
     status.addEventListener('change', apply);
+    severity.addEventListener('change', apply);
     text.addEventListener('keydown', function (event) { if (event.key === 'Enter') event.preventDefault(); });
   })();
 </script>

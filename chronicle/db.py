@@ -346,6 +346,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
     _ensure_column(conn, "events", "comments", "TEXT")
     _ensure_column(conn, "topics", "reporting", "TEXT")
     _ensure_column(conn, "topics", "notifications", "TEXT")
+    _ensure_column(conn, "topics", "incident", "TEXT")
     _ensure_column(conn, "evidence", "mime", "TEXT")
     _ensure_column(conn, "evidence", "size", "INTEGER")
     _ensure_column(conn, "evidence", "sha256", "TEXT")

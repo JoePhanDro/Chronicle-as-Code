@@ -47,7 +47,10 @@ from .store import (
 )
 from .yamlscan import MAX_YAML_BYTES, TOO_LARGE, describe_validation_error
 
+# All topic-level fields merge field-wise. reporting, notifications and incident are optional blocks:
+# they merge per subfield (BLOCK_FIELDS), and _apply_topic writes back only the stored form (empty blocks leave no key).
 TOPIC_FIELDS = ("title", "kind", "summary")
+BLOCK_FIELDS = ("reporting", "notifications", "incident")
 EVENT_FIELDS = tuple(name for name in Event.model_fields if name != "key")
 SET_FIELDS = ("techniques",)  # merged like refs: what either side adds is in, what either side removes is out
 
@@ -72,6 +75,30 @@ def _three_way(base, ours, theirs, where: str, problems: list[str]):
     return ours
 
 
+def _merge_block(name: str, base, ours, theirs, problems: list[str]):
+    """An optional topic block (reporting, notifications, incident) merges per subfield, so changes to
+    different fields on the two sides do not conflict (issue #225)."""
+    if ours == theirs:
+        return ours
+    if base == ours:
+        return theirs
+    if base == theirs:
+        return ours
+    model = type(ours)
+    # a missing block on the base side counts as an empty block, so defaults do not count as a change
+    base = base if base is not None else model()
+    values = {
+        field: _three_way(getattr(base, field), getattr(ours, field), getattr(theirs, field),
+                          f"topic.{name}.{field}", problems)
+        for field in model.model_fields
+    }
+    try:
+        return model.model_validate(values)
+    except ValidationError as exc:
+        problems.append(f"topic.{name}: {describe_validation_error(exc)}")
+        return ours
+
+
 def _merge_topic(base: Topic | None, ours: Topic, theirs: Topic, problems: list[str]) -> Topic:
     if ours.key != theirs.key:
         problems.append(f"Topic-Key: {ours.key!r} gegen {theirs.key!r}")
@@ -81,6 +108,9 @@ def _merge_topic(base: Topic | None, ours: Topic, theirs: Topic, problems: list[
                          f"topic.{name}", problems)
         for name in TOPIC_FIELDS
     }
+    for name in BLOCK_FIELDS:
+        values[name] = _merge_block(name, getattr(base, name) if base else None, getattr(ours, name),
+                                    getattr(theirs, name), problems)
     return ours.model_copy(update=values)
 
 
@@ -153,6 +183,13 @@ def _apply_topic(section, ours: Topic, merged: Topic) -> None:
         section["kind"] = merged.kind
     if merged.summary != ours.summary:
         _put(section, "summary", _text(merged.summary) or None)
+    for name in BLOCK_FIELDS:
+        if getattr(merged, name) != getattr(ours, name):
+            value = getattr(merged, name)
+            if name == "incident":
+                _put(section, name, value.stored() if value else None)
+            else:
+                _put(section, name, value.model_dump(mode="json", exclude_none=True) if value else None)
 
 
 def _apply_event(item, ours: Event, merged: Event) -> None:

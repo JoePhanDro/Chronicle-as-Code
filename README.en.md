@@ -140,6 +140,15 @@ topic:
   title: "INC-2026-042: …"           # required
   kind: incident                     # incident | vulnerability | project | special | other
   summary: "…"                       # optional
+  incident:                          # optional, classification (ADR 0028, issue #225)
+    severity: high                   # low | medium | high | critical
+    tlp: AMBER                       # CLEAR | GREEN | AMBER | RED
+    impact: "…"                      # impact (free text)
+    affected_systems: [erp, mail]    # affected systems
+    data_categories: [personal data]
+    affected_persons: 120            # estimated number of affected persons
+    cause: "…"                       # root cause
+    measures: "…"                    # containment / measures
 
 events:
   - key: exploit-2026-10-14          # unique across all topics, required

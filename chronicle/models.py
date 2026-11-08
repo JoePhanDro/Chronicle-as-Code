@@ -345,6 +345,91 @@ class Notifications(BaseModel):
         return self
 
 
+Severity = Literal["low", "medium", "high", "critical"]
+SEVERITIES: tuple[str, ...] = ("low", "medium", "high", "critical")
+SEVERITY_LABELS: dict[str, str] = {"low": "niedrig", "medium": "mittel", "high": "hoch", "critical": "kritisch"}
+
+TlpLevel = Literal["CLEAR", "GREEN", "AMBER", "RED"]
+TLP_LEVELS: tuple[str, ...] = ("CLEAR", "GREEN", "AMBER", "RED")
+
+INCIDENT_TEXT_MAX = 2000
+
+
+class IncidentClassification(BaseModel):
+    """The classification of an incident topic (issue #225): severity, TLP for sharing reports, impact,
+    root cause and measures. Every field is optional; a topic without the block is unchanged. The levels are
+    fixed (like Status and Phase), not configurable per instance."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    severity: Severity | None = None
+    tlp: TlpLevel | None = None
+    impact: str = ""
+    affected_systems: list[str] = Field(default_factory=list, max_length=50)
+    data_categories: list[str] = Field(default_factory=list, max_length=50)
+    affected_persons: int | None = Field(default=None, ge=0, le=10**9, description="geschätzte Zahl der Betroffenen")
+    cause: str = ""
+    measures: str = ""
+
+    @field_validator("impact", "cause", "measures")
+    @classmethod
+    def _bounded_text(cls, value: str) -> str:
+        value = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if len(value) > INCIDENT_TEXT_MAX:
+            raise ValueError(f"höchstens {INCIDENT_TEXT_MAX} Zeichen")
+        return value
+
+    @field_validator("affected_systems", "data_categories", mode="before")
+    @classmethod
+    def _tidy_list(cls, value: object) -> object:
+        # Forms send "" for nothing and a comma-separated string.
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        if isinstance(value, list):
+            return [item.strip() if isinstance(item, str) else item for item in value]
+        return value
+
+    @field_validator("affected_systems", "data_categories")
+    @classmethod
+    def _entry_set(cls, value: list[str]) -> list[str]:
+        if any(not item or len(item) > 100 for item in value):
+            raise ValueError("Einträge dürfen nicht leer sein und höchstens 100 Zeichen enthalten")
+        return sorted(set(value), key=str.casefold)
+
+    def stored(self) -> dict:
+        """The block as it is written to the YAML file: empty fields are left out, so a topic without real
+        content gets no `incident:` key and old files stay byte-identical."""
+        data = self.model_dump(mode="json", exclude_none=True)
+        return {name: value for name, value in data.items() if value not in ("", [])}
+
+
+def incident_rows(incident: dict | None) -> list[tuple[str, str]]:
+    """The set fields of an incident classification as label/value rows for display (issue #225)."""
+    inc = incident or {}
+    if not inc:
+        return []
+    rows = []
+    if inc.get("severity"):
+        rows.append(("Schweregrad", SEVERITY_LABELS.get(inc["severity"], inc["severity"])))
+    if inc.get("tlp"):
+        rows.append(("TLP", f"TLP:{inc['tlp']}"))
+    if inc.get("impact"):
+        rows.append(("Auswirkungen", inc["impact"]))
+    if inc.get("affected_systems"):
+        rows.append(("Betroffene Systeme", ", ".join(inc["affected_systems"])))
+    if inc.get("data_categories"):
+        rows.append(("Datenkategorien", ", ".join(inc["data_categories"])))
+    if inc.get("affected_persons") is not None:
+        rows.append(("Betroffene Personen (geschätzt)", str(inc["affected_persons"])))
+    if inc.get("cause"):
+        rows.append(("Ursache", inc["cause"]))
+    if inc.get("measures"):
+        rows.append(("Maßnahmen", inc["measures"]))
+    return rows
+
+
 class Topic(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
@@ -354,6 +439,7 @@ class Topic(BaseModel):
     summary: str = ""
     reporting: Reporting | None = Field(default=None, description="Meldepflicht des Topics (issue #229)")
     notifications: Notifications | None = Field(default=None, description="Benachrichtigungskanäle des Topics (issue #258)")
+    incident: IncidentClassification | None = Field(default=None, description="Klassifikation des Incidents (issue #225)")
 
 
 class TopicCreate(Topic):

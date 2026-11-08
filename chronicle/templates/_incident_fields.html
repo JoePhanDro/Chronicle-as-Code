@@ -1,0 +1,29 @@
+<fieldset class="rounded-xl border border-white/10 p-4">
+  <legend class="px-1 text-xs font-medium text-slate-400">{{ t("Incident-Klassifikation (optional)") }}</legend>
+  <div class="flex flex-wrap items-end gap-3">
+    <label class="block"><span class="{{ label_class }}">{{ t("Schweregrad") }}</span>
+      <select name="incident_severity" class="{{ input_class }}">
+        <option value="" {{ 'selected' if not incident_form.severity }}>{{ t("— keine —") }}</option>
+        {% for item in severities %}<option value="{{ item.value }}" {{ 'selected' if incident_form.severity == item.value }}>{{ item.label }}</option>{% endfor %}
+      </select></label>
+    <label class="block"><span class="{{ label_class }}">{{ t("TLP (Traffic Light Protocol)") }}</span>
+      <select name="incident_tlp" class="{{ input_class }}">
+        <option value="" {{ 'selected' if not incident_form.tlp }}>{{ t("— keine —") }}</option>
+        {% for value in tlp_levels %}<option value="{{ value }}" {{ 'selected' if incident_form.tlp == value }}>TLP:{{ value }}</option>{% endfor %}
+      </select></label>
+    <label class="block"><span class="{{ label_class }}">{{ t("Betroffene Personen (geschätzt)") }}</span>
+      <input name="incident_persons" inputmode="numeric" value="{{ incident_form.affected_persons }}" class="{{ input_class }} w-40"></label>
+  </div>
+  <label class="mt-3 block"><span class="{{ label_class }}">{{ t("Auswirkungen (Freitext)") }}</span>
+    <textarea name="incident_impact" rows="2" class="{{ input_class }}">{{ incident_form.impact }}</textarea></label>
+  <div class="mt-3 flex flex-wrap gap-3">
+    <label class="block min-w-[16rem] flex-1"><span class="{{ label_class }}">{{ t("Betroffene Systeme (mit Komma getrennt)") }}</span>
+      <input name="incident_systems" value="{{ incident_form.affected_systems }}" placeholder="erp, mail" class="{{ input_class }}"></label>
+    <label class="block min-w-[16rem] flex-1"><span class="{{ label_class }}">{{ t("Datenkategorien (mit Komma getrennt)") }}</span>
+      <input name="incident_data_categories" value="{{ incident_form.data_categories }}" placeholder="personenbezogene Daten" class="{{ input_class }}"></label>
+  </div>
+  <label class="mt-3 block"><span class="{{ label_class }}">{{ t("Ursache (Grundursache)") }}</span>
+    <textarea name="incident_cause" rows="2" class="{{ input_class }}">{{ incident_form.cause }}</textarea></label>
+  <label class="mt-3 block"><span class="{{ label_class }}">{{ t("Maßnahmen (Eindämmung)") }}</span>
+    <textarea name="incident_measures" rows="2" class="{{ input_class }}">{{ incident_form.measures }}</textarea></label>
+</fieldset>

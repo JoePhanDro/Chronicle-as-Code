@@ -11,7 +11,11 @@ from urllib.parse import quote
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from .markdown import render_markdown
-from .models import PHASE_COLORS, STATUS_LABELS, Evidence, Event, Phase, Timeline
+from .models import PHASE_COLORS, STATUS_LABELS, Evidence, Event, Phase, Timeline, incident_rows
+
+# TLP badge in the report header (issue #225), same tinted style as the other badges.
+TLP_BADGE = {"CLEAR": "bg-slate-500/20 text-slate-200", "GREEN": "bg-emerald-500/20 text-emerald-200",
+             "AMBER": "bg-amber-500/20 text-amber-200", "RED": "bg-rose-500/20 text-rose-200"}
 
 ACTOR_COLOR = "#38bdf8"
 SYSTEM_COLOR = "#a78bfa"
@@ -103,10 +107,15 @@ def render_dashboard(
         "statusText": {status.value: label for status, label in STATUS_LABELS.items()},
     }
     phases = [{"name": phase.value, "color": PHASE_COLORS[phase]} for phase in Phase]
+    incident = timeline.topic.incident
+    classification = incident_rows(incident.model_dump(mode="json") if incident else None)
 
     return _env.get_template("dashboard.html").render(
         title=timeline.topic.title,
         summary=timeline.topic.summary,
+        classification=classification,
+        tlp=incident.tlp if incident else None,
+        tlp_badge=TLP_BADGE,
         phases=phases,
         payload=payload,
         inline_css=inline_css,
