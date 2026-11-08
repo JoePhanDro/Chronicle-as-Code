@@ -1,10 +1,10 @@
 {% from "_logo.html" import logo %}
 <!doctype html>
-<html lang="de">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Anmeldung · Chronicle</title>
+  <title>{{ t("Anmeldung") }} · Chronicle</title>
   <link rel="stylesheet" href="/static/app.css">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
@@ -26,7 +26,7 @@
         {{ logo('h-10 w-10') }}
         <div>
           <div class="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300">Chronicle</div>
-          <h1 class="text-lg font-semibold text-slate-100">Anmelden</h1>
+          <h1 class="text-lg font-semibold text-slate-100">{{ t("Anmelden") }}</h1>
         </div>
       </div>
 
@@ -37,35 +37,35 @@
       <form method="post" action="/login" class="space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-400">Benutzername</span>
+          <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Benutzername") }}</span>
           <input name="username" autocomplete="username" required autofocus
                  class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
         </label>
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-400">Passwort</span>
+          <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Passwort") }}</span>
           <input name="password" type="password" autocomplete="current-password" required
                  class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
         </label>
         <button type="submit"
                 class="w-full rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink transition hover:brightness-110">
-          Anmelden
+          {{ t("Anmelden") }}
         </button>
       </form>
 
       {% if lock_enabled %}
       <div class="mt-8 border-t border-white/10 pt-6">
-        <h2 class="text-sm font-semibold text-slate-200">Ansicht entsperren</h2>
-        <p class="mb-4 mt-1 text-xs text-slate-500">Ohne Konto lesen Sie nach Eingabe des Sperr-Passworts.</p>
+        <h2 class="text-sm font-semibold text-slate-200">{{ t("Ansicht entsperren") }}</h2>
+        <p class="mb-4 mt-1 text-xs text-slate-500">{{ t("Ohne Konto lesen Sie nach Eingabe des Sperr-Passworts.") }}</p>
         <form method="post" action="/login/entsperren" class="space-y-4">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <label class="block">
-            <span class="mb-1 block text-xs font-medium text-slate-400">Sperr-Passwort</span>
+            <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Sperr-Passwort") }}</span>
             <input name="password" type="password" autocomplete="off" required
                    class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">
           </label>
           <button type="submit"
                   class="w-full rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:bg-white/5">
-            Entsperren
+            {{ t("Entsperren") }}
           </button>
         </form>
       </div>

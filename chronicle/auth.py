@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict
 
-from . import accounts, reading_lock, security
+from . import accounts, i18n, reading_lock, security
 
 SESSION_COOKIE = "chronicle_session"
 LOGIN_CSRF_COOKIE = "chronicle_login_csrf"
@@ -26,6 +26,19 @@ PASSWORD_CHANGE_PATHS = {"/api/v1/auth/me", "/api/v1/auth/logout", "/api/v1/auth
 LOGIN_CSRF_TTL_SECONDS = 15 * 60
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+# Language of the interface (issue #220); the render helpers below set it per request.
+TEMPLATES.env.globals["t"] = i18n.t
+TEMPLATES.env.globals["lang"] = i18n.DEFAULT_LANG
+
+
+def render_with_language(request: Request, template: str, context: dict, status_code: int = 200) -> HTMLResponse:
+    """Render a page of this module in the language of the request (cookie, then Accept-Language)."""
+    lang = i18n.language_of(request)
+    token = i18n.current_lang.set(lang)
+    try:
+        return TEMPLATES.TemplateResponse(request, template, {"lang": lang, **context}, status_code=status_code)
+    finally:
+        i18n.current_lang.reset(token)
 
 
 class LoginRequest(BaseModel):
@@ -186,7 +199,7 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
 
     def render_login(request: Request, error: str | None, status_code: int, lock_enabled: bool = False) -> HTMLResponse:
         login_csrf = secrets.token_urlsafe(32)
-        response = TEMPLATES.TemplateResponse(
+        response = render_with_language(
             request,
             "login.html",
             {"csrf_token": login_csrf, "error": error, "lock_enabled": lock_enabled},
@@ -210,7 +223,7 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
 
     def render_setup(request: Request, error: str | None, status_code: int) -> HTMLResponse:
         setup_csrf = secrets.token_urlsafe(32)
-        response = TEMPLATES.TemplateResponse(
+        response = render_with_language(
             request,
             "setup.html",
             {"csrf_token": setup_csrf, "error": error, "min_length": security.MIN_PASSWORD_LENGTH},
@@ -323,7 +336,7 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
         session = session_user(request, conn)
         if session is None:
             return RedirectResponse("/login", status_code=303)
-        return TEMPLATES.TemplateResponse(request, "password.html", {"user": session, "error": None})
+        return render_with_language(request, "password.html", {"user": session, "error": None})
 
     @router.post("/account/password", response_class=HTMLResponse)
     def password_form(
@@ -341,7 +354,7 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
         try:
             change_password(conn, session, request.cookies[SESSION_COOKIE], current_password, new_password, client_ip(request))
         except HTTPException as exc:
-            return TEMPLATES.TemplateResponse(
+            return render_with_language(
                 request, "password.html", {"user": session, "error": exc.detail}, status_code=exc.status_code
             )
         return RedirectResponse("/", status_code=303)
@@ -351,7 +364,7 @@ def make_auth(get_conn: Callable[..., Iterator[sqlite3.Connection]], cookie_secu
         session = page_session(request, conn)
         if session is None:
             return RedirectResponse("/login", status_code=303)
-        return TEMPLATES.TemplateResponse(request, "home.html", {"user": session})
+        return render_with_language(request, "home.html", {"user": session})
 
     @router.post("/logout")
     def logout_form(

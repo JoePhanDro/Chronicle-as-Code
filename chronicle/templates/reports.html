@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Berichte{% endblock %}
 {% block content %}
-<h1 class="mb-2 text-xl font-semibold text-slate-100">Berichte</h1>
+<h1 class="mb-2 text-xl font-semibold text-slate-100">{{ t("Berichte") }}</h1>
 <p class="mb-6 max-w-2xl text-sm text-slate-400">
   Der HTML-Bericht enthält alle Events eines Topics, den Graphen und die Evidence. Das PDF gibt es technisch (alle Events mit Details, Ursachen und Bildern) und als Management Summary (nur Event-Titel mit Zeit und Kennzahlen). Berichte brauchen keine Anmeldung und zeigen den Stand zum Zeitpunkt des Downloads. Wer die Datei hat, sieht alles. Teile sie bewusst.
 </p>
@@ -13,18 +13,18 @@
       <div class="font-mono text-xs text-slate-500">{{ topic.key }} · {{ topic.kind }} · {{ topic.event_count | count_events }}</div>
     </div>
     <div class="flex flex-none flex-wrap justify-end gap-2">
-      <a href="/reports/{{ topic.key }}" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">HTML-Bericht</a>
-      <a href="/reports/{{ topic.key }}/pdf?art=technisch" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">PDF technisch</a>
-      <a href="/reports/{{ topic.key }}/pdf?art=management" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">PDF Management</a>
+      <a href="/reports/{{ topic.key }}" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">{{ t("HTML-Bericht") }}</a>
+      <a href="/reports/{{ topic.key }}/pdf?art=technisch" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">{{ t("PDF technisch") }}</a>
+      <a href="/reports/{{ topic.key }}/pdf?art=management" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">{{ t("PDF Management") }}</a>
       {% if topic.reporting %}
-      <a href="/reports/{{ topic.key }}/pdf?art=fruehwarnung" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">Frühwarnung</a>
-      <a href="/reports/{{ topic.key }}/pdf?art=meldung" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">Meldung</a>
-      <a href="/reports/{{ topic.key }}/pdf?art=abschlussbericht" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">Abschlussbericht</a>
+      <a href="/reports/{{ topic.key }}/pdf?art=fruehwarnung" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">{{ t("Frühwarnung") }}</a>
+      <a href="/reports/{{ topic.key }}/pdf?art=meldung" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">{{ t("Meldung") }}</a>
+      <a href="/reports/{{ topic.key }}/pdf?art=abschlussbericht" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">{{ t("Abschlussbericht") }}</a>
       {% endif %}
     </div>
   </li>
   {% else %}
-  <li class="px-4 py-3 text-sm text-slate-500">Noch keine Topics.</li>
+  <li class="px-4 py-3 text-sm text-slate-500">{{ t("Noch keine Topics.") }}</li>
   {% endfor %}
 </ul>
 {% endblock %}

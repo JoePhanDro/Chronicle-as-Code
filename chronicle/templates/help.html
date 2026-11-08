@@ -1,32 +1,32 @@
 {% extends "base.html" %}
 {% block title %}Hilfe{% endblock %}
 {% block content %}
-<h1 class="mb-6 text-xl font-semibold text-slate-100">Hilfe</h1>
+<h1 class="mb-6 text-xl font-semibold text-slate-100">{{ t("Hilfe") }}</h1>
 
 <section class="mb-8" aria-labelledby="help-shortcuts">
-  <h2 id="help-shortcuts" class="mb-3 text-sm font-medium text-slate-300">Tastenkürzel</h2>
+  <h2 id="help-shortcuts" class="mb-3 text-sm font-medium text-slate-300">{{ t("Tastenkürzel") }}</h2>
   <dl class="grid gap-2 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-6">
     <dt><kbd class="rounded border border-white/15 bg-slate-900 px-1.5 font-mono text-xs text-slate-200">/</kbd></dt>
-    <dd class="text-slate-400">Suchfeld in der Kopfzeile öffnen. Funktioniert nicht, solange man in einem Eingabefeld schreibt.</dd>
+    <dd class="text-slate-400">{{ t("Suchfeld in der Kopfzeile öffnen. Funktioniert nicht, solange man in einem Eingabefeld schreibt.") }}</dd>
     <dt><kbd class="rounded border border-white/15 bg-slate-900 px-1.5 font-mono text-xs text-slate-200">Esc</kbd></dt>
-    <dd class="text-slate-400">Geöffnetes Menü oder den Einstellungsdialog schließen.</dd>
+    <dd class="text-slate-400">{{ t("Geöffnetes Menü oder den Einstellungsdialog schließen.") }}</dd>
     <dt><kbd class="rounded border border-white/15 bg-slate-900 px-1.5 font-mono text-xs text-slate-200">↓</kbd> <kbd class="rounded border border-white/15 bg-slate-900 px-1.5 font-mono text-xs text-slate-200">↑</kbd></dt>
-    <dd class="text-slate-400">Auf einem Menü-Knopf das Menü öffnen, im offenen Menü zwischen den Einträgen wechseln. Am Ende geht es von vorn los. <kbd class="rounded border border-white/15 bg-slate-900 px-1.5 font-mono text-xs text-slate-200">Pos1</kbd> und <kbd class="rounded border border-white/15 bg-slate-900 px-1.5 font-mono text-xs text-slate-200">Ende</kbd> springen zum ersten und letzten Eintrag.</dd>
+    <dd class="text-slate-400">{{ t("Auf einem Menü-Knopf das Menü öffnen, im offenen Menü zwischen den Einträgen wechseln. Am Ende geht es von vorn los.") }} <kbd class="rounded border border-white/15 bg-slate-900 px-1.5 font-mono text-xs text-slate-200">Pos1</kbd> und <kbd class="rounded border border-white/15 bg-slate-900 px-1.5 font-mono text-xs text-slate-200">Ende</kbd> springen zum ersten und letzten Eintrag.</dd>
     <dt><kbd class="rounded border border-white/15 bg-slate-900 px-1.5 font-mono text-xs text-slate-200">Tag</kbd></dt>
-    <dd class="text-slate-400">Events können freie Tags und eigene Notizen enthalten. Tags lassen sich in der Eventliste filtern; die Volltextsuche findet auch Tags und Kommentare.</dd>
+    <dd class="text-slate-400">{{ t("Events können freie Tags und eigene Notizen enthalten. Tags lassen sich in der Eventliste filtern; die Volltextsuche findet auch Tags und Kommentare.") }}</dd>
   </dl>
 </section>
 
 <section class="mb-8" aria-labelledby="help-search">
-  <h2 id="help-search" class="mb-3 text-sm font-medium text-slate-300">Suche</h2>
-  <p class="text-sm text-slate-400">Die Suche in der Kopfzeile zeigt Ereignisse, Akteure und Systeme getrennt. Jeder Begriff gilt als Wortanfang, Groß- und Kleinschreibung spielen keine Rolle. Ein Klick auf einen Akteur oder ein System zeigt dessen Ereignisse.</p>
+  <h2 id="help-search" class="mb-3 text-sm font-medium text-slate-300">{{ t("Suche") }}</h2>
+  <p class="text-sm text-slate-400">{{ t("Die Suche in der Kopfzeile zeigt Ereignisse, Akteure und Systeme getrennt. Jeder Begriff gilt als Wortanfang, Groß- und Kleinschreibung spielen keine Rolle. Ein Klick auf einen Akteur oder ein System zeigt dessen Ereignisse.") }}</p>
 </section>
 
 <section class="mb-8" aria-labelledby="help-settings">
-  <h2 id="help-settings" class="mb-3 text-sm font-medium text-slate-300">Einstellungen</h2>
-  <p class="text-sm text-slate-400">Der Dialog <span class="text-slate-200">Einstellungen</span> in der Kopfzeile gilt für diesen Browser. Er ist keine Zugriffsregel: Rechte bestimmt der Server.</p>
+  <h2 id="help-settings" class="mb-3 text-sm font-medium text-slate-300">{{ t("Einstellungen") }}</h2>
+  <p class="text-sm text-slate-400">{{ t("Der Dialog") }} <span class="text-slate-200">{{ t("Einstellungen") }}</span> {{ t("in der Kopfzeile gilt für diesen Browser. Er ist keine Zugriffsregel: Rechte bestimmt der Server.") }}</p>
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-400">
-    <li><span class="text-slate-200">Design</span>: wie das Betriebssystem, hell oder dunkel. Der Schalter in der Kopfzeile wechselt zwischen hell und dunkel.</li>
+    <li><span class="text-slate-200">{{ t("Design") }}</span>: {{ t("wie das Betriebssystem, hell oder dunkel. Der Schalter in der Kopfzeile wechselt zwischen hell und dunkel.") }}</li>
     <li><span class="text-slate-200">Dichte</span> der Tabellen: normal oder kompakt.</li>
     <li><span class="text-slate-200">Zeitzone</span> für Zeitangaben: UTC oder die Zeitzone des Browsers.</li>
     <li><span class="text-slate-200">Graph</span> auf der Topic-Seite: Physik beim Laden an oder aus, Beschriftung ein oder aus.</li>

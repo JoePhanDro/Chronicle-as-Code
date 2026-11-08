@@ -10,21 +10,21 @@
 {% endif %}
 
 {% if mode == 'new' %}
-  <h1 class="mb-6 text-xl font-semibold text-slate-100">Neues Event</h1>
+  <h1 class="mb-6 text-xl font-semibold text-slate-100">{{ t("Neues Event") }}</h1>
   {% set f = form or {} %}
   <form method="post" action="/events/new" enctype="multipart/form-data" class="space-y-6">
     <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
     {% include "_event_fields.html" %}
     <section class="rounded-xl border border-white/10 bg-white/[.02] p-5">
-      <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Anhänge</h2>
+      <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">{{ t("Anhänge") }}</h2>
       <div class="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-400">Dateien (PNG, JPEG, GIF, WebP, PDF, TXT/LOG, je max. 10 MiB)</span>
+          <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Dateien (PNG, JPEG, GIF, WebP, PDF, TXT/LOG, je max. 10 MiB)") }}</span>
           <input type="file" name="files" multiple accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.log"
                  class="block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200">
         </label>
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-400">Typ</span>
+          <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Typ") }}</span>
           <select name="evidence_type" class="{{ input_class }}">
             {% for evidence_type in evidence_types %}<option value="{{ evidence_type }}">{{ evidence_type }}</option>{% endfor %}
           </select>
@@ -32,8 +32,8 @@
       </div>
     </section>
     <div class="flex gap-3">
-      <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Anlegen</button>
-      <a href="/events" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-300 hover:text-white">Abbrechen</a>
+      <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">{{ t("Anlegen") }}</button>
+      <a href="/events" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-300 hover:text-white">{{ t("Abbrechen") }}</a>
     </div>
   </form>
 
@@ -44,7 +44,7 @@
   <header class="mb-8 border-l-[3px] pl-4" style="border-color: {{ phase_color(event.phase) }}">
     <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
       <div class="font-mono text-xs text-slate-400">{{ event.key }} · Version {{ event.version }}</div>
-      {% if editing %}<a href="#bearbeiten" id="edit-link" class="text-sm text-sky-300 hover:underline max-sm:flex max-sm:min-h-11 max-sm:items-center">Bearbeiten</a>{% endif %}
+      {% if editing %}<a href="#bearbeiten" id="edit-link" class="text-sm text-sky-300 hover:underline max-sm:flex max-sm:min-h-11 max-sm:items-center">{{ t("Bearbeiten") }}</a>{% endif %}
     </div>
     <h1 class="mt-1 text-xl font-semibold text-slate-100 sm:text-2xl">{{ event.action }}</h1>
     {% if editing %}
@@ -53,7 +53,7 @@
       <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
       <input type="hidden" name="version" value="{{ event.version }}">
       <label class="relative inline-flex items-center">
-        <span class="sr-only">Phase</span>
+        <span class="sr-only">{{ t("Phase") }}</span>
         <span class="pointer-events-none absolute left-2.5 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full" style="background: {{ phase_color(event.phase) }}" aria-hidden="true"></span>
         <select name="phase" title="Phase ändern" class="{{ chip_select }}" onchange="this.form.requestSubmit()">
           {% for phase in phases %}<option value="{{ phase }}" {{ 'selected' if event.phase == phase }}>{{ phase }}</option>{% endfor %}
@@ -61,40 +61,40 @@
         <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] leading-none text-slate-300" aria-hidden="true">▾</span>
       </label>
       <label class="relative inline-flex items-center">
-        <span class="sr-only">Status</span>
+        <span class="sr-only">{{ t("Status") }}</span>
         <span class="pointer-events-none absolute left-2.5 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>
         <select name="status" title="Status ändern" class="{{ chip_select }}" onchange="this.form.requestSubmit()">
           {% for status in statuses %}<option value="{{ status }}" {{ 'selected' if event.status == status }}>{{ status_text.get(status, status) }}</option>{% endfor %}
         </select>
         <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] leading-none text-slate-300" aria-hidden="true">▾</span>
       </label>
-      <noscript><button type="submit" class="rounded-md border border-white/10 px-2.5 py-1 text-sm text-slate-200">Speichern</button></noscript>
+      <noscript><button type="submit" class="rounded-md border border-white/10 px-2.5 py-1 text-sm text-slate-200">{{ t("Speichern") }}</button></noscript>
       <span role="status" class="text-xs text-emerald-300">{% if saved %}{{ saved }} gespeichert{% endif %}</span>
     </form>
     {% else %}
     <p class="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium text-slate-100">
-      <span class="inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1"><span class="sr-only">Phase: </span><span class="h-2 w-2 flex-none rounded-full" style="background: {{ phase_color(event.phase) }}" aria-hidden="true"></span>{{ event.phase }}</span>
-      <span class="inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1"><span class="sr-only">Status: </span><span class="h-2 w-2 flex-none rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>{{ status_text[event.status] if event.status in status_text else event.status }}</span>
+      <span class="inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1"><span class="sr-only">{{ t("Phase:") }} </span><span class="h-2 w-2 flex-none rounded-full" style="background: {{ phase_color(event.phase) }}" aria-hidden="true"></span>{{ event.phase }}</span>
+      <span class="inline-flex items-center gap-2 rounded-md border border-white/10 px-2.5 py-1"><span class="sr-only">{{ t("Status:") }} </span><span class="h-2 w-2 flex-none rounded-full {{ status_dot[event.status] if event.status in status_dot else 'bg-slate-500' }}" aria-hidden="true"></span>{{ status_text[event.status] if event.status in status_text else event.status }}</span>
     </p>
     {% endif %}
     <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-y border-white/10 py-4 text-sm sm:grid-cols-3">
       <div>
-        <dt class="text-xs text-slate-400">Zeit (<span data-zone-label>UTC</span>)</dt>
+        <dt class="text-xs text-slate-400">{{ t("Zeit") }} (<span data-zone-label>UTC</span>)</dt>
         <dd class="mt-0.5 font-mono text-slate-100"><time data-utc="{{ event.t0 }}">{{ event.t0[:16].replace('T', ' ') }}</time></dd>
       </div>
       <div>
-        <dt class="text-xs text-slate-400">Akteur</dt>
+        <dt class="text-xs text-slate-400">{{ t("Akteur") }}</dt>
         <dd class="mt-0.5 text-slate-100"><a href="/events?actor={{ event.actor | urlencode }}" class="hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ event.actor }}</a></dd>
       </div>
       {% if event.system %}
       <div>
-        <dt class="text-xs text-slate-400">System</dt>
+        <dt class="text-xs text-slate-400">{{ t("System") }}</dt>
         <dd class="mt-0.5 font-mono text-slate-100"><a href="/events?system={{ event.system | urlencode }}" class="hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ event.system }}</a></dd>
       </div>
       {% endif %}
       {% if event.techniques %}
       <div class="col-span-2 sm:col-span-3">
-        <dt class="text-xs text-slate-400">ATT&amp;CK-Techniken</dt>
+        <dt class="text-xs text-slate-400">{{ t("ATT&CK-Techniken") }}</dt>
         <dd class="mt-1 flex flex-wrap gap-2">
           {% for technique in event.techniques %}
           <span class="inline-flex items-center rounded-md border border-white/10 font-mono text-xs">
@@ -107,7 +107,7 @@
       {% endif %}
       {% if event.tags %}
       <div class="col-span-2 sm:col-span-3">
-        <dt class="text-xs text-slate-400">Tags</dt>
+        <dt class="text-xs text-slate-400">{{ t("Tags") }}</dt>
         <dd class="mt-1 flex flex-wrap gap-2">
           {% for tag in event.tags %}<a href="/events?tag={{ tag | urlencode }}" class="rounded-md border border-white/10 px-2 py-0.5 text-xs text-sky-300 hover:bg-white/5">{{ tag }}</a>{% endfor %}
         </dd>
@@ -115,7 +115,7 @@
       {% endif %}
       {% if event.detection %}
       <div class="col-span-2 sm:col-span-3">
-        <dt class="text-xs text-slate-400">Erkannt durch</dt>
+        <dt class="text-xs text-slate-400">{{ t("Erkannt durch") }}</dt>
         <dd class="mt-1 text-sm text-slate-200">
           {% set det = event.detection %}
           {% if det.rule_id %}<a href="/events?rule={{ det.rule_id | urlencode }}" class="font-mono text-sky-300 hover:underline" title="Alle Events dieser Regel">{{ det.rule_id }}</a>{% endif %}
@@ -131,13 +131,13 @@
 
   {% if event.details %}
   <section class="mb-8 rounded-xl border border-white/10 bg-white/[.02] p-5">
-    <h2 class="mb-3 text-base font-semibold text-slate-100">Beschreibung</h2>
+    <h2 class="mb-3 text-base font-semibold text-slate-100">{{ t("Beschreibung") }}</h2>
     <div class="prose prose-chronicle max-w-none text-sm prose-a:text-sky-300">{{ event | event_details }}</div>
   </section>
   {% endif %}
 
   <section class="mb-8 rounded-xl border border-white/10 bg-white/[.02] p-5">
-    <h2 class="mb-3 text-base font-semibold text-slate-100">Notizen und Kommentare</h2>
+    <h2 class="mb-3 text-base font-semibold text-slate-100">{{ t("Notizen und Kommentare") }}</h2>
     {% if event.comments %}
     <ol class="space-y-4">
       {% for comment in event.comments %}
@@ -147,15 +147,15 @@
       </li>
       {% endfor %}
     </ol>
-    {% else %}<p class="text-sm text-slate-400">Noch keine Notizen.</p>{% endif %}
+    {% else %}<p class="text-sm text-slate-400">{{ t("Noch keine Notizen.") }}</p>{% endif %}
     {% if can_write %}
     <form method="post" action="/events/{{ event.key }}/comments" class="mt-5">
       <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-      <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">Neue Notiz (Markdown)</span>
+      <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Neue Notiz (Markdown)") }}</span>
         <textarea name="text" rows="4" required maxlength="5000"
                   class="w-full rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20"></textarea>
       </label>
-      <button type="submit" class="mt-3 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">Notiz hinzufügen</button>
+      <button type="submit" class="mt-3 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">{{ t("Notiz hinzufügen") }}</button>
     </form>
     {% endif %}
   </section>
@@ -186,7 +186,7 @@
   {% endif %}
 
   <section class="mb-8">
-    <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Evidence</h2>
+    <h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{{ t("Evidence") }}</h2>
     {% if event.evidence %}
     <ul class="grid gap-4 {{ 'sm:grid-cols-2' if event.evidence | length > 1 }}">
       {% for item in event.evidence %}
@@ -201,14 +201,14 @@
           <a href="/api/v1/evidence/{{ item.id }}" target="_blank" rel="noopener" class="break-all text-sm text-sky-300 hover:underline">{{ item.file }}</a>
         {% else %}
           <span class="break-all text-sm text-slate-300">{{ item.file }}</span>
-          <span class="mt-1 text-xs text-amber-300">Inhalt fehlt. Bitte den Import erneut ausführen.</span>
+          <span class="mt-1 text-xs text-amber-300">{{ t("Inhalt fehlt. Bitte den Import erneut ausführen.") }}</span>
         {% endif %}
         <div class="mt-1 text-xs text-slate-400"><span class="font-mono">{{ item.type }}</span>{% if item.description %} · {{ item.description }}{% endif %}</div>
         {% if can_write %}
         <form method="post" action="/events/{{ event.key }}/evidence/{{ item.id }}/delete" class="mt-auto pt-3"
               onsubmit="return confirm('Evidence wirklich löschen?');">
           <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-          <button type="submit" class="text-xs text-rose-300 hover:underline">Entfernen</button>
+          <button type="submit" class="text-xs text-rose-300 hover:underline">{{ t("Entfernen") }}</button>
         </form>
         {% endif %}
       </li>
@@ -220,27 +220,27 @@
 
     {% if can_write %}
     <details id="evidence-add" class="group mt-4 rounded-xl border border-white/10" {{ 'open' if upload_failed }}>
-      <summary class="cursor-pointer select-none rounded-xl px-4 py-3 text-sm text-sky-300 hover:bg-white/5"><span class="group-open:hidden">Evidence hinzufügen</span><span class="hidden group-open:inline">Evidence hinzufügen schließen</span></summary>
+      <summary class="cursor-pointer select-none rounded-xl px-4 py-3 text-sm text-sky-300 hover:bg-white/5"><span class="group-open:hidden">{{ t("Evidence hinzufügen") }}</span><span class="hidden group-open:inline">{{ t("Evidence hinzufügen schließen") }}</span></summary>
       <div class="border-t border-white/10 p-4">
       <form method="post" action="/events/{{ event.key }}/evidence" enctype="multipart/form-data"
             class="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_auto] sm:items-end">
         <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-400">Datei (PNG, JPEG, GIF, WebP, PDF, TXT/LOG, max. 10 MiB)</span>
+          <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Datei (PNG, JPEG, GIF, WebP, PDF, TXT/LOG, max. 10 MiB)") }}</span>
           <input type="file" name="file" required accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.log"
                  class="block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-slate-200">
         </label>
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-400">Typ</span>
+          <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Typ") }}</span>
           <select name="type" class="{{ input_class }}">
             {% for evidence_type in evidence_types %}<option value="{{ evidence_type }}">{{ evidence_type }}</option>{% endfor %}
           </select>
         </label>
         <label class="block">
-          <span class="mb-1 block text-xs font-medium text-slate-400">Beschreibung (optional)</span>
+          <span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Beschreibung (optional)") }}</span>
           <input name="description" maxlength="500" class="{{ input_class }}">
         </label>
-        <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">Hochladen</button>
+        <button type="submit" class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5">{{ t("Hochladen") }}</button>
       </form>
       </div>
     </details>
@@ -248,24 +248,24 @@
   </section>
 
   <section class="mb-8 text-sm text-slate-400">
-    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Topics</h2>
+    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{{ t("Topics") }}</h2>
     {% for topic in event.topics %}<a href="/topics/{{ topic }}" class="mr-2 inline-block rounded-md bg-white/5 px-2 py-0.5 max-sm:inline-flex max-sm:min-h-11 max-sm:items-center font-mono text-xs text-slate-300 hover:bg-white/10 hover:text-white">{{ topic }}</a>{% endfor %}
   </section>
 
   {% if editing %}
   <details id="bearbeiten" class="group rounded-xl border border-white/10" {{ 'open' if errors and not upload_failed }}>
-    <summary class="cursor-pointer select-none rounded-xl px-5 py-3 text-sm font-medium text-slate-200 hover:bg-white/5"><span class="group-open:hidden">Weitere Felder bearbeiten · Event löschen</span><span class="hidden group-open:inline">Bearbeiten schließen</span></summary>
+    <summary class="cursor-pointer select-none rounded-xl px-5 py-3 text-sm font-medium text-slate-200 hover:bg-white/5"><span class="group-open:hidden">{{ t("Weitere Felder bearbeiten · Event löschen") }}</span><span class="hidden group-open:inline">{{ t("Bearbeiten schließen") }}</span></summary>
     <div class="border-t border-white/10 p-5">
       {% set f = edit_form(event) %}
       <form method="post" action="/events/{{ event.key }}/edit" class="space-y-6">
         <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
         <input type="hidden" name="version" value="{{ event.version }}">
         {% include "_event_fields.html" %}
-        <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">Speichern</button>
+        <button type="submit" class="rounded-lg bg-gradient-to-r from-sky-400 to-violet-500 px-4 py-2 text-sm font-semibold text-ink hover:brightness-110">{{ t("Speichern") }}</button>
       </form>
 
       <div class="mt-8 max-w-2xl border-t border-white/10 pt-5">
-        <h2 class="text-sm font-medium text-slate-100">Event löschen</h2>
+        <h2 class="text-sm font-medium text-slate-100">{{ t("Event löschen") }}</h2>
         {% if effects %}
         <p class="mt-1 text-sm text-slate-400">Nicht löschbar: Dieses Event löst {{ effects | length }} {{ 'weiteres Event' if effects | length == 1 else 'weitere Events' }} aus ({% for other in effects %}<a href="/events/{{ other.key }}" class="text-sky-300 hover:underline">{{ other.key }}</a>{{ ', ' if not loop.last }}{% endfor %}). Zuerst dort den Verweis auf dieses Event entfernen, dann lässt es sich löschen.</p>
         {% else %}
@@ -276,7 +276,7 @@
         <form method="post" action="/events/{{ event.key }}/delete" class="mt-3"
               onsubmit='return confirm({{ ("Event „" ~ event.action ~ "“ (" ~ event.key ~ ") löschen?\n\n" ~ evidence_text ~ " " ~ restore_text) | tojson }});'>
           <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
-          <button type="submit" class="rounded-lg border border-rose-400/30 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-500/10">Event löschen</button>
+          <button type="submit" class="rounded-lg border border-rose-400/30 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-500/10">{{ t("Event löschen") }}</button>
         </form>
         {% endif %}
       </div>

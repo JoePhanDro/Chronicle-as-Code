@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Fehler{% endblock %}
+{% block title %}{{ t("Fehler") }}{% endblock %}
 {% block content %}
-<h1 class="text-xl font-semibold text-slate-100">Fehler</h1>
+<h1 class="text-xl font-semibold text-slate-100">{{ t("Fehler") }}</h1>
 <p class="mt-2 text-sm text-slate-400">{{ message }}</p>
-<p class="mt-2 text-sm text-slate-400"><a href="/reports" class="text-sky-300 hover:underline">Zurück zu den Berichten</a></p>
+<p class="mt-2 text-sm text-slate-400"><a href="/reports" class="text-sky-300 hover:underline">{{ t("Zurück zu den Berichten") }}</a></p>
 {% endblock %}

@@ -21,6 +21,12 @@ from ..models import PHASE_COLORS, STATUS_LABELS, Phase
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
+# The language of the current request (issue #220); set per request in render().
+from .. import i18n as _i18n  # noqa: E402
+
+TEMPLATES.env.globals["t"] = _i18n.t
+TEMPLATES.env.globals["lang"] = _i18n.DEFAULT_LANG
+
 
 def _event_details(event: dict) -> Markup:
     """Details of an event as HTML. Images resolve to the evidence files of this event only."""
@@ -105,14 +111,22 @@ class PageContext:
 
     @staticmethod
     def render(request: Request, template: str, user: dict, status_code: int = 200, **context) -> HTMLResponse:
-        return TEMPLATES.TemplateResponse(
-            request,
-            template,
-            {
-                "user": user,
-                "can_write": user["role"] in WRITER_ROLES,
-                "reloaded": request.query_params.get("neu_geladen") == "1",
-                **context,
-            },
-            status_code=status_code,
-        )
+        from .. import i18n
+
+        lang = i18n.language_of(request)
+        token = i18n.current_lang.set(lang)  # the t() global of the templates reads this while rendering
+        try:
+            return TEMPLATES.TemplateResponse(
+                request,
+                template,
+                {
+                    "user": user,
+                    "can_write": user["role"] in WRITER_ROLES,
+                    "reloaded": request.query_params.get("neu_geladen") == "1",
+                    "lang": lang,
+                    **context,
+                },
+                status_code=status_code,
+            )
+        finally:
+            i18n.current_lang.reset(token)

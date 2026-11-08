@@ -3,16 +3,16 @@
 {% block content %}
 {% set input_class = "rounded-lg border border-white/10 bg-slate-950/70 px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-sky-400/60" %}
 
-<h1 class="mb-6 text-xl font-semibold text-slate-100">Audit-Log</h1>
+<h1 class="mb-6 text-xl font-semibold text-slate-100">{{ t("Audit-Log") }}</h1>
 
 <form method="get" action="/admin/audit" class="mb-6 flex flex-wrap items-end gap-3">
-  <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">Aktion</span>
+  <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Aktion") }}</span>
     <input name="action" value="{{ action }}" placeholder="z. B. login_failed" class="{{ input_class }} font-mono"></label>
-  <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">Benutzer</span>
+  <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">{{ t("Benutzer") }}</span>
     <input name="actor" value="{{ actor }}" class="{{ input_class }}"></label>
-  <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">ab Datum</span>
+  <label class="block"><span class="mb-1 block text-xs font-medium text-slate-400">{{ t("ab Datum") }}</span>
     <input name="day" value="{{ day }}" placeholder="JJJJ-MM-TT" class="{{ input_class }} font-mono"></label>
-  <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">Filtern</button>
+  <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5">{{ t("Filtern") }}</button>
 </form>
 
 {% if errors %}
@@ -23,11 +23,11 @@
   <table class="w-full text-left text-sm">
     <thead class="bg-white/[.03] text-xs uppercase tracking-wide text-slate-500">
       <tr>
-        <th scope="col" class="px-4 py-2 font-medium">Zeit (UTC)</th>
-        <th scope="col" class="px-4 py-2 font-medium">Benutzer</th>
-        <th scope="col" class="px-4 py-2 font-medium">Aktion</th>
-        <th scope="col" class="px-4 py-2 font-medium">Ziel</th>
-        <th scope="col" class="px-4 py-2 font-medium">Detail</th>
+        <th scope="col" class="px-4 py-2 font-medium">{{ t("Zeit (UTC)") }}</th>
+        <th scope="col" class="px-4 py-2 font-medium">{{ t("Benutzer") }}</th>
+        <th scope="col" class="px-4 py-2 font-medium">{{ t("Aktion") }}</th>
+        <th scope="col" class="px-4 py-2 font-medium">{{ t("Ziel") }}</th>
+        <th scope="col" class="px-4 py-2 font-medium">{{ t("Detail") }}</th>
         <th scope="col" class="px-4 py-2 font-medium">IP</th>
       </tr>
     </thead>
@@ -42,7 +42,7 @@
         <td class="px-4 py-2 font-mono text-xs text-slate-500">{{ entry.ip or '' }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6" class="px-4 py-6 text-center text-sm text-slate-500">Keine Einträge.</td></tr>
+      <tr><td colspan="6" class="px-4 py-6 text-center text-sm text-slate-500">{{ t("Keine Einträge.") }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

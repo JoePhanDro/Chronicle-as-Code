@@ -1,13 +1,13 @@
 <fieldset class="rounded-xl border border-white/10 p-4">
-  <legend class="px-1 text-xs font-medium text-slate-400">Meldepflicht (optional)</legend>
+  <legend class="px-1 text-xs font-medium text-slate-400">{{ t("Meldepflicht (optional)") }}</legend>
   <div class="flex flex-wrap items-end gap-3">
-    <label class="block"><span class="{{ label_class }}">Rechtsgrundlage</span>
+    <label class="block"><span class="{{ label_class }}">{{ t("Rechtsgrundlage") }}</span>
       <select name="rep_regulation" class="{{ input_class }}">
-        <option value="none" {{ 'selected' if not rep_form or rep_form.regulation == 'none' }}>— keine —</option>
+        <option value="none" {{ 'selected' if not rep_form or rep_form.regulation == 'none' }}>{{ t("— keine —") }}</option>
         {% for reg in regulations %}<option value="{{ reg.value }}" {{ 'selected' if rep_form and rep_form.regulation == reg.value }}>{{ reg.label }}</option>{% endfor %}
       </select></label>
-    <label class="block"><span class="{{ label_class }}">Kenntnisnahme (UTC)</span>
+    <label class="block"><span class="{{ label_class }}">{{ t("Kenntnisnahme (UTC)") }}</span>
       <input type="datetime-local" name="rep_known_at" value="{{ rep_form.known_at if rep_form else '' }}" class="{{ input_class }}"></label>
   </div>
-  <p class="mt-2 text-xs text-slate-500">Fristen ab Kenntnisnahme (Richtwerte: NIS2 24 h / 72 h / 1 Monat, BSIG 24 h, DORA 4 h / 24 h / 1 Monat, DSGVO 72 h; pro Topic in der YAML-Datei anpassbar). Nur Anzeige und PDF-Berichte — es wird nichts versendet.</p>
+  <p class="mt-2 text-xs text-slate-500">{{ t("Fristen ab Kenntnisnahme (Richtwerte: NIS2 24 h / 72 h / 1 Monat, BSIG 24 h, DORA 4 h / 24 h / 1 Monat, DSGVO 72 h; pro Topic in der YAML-Datei anpassbar). Nur Anzeige und PDF-Berichte — es wird nichts versendet.") }}</p>
 </fieldset>
