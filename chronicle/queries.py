@@ -126,7 +126,8 @@ def list_topics(conn: sqlite3.Connection, *, by_attention: bool = False) -> list
                (SELECT latest.phase FROM topic_events AS link JOIN events AS latest ON latest.pk = link.event_pk
                 WHERE link.topic_pk = topics.pk ORDER BY latest.t0 DESC, latest.pk DESC LIMIT 1) AS phase,
                COALESCE(SUM(events.status = 'open'), 0) AS open_count,
-               COALESCE(SUM(events.status = 'in_progress'), 0) AS in_progress_count
+               COALESCE(SUM(events.status = 'in_progress'), 0) AS in_progress_count,
+               (SELECT COUNT(*) FROM tasks WHERE tasks.topic_pk = topics.pk AND tasks.status != 'done') AS open_tasks
         FROM topics
         LEFT JOIN topic_events ON topic_events.topic_pk = topics.pk
         LEFT JOIN events ON events.pk = topic_events.event_pk
@@ -141,6 +142,7 @@ def list_topics(conn: sqlite3.Connection, *, by_attention: bool = False) -> list
         topic["notifications"] = json.loads(topic["notifications"]) if topic["notifications"] else None
         topic["incident"] = json.loads(topic["incident"]) if topic["incident"] else None
         open_count, in_progress_count = topic.pop("open_count"), topic.pop("in_progress_count")
+        topic["open_tasks"] = topic.pop("open_tasks") or 0
         if open_count:
             topic["status"] = "open"
         elif in_progress_count:
@@ -165,6 +167,11 @@ def get_topic(conn: sqlite3.Connection, key: str) -> dict | None:
     topic["reporting"] = json.loads(topic["reporting"]) if topic["reporting"] else None
     topic["notifications"] = json.loads(topic["notifications"]) if topic["notifications"] else None
     topic["incident"] = json.loads(topic["incident"]) if topic["incident"] else None
+    topic["tasks"] = [dict(item) for item in conn.execute(
+        "SELECT key, title, status, assignee, deadline, note FROM tasks "
+        "WHERE topic_pk = (SELECT pk FROM topics WHERE key = ?) ORDER BY pk",
+        (key,),
+    ).fetchall()]
     return topic
 
 

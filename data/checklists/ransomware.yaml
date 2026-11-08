@@ -1,0 +1,14 @@
+# Beispiel-Vorlage für einen Ransomware-Vorfall (ADR 0031, Issue #226).
+# "Aus Vorlage erstellen" auf der Topic-Seite kopiert diese Aufgaben in das Topic.
+label: Ransomware
+tasks:
+  - title: Betroffene Systeme isolieren
+    deadline_hours: 4
+    note: Netzwerksegment trennen, keine Dienste mehr erreichbar machen
+  - title: Backups prüfen und sichern
+    deadline_hours: 24
+  - title: Erpressungsnachricht und Lösegeldforderung dokumentieren
+    assignee: IR-Team
+  - title: Geschäftsleitung informieren
+    deadline_hours: 8
+  - title: Externe Stellen informieren (Meldepflicht prüfen)

@@ -175,6 +175,14 @@ events:
         type: screenshot             # screenshot | log | report | other
         description: "…"
 
+tasks:                               # optional: checklist of the topic (ADR 0031, issue #226)
+  - key: task-isolate
+    title: Isolate systems
+    status: open                   # open | in_progress | done
+    assignee: anna                 # free text
+    deadline: 2026-10-20T18:00:00+02:00  # optional, display only
+    note: "…"
+
 refs:                                # optional: events defined in another file
   - cve-2026-xxxx
 ```

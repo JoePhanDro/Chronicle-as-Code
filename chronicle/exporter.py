@@ -123,6 +123,8 @@ def _topic_document(
                   **({"notifications": topic["notifications"]} if topic.get("notifications") else {}),
                   **({"incident": topic["incident"]} if topic.get("incident") else {})},
     }
+    if topic.get("tasks"):
+        document["tasks"] = topic["tasks"]
     if events:
         document["events"] = sorted(events, key=lambda item: (item["t0"], item["key"]))
     if refs:

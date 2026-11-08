@@ -369,7 +369,20 @@ def _write_topic(
     _upsert_topic(conn, topic)
     for event in timeline.events:
         _write_event(conn, topic.key, event, blobs, report)
+    _write_tasks(conn, topic.key, timeline.tasks)
     return report
+
+
+def _write_tasks(conn: sqlite3.Connection, topic_key: str, tasks) -> None:
+    """The tasks of a topic in the index: replaced as a whole, the file is the truth (issue #226)."""
+    topic_pk = _topic_pk(conn, topic_key)
+    conn.execute("DELETE FROM tasks WHERE topic_pk = ?", (topic_pk,))
+    for task in tasks:
+        conn.execute(
+            "INSERT INTO tasks (topic_pk, key, title, status, assignee, deadline, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (topic_pk, task.key, task.title, task.status.value, task.assignee,
+             task.deadline.isoformat() if task.deadline else None, task.note),
+        )
 
 
 def _link_topic(conn: sqlite3.Connection, timeline: Timeline) -> None:

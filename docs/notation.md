@@ -73,6 +73,19 @@ Die Phasenfarben gehören zur Darstellung und sind nicht Teil der Notation.
 | `type` | ja | `screenshot`, `log`, `report` oder `other` |
 | `description` | nein | Text |
 
+### Tasks (Checklisten)
+
+| Feld | Pflicht | Regel |
+|---|---|---|
+| `key` | ja | gleiches Muster wie beim Event, eindeutig innerhalb des Topics |
+| `title` | ja | nicht leer, höchstens 200 Zeichen |
+| `status` | nein | `open`, `in_progress` oder `done` (Standard: `open`) |
+| `assignee` | nein | Freitext, höchstens 100 Zeichen (App-Konten leben nicht in den Dateien, ADR 0010) |
+| `deadline` | nein | ISO-8601 mit Zeitzone wie `t0`, reine Anzeige (keine Erinnerung) |
+| `note` | nein | Text, höchstens 2000 Zeichen |
+
+Die Reihenfolge der Liste bleibt erhalten. Vorlagen liegen in `checklists/*.yaml` im Datenordner (ADR 0031, Issue #226).
+
 ### Reihenfolge
 
 Events werden nach `t0` sortiert, bei Gleichstand nach `key`. Ein Export ist damit reproduzierbar.

@@ -557,6 +557,45 @@ class TopicCreate(Topic):
     key: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
 
+class TaskStatus(StrEnum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+
+
+TASK_STATUS_LABELS: dict[TaskStatus, str] = {
+    TaskStatus.OPEN: "offen",
+    TaskStatus.IN_PROGRESS: "in Arbeit",
+    TaskStatus.DONE: "erledigt",
+}
+
+
+class Task(BaseModel):
+    """A task/checklist item of a topic (issue #226, ADR 0031). Lives in the topic file, merged by key.
+    `assignee` is free text: app accounts do not live in the files (ADR 0010)."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    key: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$", description="Stable key, unique within the topic")
+    title: str = Field(min_length=1, max_length=200)
+    status: TaskStatus = TaskStatus.OPEN
+    assignee: str = Field(default="", max_length=100)
+    deadline: datetime | None = Field(default=None, description="ISO 8601 with timezone; display only, no reminder is sent")
+    note: str = Field(default="", max_length=2000)
+
+    @field_validator("title", "assignee", "note")
+    @classmethod
+    def _bounded_text(cls, value: str) -> str:
+        return value.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+    @field_validator("deadline")
+    @classmethod
+    def _require_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("deadline braucht eine Zeitzone (timezone offset), z. B. 2026-10-20T18:00:00+02:00")
+        return value.astimezone(UTC) if value is not None else None
+
+
 class Timeline(BaseModel):
     """One topic file: the topic, the events it defines and references to events defined elsewhere."""
 
@@ -565,6 +604,7 @@ class Timeline(BaseModel):
     topic: Topic
     events: list[Event] = Field(default_factory=list)
     refs: list[str] = Field(default_factory=list, description="Keys of events defined in other topic files")
+    tasks: list[Task] = Field(default_factory=list, description="Checklist tasks of the topic (issue #226)")
 
     @model_validator(mode="after")
     def _check_local_keys(self) -> Timeline:
@@ -576,4 +616,8 @@ class Timeline(BaseModel):
         overlap = sorted(set(keys) & set(self.refs))
         if overlap:
             raise ValueError(f"events defined here cannot also be referenced: {overlap}")
+        task_keys = [task.key for task in self.tasks]
+        task_duplicates = sorted(key for key, count in Counter(task_keys).items() if count > 1)
+        if task_duplicates:
+            raise ValueError(f"duplicate task keys: {task_duplicates}")
         return self

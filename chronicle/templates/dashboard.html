@@ -245,6 +245,22 @@
     <div id="kpis" class="flex flex-wrap items-center gap-2 text-xs"></div>
   </header>
 
+  {% if snapshot and tasks %}
+  <section class="border-x-0 border-t-0 px-5 py-3" aria-label="Aufgaben">
+    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Aufgaben ({{ tasks | selectattr('status', 'equalto', 'done') | list | length }}/{{ tasks | length }} erledigt)</h2>
+    <ul class="space-y-1">
+      {% for task in tasks %}
+      <li class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="{{ 'text-slate-500 line-through' if task.status == 'done' else 'text-slate-200' }}">{{ task.title }}</span>
+        {% if task.assignee %}<span class="rounded bg-white/5 px-1.5 py-0.5 text-slate-400">{{ task.assignee }}</span>{% endif %}
+        {% if task.deadline %}<time data-utc="{{ task.deadline }}" class="font-mono text-slate-500">{{ task.deadline[:16].replace('T', ' ') }}</time>{% endif %}
+        <span class="text-slate-500">{{ task.status }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {% if not embedded %}
   <div class="glass flex flex-none gap-1.5 overflow-x-auto border-x-0 border-t-0 px-5 py-2 text-[11px] text-slate-300 sm:flex-wrap sm:overflow-visible">
     {% for phase in phases %}

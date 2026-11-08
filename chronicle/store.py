@@ -226,6 +226,37 @@ def update_topic_in_file(path: Path, topic: Topic, *, expected_version: str) -> 
     return file_version(path)
 
 
+def _task_document(task) -> dict:
+    """One task as it is written in a topic file. Empty optional fields are left out."""
+    item: dict = {"key": task.key, "title": task.title, "status": task.status.value}
+    if task.assignee:
+        item["assignee"] = task.assignee
+    if task.deadline:
+        item["deadline"] = task.deadline.isoformat()
+    if task.note:
+        item["note"] = _text(task.note)
+    return item
+
+
+def set_tasks_in_file(path: Path, tasks: list, *, expected_version: str) -> str:
+    """Replace the whole `tasks` list of a topic file (one task added, changed or removed rewrites the list;
+    task lists are checklist-sized, not 10,000 entries). Returns the new version of the file."""
+    with folder_lock(path.parent):
+        _check_version(path, expected_version)
+        text = _read_text(path)
+        current = _read_model(text)
+        document = _load_document(text)
+        if tasks:
+            document["tasks"] = [_task_document(task) for task in tasks]
+        else:
+            document.pop("tasks", None)
+        stream = io.StringIO()
+        _yaml().dump(document, stream)
+        _verify_read_back(stream.getvalue(), current.model_copy(update={"tasks": list(tasks)}))
+        _atomic_write(path, stream.getvalue().encode("utf-8"))
+    return file_version(path)
+
+
 def add_event_to_file(path: Path, event: Event, *, expected_version: str) -> str:
     """Append a new event to a topic file. Returns the new version of the file."""
     with folder_lock(path.parent):
@@ -590,6 +621,8 @@ def _document(timeline: Timeline) -> dict:
         document["events"] = events
     if timeline.refs:
         document["refs"] = list(timeline.refs)
+    if timeline.tasks:
+        document["tasks"] = [_task_document(task) for task in timeline.tasks]
     return document
 
 

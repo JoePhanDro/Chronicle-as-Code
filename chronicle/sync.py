@@ -21,7 +21,7 @@ from pathlib import Path
 
 from . import accounts
 from .check import load_named_folder
-from .loader import TOPIC_SUFFIXES, CheckFailed, TimelineError, decode_topic_bytes, parse_timeline
+from .loader import CHECKLIST_DIR, PRESET_DIR, TOPIC_SUFFIXES, CheckFailed, TimelineError, decode_topic_bytes, parse_timeline
 from .models import Event, Timeline, Topic
 from .store import StoreError, folder_lock
 from .yamlscan import MAX_YAML_BYTES, TOO_LARGE, one_line
@@ -169,7 +169,11 @@ def base_timelines(data_dir: Path) -> dict[str, Timeline]:
     if ref is None:
         return {}
     commit = _git(data_dir, "rev-parse", "--verify", ref).strip()  # @{u} may move between two calls of git
-    names = [path for mode, path in _tree(data_dir, commit) if mode not in LINK_MODES and path.endswith(TOPIC_SUFFIXES)]
+    # presets/ and checklists/ hold no topics (loader.PRESET_DIR/CHECKLIST_DIR); like in the loader they are
+    # skipped here, so a synced vault can hold them without every sync failing on them.
+    special = (PRESET_DIR + "/", CHECKLIST_DIR + "/")
+    names = [path for mode, path in _tree(data_dir, commit)
+             if mode not in LINK_MODES and path.endswith(TOPIC_SUFFIXES) and not path.startswith(special)]
     try:
         files = _blobs(data_dir, commit, names, ref)
     except TimelineError as exc:

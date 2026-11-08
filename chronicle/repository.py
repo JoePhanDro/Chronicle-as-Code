@@ -33,4 +33,5 @@ from .queries import (
     search_actors,
     search_systems,
 )
+from .tasks import apply_template, create_task, delete_task, update_task
 from .topics import create_topic, delete_topic, link_event, topic_delete_plan, unlink_event, update_topic

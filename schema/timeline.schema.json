@@ -523,6 +523,69 @@
       "title": "Status",
       "type": "string"
     },
+    "Task": {
+      "additionalProperties": false,
+      "description": "A task/checklist item of a topic (issue #226, ADR 0031). Lives in the topic file, merged by key.\n`assignee` is free text: app accounts do not live in the files (ADR 0010).",
+      "properties": {
+        "key": {
+          "description": "Stable key, unique within the topic",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/TaskStatus",
+          "default": "open"
+        },
+        "assignee": {
+          "default": "",
+          "maxLength": 100,
+          "title": "Assignee",
+          "type": "string"
+        },
+        "deadline": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ISO 8601 with timezone; display only, no reminder is sent",
+          "title": "Deadline"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "title"
+      ],
+      "title": "Task",
+      "type": "object"
+    },
+    "TaskStatus": {
+      "enum": [
+        "open",
+        "in_progress",
+        "done"
+      ],
+      "title": "TaskStatus",
+      "type": "string"
+    },
     "Topic": {
       "additionalProperties": false,
       "properties": {
@@ -645,6 +708,14 @@
         "type": "string"
       },
       "title": "Refs",
+      "type": "array"
+    },
+    "tasks": {
+      "description": "Checklist tasks of the topic (issue #226)",
+      "items": {
+        "$ref": "#/$defs/Task"
+      },
+      "title": "Tasks",
       "type": "array"
     }
   },

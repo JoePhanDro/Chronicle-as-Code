@@ -26,7 +26,7 @@ from reportlab.platypus import (
 from . import accounts, reporting, repository
 from .evidence import check_file
 from .exporter import topic_document
-from .models import PHASE_COLORS, SEVERITY_LABELS, STATUS_LABELS, Event, Phase, Timeline, human_span
+from .models import PHASE_COLORS, SEVERITY_LABELS, STATUS_LABELS, TASK_STATUS_LABELS, Event, Phase, Timeline, human_span
 
 # TLP banner colors (issue #225); AMBER gets dark text for contrast.
 TLP_COLORS = {"CLEAR": colors.HexColor("#64748b"), "GREEN": colors.HexColor("#16a34a"),
@@ -237,6 +237,25 @@ def _event_dot(phase: Phase) -> str:
     return f'<font color="{PHASE_COLORS[phase]}">&#9679;</font>'
 
 
+def _tasks_section(timeline: Timeline) -> list:
+    """The checklist tasks of the topic (issue #226); nothing when it has none."""
+    tasks = timeline.tasks
+    if not tasks:
+        return []
+    rows = [[Paragraph("Aufgabe", SMALL), Paragraph("Status", SMALL), Paragraph("Zuständig", SMALL), Paragraph("Frist", SMALL)]]
+    for task in tasks:
+        rows.append([Paragraph(_text(task.title), BODY),
+                     Paragraph(_text(TASK_STATUS_LABELS[task.status]), BODY),
+                     Paragraph(_text(task.assignee), BODY),
+                     Paragraph(_text(_when(task.deadline)) if task.deadline else "—", BODY)])
+    table = Table(rows, colWidths=[70 * mm, 30 * mm, 40 * mm, None], hAlign="LEFT", repeatRows=1)
+    table.setStyle(TableStyle([
+        ("LINEBELOW", (0, 0), (-1, -1), 0.4, RULE), ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3), ("LEFTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    return [Spacer(1, 12), Paragraph("Aufgaben", H2), table]
+
+
 def _management(timeline: Timeline) -> list:
     events = sorted(timeline.events, key=lambda e: (e.t0, e.key))
     flowables: list = [Paragraph("Ablauf", H2)]
@@ -399,7 +418,8 @@ def render_pdf(timeline: Timeline, evidence: dict[str, bytes], variant: str, mad
         body = _meldebericht(timeline, variant, datetime.now(UTC))
     else:
         body = _technical(timeline, evidence, width) if variant == "technisch" else _management(timeline)
-    doc.build(_header(timeline, variant, made_at) + _techniques(timeline.events) + body, onFirstPage=footer, onLaterPages=footer)
+    doc.build(_header(timeline, variant, made_at) + _techniques(timeline.events) + _tasks_section(timeline) + body,
+              onFirstPage=footer, onLaterPages=footer)
     return buffer.getvalue()
 
 

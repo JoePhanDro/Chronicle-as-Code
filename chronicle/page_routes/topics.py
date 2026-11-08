@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 import sqlite3
 from datetime import UTC, datetime
 from html import escape
@@ -11,12 +12,13 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
+from .. import checklists as checklist_files
 from .. import i18n, ioc_export, notifications, reporting, repository
 from ..ioc_export import FORMATS
 from ..auth import client_ip
 from ..exporter import ExportError
 from ..report import make_dashboard
-from ..models import Notifications, Topic, TopicKind, SEVERITIES, SEVERITY_LABELS, TLP_LEVELS, incident_rows
+from ..models import Notifications, TASK_STATUS_LABELS, Task, TaskStatus, Topic, TopicKind, SEVERITIES, SEVERITY_LABELS, TLP_LEVELS, incident_rows
 from ..event_input import EventWrite, event_of, new_topic_key, topic_list
 from .common import WRITER_ROLES, PageContext, _day_param, _error_text, _text_param
 
@@ -126,6 +128,11 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
                 "status": reporting.worst_status(stages, now),
                 "missing": {entry["stage"]: reporting.missing_fields(topic["reporting"], events, entry["stage"]) for entry in stages},
             }
+        now = datetime.now(UTC)
+        task_rows = []
+        for task in topic["tasks"]:
+            task_rows.append({**task, "overdue": bool(task["deadline"] and task["deadline"] < now.isoformat())})
+        templates, template_problems = checklist_files.list_checklists(request.app.state.data_dir)
         return render(request, "topic.html", user, status_code=status_code, mode="view", topic=topic,
                       events=events, addable=addable, errors=errors, kinds=TOPIC_KINDS, form=None,
                       closable=len(closable), foreign_open=len(unresolved) - len(closable), closed=closed,
@@ -135,7 +142,12 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
                       notify_status=notifications.status(), triggers=TRIGGER_OPTIONS,
                       notify_flash=request.query_params.get("notify", ""),
                       incident_form=_incident_form(topic), incident_view=_incident_view(topic),
-                      severities=SEVERITY_OPTIONS, tlp_levels=TLP_OPTIONS)
+                      severities=SEVERITY_OPTIONS, tlp_levels=TLP_OPTIONS,
+                      tasks=task_rows, tasks_done=sum(1 for task in task_rows if task["status"] == "done"),
+                      checklists=[{"name": item.name, "label": item.label} for item in templates],
+                      checklist_problems=template_problems,
+                      task_statuses=[{"value": status.value, "label": label} for status, label in TASK_STATUS_LABELS.items()],
+                      task_flash=request.query_params.get("tasks", ""))
 
     @router.get("/topics", response_class=HTMLResponse)
     def topics_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
@@ -365,6 +377,111 @@ def make_topic_pages(ctx: PageContext) -> APIRouter:
             conn, topic_key, format, _day_param(params, "since"), _day_param(params, "until"), user["id"], client_ip(request)
         )
         return Response(content=body, media_type=media, headers=ioc_export.export_headers(filename))
+
+    def _deadline_from_form(form) -> str | None:
+        """datetime-local comes without a timezone; the UI means UTC (like the reporting known_at)."""
+        value = (form.get("deadline") or "").strip()
+        if not value:
+            return None
+        if len(value) == 16:
+            value += ":00+00:00"
+        return value
+
+    def _task_from_form(form, key: str) -> Task:
+        return Task.model_validate({
+            "key": key,
+            "title": (form.get("title") or "").strip(),
+            "status": form.get("status") or "open",
+            "assignee": form.get("assignee") or "",
+            "deadline": _deadline_from_form(form),
+            "note": form.get("note") or "",
+        })
+
+    @router.post("/topics/{key}/tasks/new", response_class=HTMLResponse)
+    async def create_task_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            task = _task_from_form(form, f"task-{secrets.token_hex(4)}")
+            repository.create_task(conn, key, task, user["id"], client_ip(request), data_dir=request.app.state.data_dir)
+        except (ValidationError, repository.RepositoryError) as exc:
+            status = 404 if isinstance(exc, repository.NotFound) else 422
+            return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
+        return RedirectResponse(f"/topics/{key}?tasks=1", status_code=303)
+
+    @router.post("/topics/{key}/tasks/from-template", response_class=HTMLResponse)
+    async def apply_template_page(key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        """Copy the tasks of a checklist template (checklists/<name>.yaml) into the topic (issue #226)."""
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            added = repository.apply_template(conn, key, (form.get("template") or "").strip(), user["id"],
+                                              client_ip(request), data_dir=request.app.state.data_dir)
+        except (ValidationError, ValueError, repository.RepositoryError) as exc:
+            status = 404 if isinstance(exc, repository.NotFound) else 422
+            return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
+        return RedirectResponse(f"/topics/{key}?tasks={added}", status_code=303)
+
+    @router.post("/topics/{key}/tasks/{task_key}/edit", response_class=HTMLResponse)
+    async def edit_task_page(key: str, task_key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        """Change one task, e.g. check it off (issue #226)."""
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            task = _task_from_form(form, task_key)
+            repository.update_task(conn, key, task_key, task, user["id"], client_ip(request), data_dir=request.app.state.data_dir)
+        except (ValidationError, repository.RepositoryError) as exc:
+            status = 404 if isinstance(exc, repository.NotFound) else 422
+            return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
+        return RedirectResponse(f"/topics/{key}", status_code=303)
+
+    @router.post("/topics/{key}/tasks/{task_key}/status", response_class=HTMLResponse)
+    async def set_task_status_page(key: str, task_key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        """The checkbox on the topic page: set the status of one task without touching the other fields."""
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        status = (form.get("status") or "").strip()
+        if status not in {item.value for item in TaskStatus}:
+            return topic_page(request, conn, user, key, status_code=422, errors="Unbekannter Task-Status")
+        try:
+            current = repository.get_topic(conn, key)
+            if current is None:
+                return render(request, "not_found.html", user, status_code=404)
+            stored = next((item for item in current["tasks"] if item["key"] == task_key), None)
+            if stored is None:
+                return render(request, "not_found.html", user, status_code=404)
+            task = Task.model_validate({**stored, "status": status})
+            repository.update_task(conn, key, task_key, task, user["id"], client_ip(request), data_dir=request.app.state.data_dir)
+        except (ValidationError, repository.RepositoryError) as exc:
+            status_code = 404 if isinstance(exc, repository.NotFound) else 422
+            return topic_page(request, conn, user, key, status_code=status_code, errors=_error_text(exc))
+        return RedirectResponse(f"/topics/{key}", status_code=303)
+
+    @router.post("/topics/{key}/tasks/{task_key}/delete", response_class=HTMLResponse)
+    async def delete_task_page(key: str, task_key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):
+        if user is None:
+            return RedirectResponse("/login", status_code=303)
+        form = await request.form()
+        if user["role"] not in WRITER_ROLES or not ok_csrf(user, form.get("csrf_token")):
+            return render(request, "forbidden.html", user, status_code=403)
+        try:
+            repository.delete_task(conn, key, task_key, user["id"], client_ip(request), data_dir=request.app.state.data_dir)
+        except repository.RepositoryError as exc:
+            status = 404 if isinstance(exc, repository.NotFound) else 409
+            return topic_page(request, conn, user, key, status_code=status, errors=_error_text(exc))
+        return RedirectResponse(f"/topics/{key}", status_code=303)
 
     @router.get("/iocs")
     def all_iocs_page(request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict | None = Depends(page_user)):

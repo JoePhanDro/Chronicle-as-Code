@@ -33,7 +33,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .loader import TimelineError, read_topic_text
-from .models import Event, Timeline, Topic
+from .models import Event, Task, Timeline, Topic
 from .store import (
     _event_document,
     _evidence_document,
@@ -41,6 +41,7 @@ from .store import (
     _put,
     _read_model,
     _set_changed_fields,
+    _task_document,
     _text,
     _atomic_write,
     _yaml,
@@ -52,6 +53,7 @@ from .yamlscan import MAX_YAML_BYTES, TOO_LARGE, describe_validation_error
 TOPIC_FIELDS = ("title", "kind", "summary")
 BLOCK_FIELDS = ("reporting", "notifications", "incident")
 EVENT_FIELDS = tuple(name for name in Event.model_fields if name != "key")
+TASK_FIELDS = tuple(name for name in Task.model_fields if name != "key")
 SET_FIELDS = ("techniques", "entities")  # merged like refs: what either side adds is in, what either side removes is out
 
 
@@ -178,16 +180,48 @@ def _merge_events(base: list[Event], ours: list[Event], theirs: list[Event], pro
     return [event for event in merged if event is not None]
 
 
+def _merge_task(key: str, base: Task | None, ours: Task | None, theirs: Task | None, problems: list[str]) -> Task | None:
+    """One task merges like one event: equal or one-sided changes are taken, delete+change is a conflict."""
+    if ours == theirs:
+        return ours
+    if base == ours:
+        return theirs
+    if base == theirs:
+        return ours
+    if ours is None or theirs is None:
+        problems.append(f"task {key}: auf einer Seite gelöscht, auf der anderen geändert")
+        return ours or theirs
+    values = {
+        name: _three_way(getattr(base, name) if base else None, getattr(ours, name), getattr(theirs, name),
+                         f"task {key}.{name}", problems)
+        for name in TASK_FIELDS
+    }
+    return ours.model_copy(update=values)
+
+
+def _merge_tasks(base: list[Task], ours: list[Task], theirs: list[Task], problems: list[str]) -> list[Task]:
+    """Tasks merge by key, like events: our order first, then tasks only the other side has."""
+    base_by_key = {task.key: task for task in base}
+    ours_by_key = {task.key: task for task in ours}
+    theirs_by_key = {task.key: task for task in theirs}
+    pairs = [(key, ours_by_key[key], theirs_by_key.get(key)) for key in ours_by_key]
+    pairs += [(key, None, task) for key, task in theirs_by_key.items() if key not in ours_by_key]
+    merged = (_merge_task(key, base_by_key.get(key), ours_task, theirs_task, problems)
+              for key, ours_task, theirs_task in pairs)
+    return [task for task in merged if task is not None]
+
+
 def merge_timelines(base: Timeline | None, ours: Timeline, theirs: Timeline) -> Timeline:
     """Merge three versions of one topic file. Raises MergeConflict if a change cannot be merged."""
     problems: list[str] = []
     topic = _merge_topic(base.topic if base else None, ours.topic, theirs.topic, problems)
     events = _merge_events(base.events if base else [], ours.events, theirs.events, problems)
     refs = _merge_refs(base.refs if base else [], ours.refs, theirs.refs)
+    tasks = _merge_tasks(base.tasks if base else [], ours.tasks, theirs.tasks, problems)
     if problems:
         raise MergeConflict(problems)
     try:
-        return Timeline(topic=topic, events=events, refs=refs)
+        return Timeline(topic=topic, events=events, refs=refs, tasks=tasks)
     except ValidationError as exc:
         raise MergeConflict([describe_validation_error(exc)]) from exc
 
@@ -231,12 +265,22 @@ def _apply_events(document, ours: list[Event], merged: list[Event]) -> None:
         del document["events"]
 
 
+def _apply_tasks(document, ours: list[Task], merged: list[Task]) -> None:
+    if merged == ours:
+        return
+    if merged:
+        document["tasks"] = [_task_document(task) for task in merged]
+    else:
+        document.pop("tasks", None)
+
+
 def _apply(document, ours: Timeline, merged: Timeline) -> None:
     """Write the merged values into our YAML document, so its comments and layout stay."""
     _apply_topic(document["topic"], ours.topic, merged.topic)
     if merged.refs != ours.refs:
         _put(document, "refs", list(merged.refs) or None)
     _apply_events(document, ours.events, merged.events)
+    _apply_tasks(document, ours.tasks, merged.tasks)
 
 
 def merge_texts(base_text: str, ours_text: str, theirs_text: str) -> str:
