@@ -109,11 +109,13 @@ def render_dashboard(
     phases = [{"name": phase.value, "color": PHASE_COLORS[phase]} for phase in Phase]
     incident = timeline.topic.incident
     classification = incident_rows(incident.model_dump(mode="json") if incident else None)
+    tasks = [task.model_dump(mode="json") for task in timeline.tasks]
 
     return _env.get_template("dashboard.html").render(
         title=timeline.topic.title,
         summary=timeline.topic.summary,
         classification=classification,
+        tasks=tasks,
         tlp=incident.tlp if incident else None,
         tlp_badge=TLP_BADGE,
         phases=phases,

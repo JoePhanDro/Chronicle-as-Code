@@ -66,6 +66,18 @@ CREATE TABLE IF NOT EXISTS topic_files (
     topic_key  TEXT PRIMARY KEY,
     path       TEXT NOT NULL
 );
+-- Checklist tasks of a topic (issue #226), stored in its file, the index follows the files.
+CREATE TABLE IF NOT EXISTS tasks (
+    pk        INTEGER PRIMARY KEY,
+    topic_pk  INTEGER NOT NULL REFERENCES topics(pk) ON DELETE CASCADE,
+    key       TEXT NOT NULL,
+    title     TEXT NOT NULL,
+    status    TEXT NOT NULL CHECK (status IN ('open', 'in_progress', 'done')),
+    assignee  TEXT NOT NULL DEFAULT '',
+    deadline  TEXT,
+    note      TEXT NOT NULL DEFAULT '',
+    UNIQUE (topic_pk, key)
+);
 CREATE INDEX IF NOT EXISTS idx_events_t0 ON events (t0);
 CREATE INDEX IF NOT EXISTS idx_topic_events_event ON topic_events (event_pk);
 CREATE INDEX IF NOT EXISTS idx_evidence_event ON evidence (event_pk);

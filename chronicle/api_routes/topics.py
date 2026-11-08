@@ -9,11 +9,11 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import ioc_export, repository
+from .. import ioc_export, repository, tasks
 from ..auth import Auth, client_ip
 from ..event_input import new_topic_key
 from ..ioc_export import FORMATS
-from ..models import Topic, TopicCreate
+from ..models import Task, Topic, TopicCreate
 from .common import write
 
 
@@ -37,7 +37,19 @@ def make_topic_routes(get_conn: Callable, auth: Auth) -> APIRouter:
         found = repository.get_topic(conn, key)
         if found is None:
             raise HTTPException(status_code=404, detail="Topic nicht gefunden")
+        # tasks live on the timeline, not on the Topic model; the API returns them separately (issue #226),
+        # so a GET->PUT round trip of the topic body stays valid.
+        found = dict(found)
+        found.pop("tasks", None)
         return found
+
+    @router.get("/api/v1/topics/{key}/tasks")
+    def topic_tasks(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
+        """The checklist tasks of a topic (issue #226)."""
+        found = repository.get_topic(conn, key)
+        if found is None:
+            raise HTTPException(status_code=404, detail="Topic nicht gefunden")
+        return found["tasks"]
 
     @router.get("/api/v1/topics/{key}/events")
     def topic_events(key: str, conn: sqlite3.Connection = Depends(get_conn), _: dict = Depends(current_user)) -> list[dict]:
@@ -69,6 +81,36 @@ def make_topic_routes(get_conn: Callable, auth: Auth) -> APIRouter:
     @router.delete("/api/v1/topics/{key}/events/{event_key}", status_code=204, response_class=Response)
     def unlink_event(key: str, event_key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn), user: dict = Depends(writer)) -> Response:
         write(lambda: repository.unlink_event(conn, key, event_key, user["id"], client_ip(request), data_dir=request.app.state.data_dir))
+        return Response(status_code=204)
+
+    @router.post("/api/v1/topics/{key}/tasks/from-template", status_code=201)
+    def apply_template(key: str, body: dict, request: Request, conn: sqlite3.Connection = Depends(get_conn),
+                       user: dict = Depends(writer)) -> dict:
+        """Copy the tasks of a checklist template (checklists/<name>.yaml) into the topic (issue #226)."""
+        name = str(body.get("template") or "").strip()
+        added = write(lambda: tasks.apply_template(conn, key, name, user["id"], client_ip(request),
+                                                    data_dir=request.app.state.data_dir))
+        return {"added": added}
+
+    @router.post("/api/v1/topics/{key}/tasks", status_code=201)
+    def create_task(key: str, body: Task, request: Request, conn: sqlite3.Connection = Depends(get_conn),
+                    user: dict = Depends(writer)) -> dict:
+        """Add a task to a topic (issue #226)."""
+        return write(lambda: tasks.create_task(conn, key, body, user["id"], client_ip(request),
+                                               data_dir=request.app.state.data_dir))
+
+    @router.put("/api/v1/topics/{key}/tasks/{task_key}")
+    def update_task(key: str, task_key: str, body: Task, request: Request, conn: sqlite3.Connection = Depends(get_conn),
+                    user: dict = Depends(writer)) -> dict:
+        """Change one task, e.g. check it off (issue #226)."""
+        return write(lambda: tasks.update_task(conn, key, task_key, body, user["id"], client_ip(request),
+                                               data_dir=request.app.state.data_dir))
+
+    @router.delete("/api/v1/topics/{key}/tasks/{task_key}", status_code=204, response_class=Response)
+    def delete_task(key: str, task_key: str, request: Request, conn: sqlite3.Connection = Depends(get_conn),
+                    user: dict = Depends(writer)) -> Response:
+        write(lambda: tasks.delete_task(conn, key, task_key, user["id"], client_ip(request),
+                                        data_dir=request.app.state.data_dir))
         return Response(status_code=204)
 
     @router.get("/api/v1/iocs")

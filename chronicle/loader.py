@@ -34,6 +34,8 @@ TOPIC_SUFFIXES = tuple(pattern[1:] for pattern in TOPIC_FILE_PATTERNS)
 # Saved search presets live in their own folder in the root of the data folder (issue #260). Like .git it is
 # no topic folder: the loader skips it, the files there are read by presets.py only.
 PRESET_DIR = "presets"
+# Checklist templates for incident types live in their own folder too (issue #226): read by checklists.py only.
+CHECKLIST_DIR = "checklists"
 
 
 MAX_LISTED_LINKS = 10
@@ -82,7 +84,7 @@ def _sort_entry(
     if entry.is_symlink():
         links.append(Path(entry.path).relative_to(data_dir).as_posix())
     elif entry.is_dir(follow_symlinks=False):
-        if not (in_root and entry.name in (".git", PRESET_DIR)):
+        if not (in_root and entry.name in (".git", PRESET_DIR, CHECKLIST_DIR)):
             pending.append(Path(entry.path))
     elif entry.name.endswith(TOPIC_SUFFIXES) and entry.is_file(follow_symlinks=False):
         files.append(Path(entry.path))

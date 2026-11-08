@@ -182,6 +182,88 @@
 </section>
 {% endif %}
 
+{% if tasks or can_write %}
+<section class="mb-8 rounded-xl border border-white/10 bg-white/[.02] p-5" aria-labelledby="tasks-heading">
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <h2 id="tasks-heading" class="text-base font-semibold text-slate-100">{{ t("Aufgaben") }}{% if tasks %} · {{ tasks_done }}/{{ tasks | length }}{% endif %}</h2>
+    {% if tasks %}<div class="h-2 w-40 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuenow="{{ tasks_done }}" aria-valuemin="0" aria-valuemax="{{ tasks | length }}" aria-label="{{ t('Fortschritt') }}"><div class="h-full bg-emerald-400" style="width: {{ (100 * tasks_done / (tasks | length)) if tasks else 0 }}%"></div></div>{% endif %}
+  </div>
+  {% if task_flash %}<p role="status" class="mb-3 text-sm text-emerald-300">{{ task_flash }} {{ t("Aufgaben aus der Vorlage übernommen.") }}</p>{% endif %}
+  {% if checklist_problems %}<p role="alert" class="mb-3 text-xs text-amber-300">{{ checklist_problems | join(' · ') }}</p>{% endif %}
+  {% if tasks %}
+  <ul class="space-y-2">
+    {% for task in tasks %}
+    <li class="rounded-lg border border-white/10 px-3 py-2">
+      <div class="flex flex-wrap items-center gap-3">
+        {% if can_write %}
+        <form method="post" action="/topics/{{ topic.key }}/tasks/{{ task.key }}/status" class="inline-flex items-center gap-2">
+          <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+          <input type="checkbox" name="status" value="done" {{ 'checked' if task.status == 'done' }} onchange="this.form.submit()" class="h-4 w-4 accent-emerald-400" aria-label="{{ t('Erledigt') }}: {{ task.title }}">
+        </form>
+        {% else %}
+        <span class="h-4 w-4 flex-none rounded border border-white/20 {{ 'bg-emerald-400 border-emerald-400' if task.status == 'done' }}" aria-hidden="true"></span>
+        {% endif %}
+        <span class="min-w-0 flex-1 text-sm {{ 'text-slate-500 line-through' if task.status == 'done' else 'text-slate-100' }}">{{ task.title }}</span>
+        {% if task.assignee %}<span class="rounded-md bg-white/5 px-2 py-0.5 text-xs text-slate-300">{{ task.assignee }}</span>{% endif %}
+        {% if task.deadline %}
+        <span class="text-xs"><time data-utc="{{ task.deadline }}" class="font-mono text-slate-400">{{ task.deadline[:16].replace('T', ' ') }}</time>
+        {% if task.overdue %}<span class="ml-1 rounded-md bg-rose-500/20 px-1.5 py-0.5 font-medium text-rose-200">{{ t("überfällig") }}</span>{% endif %}</span>
+        {% endif %}
+        <span class="text-xs text-slate-400">{{ {('open'): t('offen'), ('in_progress'): t('in Arbeit'), ('done'): t('erledigt')}.get(task.status, task.status) }}</span>
+        {% if can_write %}
+        <details class="relative">
+          <summary class="cursor-pointer list-none text-xs text-sky-300 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ t("Bearbeiten") }}</summary>
+          <form method="post" action="/topics/{{ topic.key }}/tasks/{{ task.key }}/edit" class="absolute right-0 z-10 mt-2 w-80 rounded-lg border border-white/10 bg-slate-900 p-3 shadow-lg space-y-2">
+            <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+            <label class="block"><span class="{{ label_class }}">{{ t("Titel") }}</span><input name="title" value="{{ task.title }}" required class="{{ input_class }}"></label>
+            <label class="block"><span class="{{ label_class }}">{{ t("Status") }}</span>
+              <select name="status" class="{{ input_class }}">{% for value, label in task_statuses %}<option value="{{ value }}" {{ 'selected' if task.status == value }}>{{ label }}</option>{% endfor %}</select></label>
+            <label class="block"><span class="{{ label_class }}">{{ t("Zuständig (Freitext)") }}</span><input name="assignee" value="{{ task.assignee }}" class="{{ input_class }}"></label>
+            <label class="block"><span class="{{ label_class }}">{{ t("Frist (UTC)") }}</span><input type="datetime-local" name="deadline" value="{{ task.deadline[:16] if task.deadline }}" class="{{ input_class }}"></label>
+            <label class="block"><span class="{{ label_class }}">{{ t("Notiz") }}</span><textarea name="note" rows="2" class="{{ input_class }}">{{ task.note }}</textarea></label>
+            <div class="flex gap-2">
+              <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-200 hover:bg-white/5">{{ t("Speichern") }}</button>
+            </div>
+          </form>
+        </details>
+        <form method="post" action="/topics/{{ topic.key }}/tasks/{{ task.key }}/delete" onsubmit="return confirm({{ ('Aufgabe löschen?\n\n' ~ task.title) | tojson }});">
+          <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+          <button type="submit" class="text-xs text-rose-300 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center">{{ t("Löschen") }}</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if task.note %}<p class="mt-1 whitespace-pre-line text-xs text-slate-400">{{ task.note }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-sm text-slate-400">{{ t("Noch keine Aufgaben.") }}</p>
+  {% endif %}
+  {% if can_write %}
+  <div class="mt-4 flex flex-wrap items-end gap-3 border-t border-white/10 pt-4">
+    <form method="post" action="/topics/{{ topic.key }}/tasks/new" class="flex flex-wrap items-end gap-2">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <label class="block"><span class="{{ label_class }}">{{ t("Neue Aufgabe") }}</span>
+        <input name="title" required placeholder="{{ t('z. B. Systeme isolieren') }}" class="{{ input_class }} w-64"></label>
+      <label class="block"><span class="{{ label_class }}">{{ t("Zuständig (optional)") }}</span>
+        <input name="assignee" class="{{ input_class }} w-40"></label>
+      <label class="block"><span class="{{ label_class }}">{{ t("Frist (UTC, optional)") }}</span>
+        <input type="datetime-local" name="deadline" class="{{ input_class }}"></label>
+      <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5 max-sm:min-h-11">{{ t("Anlegen") }}</button>
+    </form>
+    {% if checklists %}
+    <form method="post" action="/topics/{{ topic.key }}/tasks/from-template" class="flex items-end gap-2">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <label class="block"><span class="{{ label_class }}">{{ t("Aus Vorlage erstellen") }}</span>
+        <select name="template" class="{{ input_class }}">{% for item in checklists %}<option value="{{ item.name }}">{{ item.label }}</option>{% endfor %}</select></label>
+      <button type="submit" class="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5 max-sm:min-h-11">{{ t("Übernehmen") }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
 <div id="nach-zeitleiste"></div>
 
 {% if can_write %}
