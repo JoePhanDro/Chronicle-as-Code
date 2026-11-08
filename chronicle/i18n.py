@@ -1,7 +1,8 @@
 """Sprache der Oberfläche (issue #220): de (Standard, Texte in den Templates) und en.
 
 Pro Betrachter, als Cookie `chronicle.lang` (wie Design und Dichte im localStorage, aber serverseitig
-lesbar, weil die Templates serverseitig gerendert werden). Ohne Cookie entscheidet Accept-Language.
+lesbar, weil die Templates serverseitig gerendert werden). Ohne Cookie ist die Oberfläche deutsch;
+die Sprache wechselt explizit über den Einstellungsdialog.
 
 Die Templates rufen `t('Deutscher Text')` — der deutsche Text ist der Schlüssel. Das englische
 Katalog EN mappt Schlüssel auf Englisch; fehlt ein Eintrag, fällt die Ausgabe auf Deutsch zurück.
@@ -352,15 +353,10 @@ EN: dict[str, str] = {
 
 
 def language_of(request: Request) -> str:
-    """The language of this request: the cookie when set, otherwise Accept-Language, otherwise German."""
+    """The language of this request: the cookie when set, otherwise German. The switch is explicit
+    (settings dialog), there is no Accept-Language auto-detection."""
     cookie = request.cookies.get(LANG_COOKIE)
-    if cookie in LANGUAGES:
-        return cookie
-    accept = request.headers.get("accept-language", "")
-    first = accept.split(",")[0].strip().lower()
-    if first.startswith("en"):
-        return "en"
-    return DEFAULT_LANG
+    return cookie if cookie in LANGUAGES else DEFAULT_LANG
 
 
 def t(key: str) -> str:

@@ -54,9 +54,11 @@ def test_cookie_switches_the_interface_to_english(db_path):
     assert 'name="lang"' in page.text and 'value="en"' in page.text and "English" in page.text
 
 
-def test_accept_language_english_without_cookie(db_path):
+def test_accept_language_is_not_auto_detected(db_path):
+    # The switch is explicit (settings dialog); without the cookie the UI stays German even for an en browser.
     client = login(db_path, headers={"Accept-Language": "en-US,en;q=0.9"})
-    assert ">Events</" in client.get("/topics").text
+    assert '<html lang="de">' in client.get("/topics").text
+    assert ">Ereignisse</" in client.get("/topics").text or ">Topics</h1>" in client.get("/topics").text
 
 
 def test_cookie_wins_over_accept_language(db_path):
@@ -65,10 +67,10 @@ def test_cookie_wins_over_accept_language(db_path):
     assert '<html lang="de">' in client.get("/events").text
 
 
-def test_unknown_cookie_value_falls_back_to_accept_language(db_path):
+def test_unknown_cookie_value_stays_german(db_path):
     client = login(db_path, headers={"Accept-Language": "en"})
     client.cookies.set(i18n.LANG_COOKIE, "fr")
-    assert ">Events</" in client.get("/events").text
+    assert '<html lang="de">' in client.get("/events").text
 
 
 def test_missing_translation_falls_back_to_german():

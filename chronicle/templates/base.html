@@ -209,8 +209,7 @@
       const langRadios = [...dialog.querySelectorAll('input[name=lang]')];
       const readLang = () => {
         const match = document.cookie.match(/(?:^|;\s*)chronicle\.lang=(de|en)/);
-        if (match) return match[1];
-        return (navigator.language || 'de').slice(0, 2) === 'en' ? 'en' : 'de';
+        return match ? match[1] : 'de';  // no auto-detection: German until the user chooses (issue #220)
       };
       document.querySelectorAll('[data-open-settings]').forEach(opener => opener.addEventListener('click', () => {
         radios.forEach(radio => { radio.checked = radio.value === readDensity(); });
