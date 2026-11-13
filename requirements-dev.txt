@@ -1,4 +1,4 @@
-coverage==7.17.0
+coverage==7.17.2
 playwright==1.64.1
 pytest==9.2.0
 httpx2==2.16.0
