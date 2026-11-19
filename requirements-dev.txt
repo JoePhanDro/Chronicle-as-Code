@@ -2,6 +2,6 @@ coverage==7.17.2
 playwright==1.65.2
 pytest==9.2.0
 httpx2==2.16.0
-pypdf==7.0.0
+pypdf==7.1.0
 ruff==0.17.5
 pillow==13.0.0
