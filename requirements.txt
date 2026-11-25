@@ -6,6 +6,6 @@ fastapi==0.163.1
 uvicorn==0.54.0
 argon2-cffi==25.1.0
 python-multipart==0.0.33
-markdown-it-py==4.2.0
+markdown-it-py==4.3.0
 nh3==0.3.7
 reportlab==5.1.0
